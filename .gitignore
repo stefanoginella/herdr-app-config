@@ -1,0 +1,43 @@
+# Herdr customizations.
+#
+# Herdr writes most of this folder itself: its own mods and layouts are replaced on
+# every start, and the state files change all the time. So everything is ignored
+# unless it is listed here. For a new mod, layout, theme or asset of yours, add a line.
+
+/*
+
+# The repository itself
+!/.gitignore
+!/README.md
+!/LICENSE
+!/NOTICE
+
+# What you edit
+!/keys.json
+!/settings.json
+!/programs.json
+
+# Notes for coding agents. AGENTS.md itself is Herdr's and rewritten on every start.
+!/CLAUDE.md
+!/AGENTS.override.md
+
+# Your layouts (main, terminals and win98 are Herdr's)
+!/layouts/
+/layouts/*
+!/layouts/main-folders.json
+
+# Your mods (the rest are Herdr's)
+!/mods/
+/mods/*
+!/mods/space-folders/
+
+# Your themes and assets, once there are some
+!/themes/
+/themes/*
+# !/themes/<name>.json
+# !/backgrounds/
+# !/fonts/
+
+# Written into every mod folder by the app
+/mods/*/gpui-kit.d.ts
+/mods/*/jsconfig.json
