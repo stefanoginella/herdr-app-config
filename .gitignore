@@ -31,6 +31,7 @@
 /mods/*
 !/mods/space-folders/
 !/mods/agents-unread/
+!/mods/files-actions/
 
 # Your themes and assets, once there are some
 !/themes/

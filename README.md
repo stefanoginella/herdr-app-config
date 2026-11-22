@@ -10,7 +10,8 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 |---|---|
 | `mods/space-folders/` | The Spaces sidebar, with folders |
 | `mods/agents-unread/` | The Agents list, with "mark as unread" |
-| `layouts/main-folders.json` | Herdr's default layout, showing those two |
+| `mods/files-actions/` | The Files panel, with file type icons, a right-click menu, drag to move and undo |
+| `layouts/main-folders.json` | Herdr's default layout, showing those three |
 | `keys.json`, `settings.json` | Personal key bindings and settings |
 | `AGENTS.override.md`, `CLAUDE.md` | Notes for coding agents working in this folder |
 
@@ -28,9 +29,9 @@ Placement survives restarts. It is also remembered by project (the repo, else th
 
 The real order of spaces follows the sidebar, so `space.next`, `space.prev` and `space.select:N` match what is drawn.
 
-Three commands can be bound in `keys.json`: `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
 A space's menu also opens its project in VS Code, and in Obsidian when the project is inside one of its vaults. The project is the repo's top folder, else the folder the space is in. Both are for spaces on this Mac.
 
+Three commands can be bound in `keys.json`: `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
 
 ## Unread agents
 
@@ -43,27 +44,53 @@ Marking the agent you are looking at keeps it marked until you leave and come ba
 
 One command can be bound in `keys.json`: `agents-unread.toggle` marks the agent you are looking at, or clears its mark.
 
+## File actions
+
+The Files panel, with more to look at and more to do.
+
+- **Icons:** every file and folder has its type's icon, from [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme); a folder's changes when it opens. What git ignores is faded.
+- **Changes in folders:** a folder with modified, added or removed files anywhere inside it shows a dot, so a change is seen without opening the folder. The dot is green when everything inside is new, red when everything is removed or something is in conflict, and otherwise the color of a modified file.
+- **Open elsewhere:** right-click a file or a folder to open it in VS Code or Obsidian, and a file in TextEdit. A file opens in VS Code inside its repo's window. Obsidian is offered for Markdown, canvas and base files anywhere, and for anything inside one of its vaults: it opens a folder only as a vault. Reveal in Finder shows it in its folder.
+- **Open the project:** the same menu ends with the project, and right-clicking the header or the room under the list shows the project alone.
+- **Rename:** right-click, Rename. The name is selected without its extension.
+- **Duplicate:** right-click, Duplicate. The copy is named as Finder names it: `notes copy.md`, then `notes copy 2.md`.
+- **Delete:** right-click, Move to Trash. It asks first, and the file can be put back from the Trash.
+- **Move:** drag a file or a folder onto a folder to put it in, onto a file to put it next to that file, or under the list for the top folder. Its name follows the pointer while you drag, and a toast says where it went.
+- **To a terminal:** drag a file or a folder onto a terminal to paste its path there, quoted and without Enter: a quick way to hand a file to an agent. Nothing is moved.
+- **Undo:** Cmd+Z takes back the last move, rename or Trash, once, and a toast says what it did. A trashed file comes back out of the Trash. It is for slips: it works for five minutes, while the panel still shows the same folder. After a duplicate or a copy there is nothing to take back.
+- **From Finder:** drop files or folders from Finder onto a folder, onto a file for that file's folder, or under the list for the top folder. They are copied: the originals stay where they are.
+- **To and from the clipboard:** right-click, Copy puts a file or a folder on the clipboard, for Cmd+V in Finder; Paste copies in what was copied in Finder, or here. Dragging out to Finder is not possible: Herdr's file drag stays inside its window.
+
+Nothing is ever overwritten: a rename, a move, a copy or a paste onto a name that exists is refused.
+
+Opening in an app, Finder, the clipboard and the Trash are for files on this Mac. For a folder on another machine the menu offers Rename and Duplicate, drag still moves, and undo takes back a move or a rename.
+
+Undo is the command `files-actions.undo`, bound in `keys.json` under `global` so that it works while the keyboard is in a terminal, which is where it is after a drag. It works while the Files panel is shown. Two things follow from binding it there: terminal programs no longer receive Cmd+Z, and a Cmd+Z pressed by habit within those five minutes takes back the last file action. Text fields, such as the rename dialog, keep their own undo.
+
 ## Install
 
-Built against Herdr 0.1.16. From a clone of this repository, this adds both mods and the layout that shows them:
+Built against Herdr 0.1.16. From a clone of this repository, this adds the three mods and the layout that shows them:
 
 ```sh
 cp layouts/main-folders.json ~/.config/herdr-app/layouts/
-cp -R mods/space-folders mods/agents-unread ~/.config/herdr-app/mods/
+cp -R mods/space-folders mods/agents-unread mods/files-actions ~/.config/herdr-app/mods/
 herdr-app check ~/.config/herdr-app/mods/space-folders
 herdr-app check ~/.config/herdr-app/mods/agents-unread
+herdr-app check ~/.config/herdr-app/mods/files-actions
 herdr-app do layout.switch '{"name":"main-folders"}'
 ```
 
 Your own layout stays as it was: `layout.switch` goes back to it, and deleting the copied files removes all of this.
 
-For only one of the two, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, or `{ "mod": "agents-unread" }` in the `agents` block. Herdr's shipped layouts are read-only, so clone one first:
+For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `global` section of your `keys.json`.
+
+For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "agents-unread" }` in the `agents` block, or `{ "mod": "files-actions" }` in the `files` block. Herdr's shipped layouts are read-only, so clone one first:
 
 ```sh
 herdr-app do layout.clone '{"name":"main","as":"my-layout"}'
 ```
 
-The layout and both mods are copies of Herdr's `main`, `spaces` and `agents`, so they don't pick up changes Herdr makes to those later.
+The layout and the mods are copies of Herdr's `main`, `spaces`, `agents` and `files`, so they don't pick up changes Herdr makes to those later.
 
 ## How the repository works
 
@@ -71,4 +98,4 @@ Herdr's own mods and layouts sit next to the custom ones and are replaced on eve
 
 ## License
 
-Apache-2.0, see [LICENSE](LICENSE). `mods/space-folders/main.js`, `mods/agents-unread/main.js` and `layouts/main-folders.json` are modified copies of files from Herdr, which is also Apache-2.0: see [NOTICE](NOTICE).
+Apache-2.0, see [LICENSE](LICENSE). `mods/space-folders/main.js`, `mods/agents-unread/main.js`, `mods/files-actions/main.js` and `layouts/main-folders.json` are modified copies of files from Herdr, which is also Apache-2.0. The icons in `mods/files-actions/icons/` are Material Icon Theme's, which is MIT. See [NOTICE](NOTICE).

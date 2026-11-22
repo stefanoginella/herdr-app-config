@@ -8,6 +8,17 @@ licensed under the Apache License, Version 2.0:
   (version 0.1.16). It adds folders to the sidebar.
 - mods/agents-unread/main.js is a modified copy of Herdr's `agents` mod
   (version 0.1.16). It lets an idle agent be marked unread.
+- mods/files-actions/main.js is a modified copy of Herdr's `files` mod
+  (version 0.1.16). It adds file type icons, a right-click menu and drag to move.
 - layouts/main-folders.json is a modified copy of Herdr's `main` layout
   (version 0.1.16). Its Spaces block shows `space-folders` instead of `spaces`,
-  and its Agents block shows `agents-unread` instead of `agents`.
+  its Agents block shows `agents-unread` instead of `agents`, and its Files
+  block shows `files-actions` instead of `files`.
+
+This repository also includes the icons of Material Icon Theme
+(https://github.com/material-extensions/vscode-material-icon-theme, version
+5.40.0), which is licensed under the MIT License:
+
+- mods/files-actions/icons/*.svg are unmodified copies of its icons, and
+  mods/files-actions/icons/map.js is generated from its manifest. Its license
+  is in mods/files-actions/icons/LICENSE.

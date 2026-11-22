@@ -33,6 +33,7 @@
     "cmd-alt-shift-down": "pane.swap:down",
     "f2": "tab.rename",
     "shift-f2": "space.rename",
+    "cmd-z": "files-actions.undo",
     "cmd-/": "app.help",
     "cmd-shift-/": "app.help",
     "cmd-b": "layout.toggle:sidebar",
