@@ -72,5 +72,30 @@
     "cmd-left": "send:\u0001",
     "cmd-right": "send:\u0005",
     "cmd-backspace": "send:\u0015"
+  },
+  "mod:file-editor": {
+    "cmd-s": "file-editor.save",
+    "cmd-f": "file-editor.find",
+    "cmd-alt-f": "file-editor.replace",
+    "cmd-g": "file-editor.find-next",
+    "cmd-shift-g": "file-editor.find-prev",
+    "escape": "file-editor.escape",
+    "cmd-shift-v": "file-editor.preview",
+    "cmd-b": "file-editor.bold",
+    "cmd-i": "file-editor.italic",
+    "cmd-e": "file-editor.code",
+    "cmd-k": "file-editor.link",
+    "cmd-shift-x": "file-editor.strike",
+    "cmd-shift-8": "file-editor.bullets",
+    "cmd-shift-7": "file-editor.numbers",
+    "cmd-shift-9": "file-editor.tasks",
+    "cmd-/": "file-editor.comment",
+    "alt-up": "file-editor.line-up",
+    "alt-down": "file-editor.line-down",
+    "cmd-shift-d": "file-editor.duplicate",
+    "cmd-d": "file-editor.next-same"
+  },
+  "mod:file-editor > Input": {
+    "cmd-f": "file-editor.find"
   }
 }
