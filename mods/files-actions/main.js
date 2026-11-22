@@ -1,4 +1,5 @@
-// A lazy file browser for the focused pane's folder, with bounded read-only previews.
+// A lazy file browser for the focused pane's folder. A click on a file opens it in the tab's
+// editor, a pane beside the terminals (the `file-editor` mod).
 // Each entry has its file type's icon; what git ignores is faded, and a folder with changes
 // inside has a dot. Right-click an entry to open it in an editor, rename it, duplicate it or move
 // it to the Trash (menu.js); right-click the header or the room under the list for the project.
@@ -8,8 +9,8 @@
 // The key command `files-actions.undo` takes back the last move, rename or Trash.
 // Modified from Herdr's `files` mod (version 0.1.16, Apache-2.0): see NOTICE at the repository root.
 import { View, div, svg, image } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, props, openOverlay, notify, nextCommand, keys } from "herdr";
+import { v_flex, h_flex } from "gpui-base";
+import { spaces, panes, focused, exec, watchFolder, theme, settings, window, props, openOverlay, notify, nextCommand, keys, run, setShared } from "herdr";
 import Menu, { any } from "./menu.js";
 import Naming from "./naming.js";
 import Confirm from "./confirm.js";
@@ -17,6 +18,8 @@ import { fileIcon, folderIcon } from "./icons.js";
 import * as ops from "./ops.js";
 
 const MOD = "files-actions";
+// The mod that shows a file, one pane a tab, and what it reads in shared state (its header).
+const EDITOR = "file-editor";
 const CLEAR = "#00000000";
 // How often Obsidian's list of vaults is read again.
 const VAULTS_EVERY = 60000;
@@ -72,14 +75,19 @@ function undoKey() {
   return bound ? keyLabel(bound.keys) : null;
 }
 
+// A mod pane (the editor) is in no folder: while one has the focus, the panel goes on showing
+// the folder of the terminal that had it before, in that tab.
+const held = new Map();
 function location() {
   const space = spaces().find(s => s.active), f = focused();
   const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
+  if (pane?.mod && held.has(pane.tab)) return held.get(pane.tab);
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on, space: space?.id };
+  const at = { cwd: pane?.cwd || f?.cwd || space?.folder, on, space: space?.id };
+  if (pane && !pane.mod) held.set(pane.tab, at);
+  return at;
 }
 const key = () => JSON.stringify(location());
-const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
 
 async function directory(path, on) {
@@ -165,15 +173,14 @@ export default class Files extends View {
   refresh(cx) {
     const { cwd, on } = location(), next = key();
     if (next !== this.context?.key) {
-      if (this.context) this.saved.set(this.context.key, { folders: this.folders, file: this.file });
+      if (this.context) this.saved.set(this.context.key, { folders: this.folders });
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
-      this.pending = new Set(); this.marks = {}; this.changed = {}; this.show(null); this.watched = null; this.error = null; this.limited = false;
+      this.pending = new Set(); this.marks = {}; this.changed = {}; this.watched = null; this.error = null; this.limited = false;
       this.ignored = new Set(); this.inIgnored = false; this.top = null; this.drag = null; this.over = null;
       // What undo takes back is of the folder that was shown.
       this.last = null;
       this.loading = false; this.again = false;
-      if (saved?.file) this.show(saved.file, cx);
     }
     if (!cwd) return;
     // A change that lands while a load runs (a move just made) is read by one more load.
@@ -259,6 +266,8 @@ export default class Files extends View {
         if (r.root === this.root && (r.on ?? null) === (this.on ?? null)) {
           if (r.op === "move") this.moved(r.from, r.to); else if (r.op === "trash") this.gone(r.from);
         }
+        // The editor goes on with a file it has open under its new name.
+        if (r.op === "move") setShared(`${EDITOR}.moved`, { from: `${r.root}/${r.from}`, to: `${r.root}/${r.to}`, on: r.on ?? null, at: Date.now() });
         // Only the last thing done can be taken back: after a duplicate, nothing can.
         if (turn === this.turn) { this.last = reverse(r, done); this.lastAt = Date.now(); }
         const where = ops.parent(r.to ?? "") || ops.base(r.root), name = ops.base(r.to ?? "");
@@ -333,7 +342,6 @@ export default class Files extends View {
     const entry = this.take(from);
     this.folders = new Set([...this.folders].map(swap));
     this.entries = new Map([...this.entries].map(([path, list]) => [swap(path), list]));
-    if (this.file) this.file = swap(this.file);
     const list = this.entries.get(ops.parent(to));
     if (entry && list) {
       list.push({ ...entry, name: ops.base(to) });
@@ -344,7 +352,6 @@ export default class Files extends View {
   gone(path) {
     this.take(path);
     for (const folder of [...this.folders]) if (ops.within(folder, path)) { this.folders.delete(folder); this.entries.delete(folder); }
-    if (this.file && ops.within(this.file, path)) this.show(null);
   }
 
   // Takes an entry out of its folder's list, and returns it.
@@ -395,24 +402,17 @@ export default class Files extends View {
     cx.notify();
   }
 
-  show(path, cx) {
-    this.code?.release(); this.code = null; this.file = path; this.fileError = null;
-    if (!path || !cx) return;
-    const context = this.context, root = this.root, on = this.on;
-    cx.spawn(async cx => {
-      try {
-        const text = await readTextFile(`${root}/${path}`, { on });
-        if (this.file !== path || !this.current(context)) return;
-        if (text === null) { this.fileError = "This file is no longer available"; return; }
-        if (text.includes("\0")) { this.fileError = "Binary file · no text preview"; return; }
-        const t = theme(), ext = path.includes(".") ? path.split(".").pop() : "txt";
-        this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: true,
-          value: text.length > 400000 ? text.slice(0, 400000) + "\n… (file truncated)" : text,
-          font_family: settings().font_family, font_size: 12,
-          syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
-      } catch { if (this.file === path && this.current(context)) this.fileError = "Cannot preview this file (binary, too large, or unreadable)"; }
-      finally { cx.notify(); }
-    });
+  // Shows a file in the tab's editor: a pane of the `file-editor` mod, split in beside the
+  // focused pane when the tab has none yet. The editor takes the file from shared state.
+  open(path) {
+    const f = focused(), tab = f?.tab;
+    if (!tab || !this.root) return;
+    const here = panes().filter(p => p.tab === tab), editor = here.find(p => p.mod === EDITOR);
+    const beside = here.find(p => p.pane === f.pane) ?? here[0];
+    if (!editor && !beside) return;
+    setShared(`${EDITOR}.open`, { tab, path: `${this.root}/${path}`, on: this.on ?? null, at: Date.now() });
+    if (editor) run("pane.focus", { pane: editor.pane });
+    else run("pane.split", { pane: beside.pane, direction: "right", mod: EDITOR, props: { tab } });
   }
 
   // `s`: what every row needs. { dark, parent: the folder's name, ignored: it is inside an ignored folder }
@@ -439,7 +439,7 @@ export default class Files extends View {
         .on_mouse_down("left", e => { this.drag = { path, name: entry.name, dir: entry.dir, x: e.position.x, y: e.position.y, t: Date.now() }; this.over = null; })
         .on_mouse_move((e, cx) => { if (this.drag) { this.stir(e, cx); this.aim(into, cx); } })
         // The drop is on this row, wherever the last move was seen.
-        .on_mouse_up("left", (_e, cx) => { this.aim(into, cx); this.release(cx, d => { if (d.path === path) entry.dir ? this.toggle(path, cx) : this.show(path, cx); }); })
+        .on_mouse_up("left", (_e, cx) => { this.aim(into, cx); this.release(cx, d => { if (d.path === path) entry.dir ? this.toggle(path, cx) : this.open(path); }); })
         .on_mouse_down("right", () => this.menu({ path, dir: entry.dir }))
         .on_drop((e, cx) => this.dropped(e.paths, into, cx))
         .child(entry.dir ? svg(`mods/files-actions/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
@@ -510,7 +510,7 @@ export default class Files extends View {
     // A menu or a dialog left something to do. Taken in a task: only one copy gets it.
     if (ops.waiting()) cx.spawn(async cx => { const r = ops.take(); if (r) this.act(r, cx); });
     const t = theme();
-    const list = this.file ? [] : this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored });
+    const list = this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored });
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .on_mouse_move((e, cx) => this.follow(e, cx))
       // A release is not always seen (over a toast, outside the window), and a drag left behind
@@ -521,10 +521,9 @@ export default class Files extends View {
       .on_mouse_down_out((_e, cx) => this.still(cx))
       .child(h_flex().id("files-head").h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .on_mouse_down("right", () => this.menu())
-        .when(Boolean(this.file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.file ?? this.root?.split(/[\\/]/).pop() ?? "")))
-      .when(!this.file, el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(5).border_1().border_color(this.over?.dir === "" ? t.accent : CLEAR).rounded_b(10)
+        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? "")))
+      .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(5).border_1().border_color(this.over?.dir === "" ? t.accent : CLEAR).rounded_b(10)
         // A release outside the list never reaches it, and must not turn the next one here
         // into a drop. While Herdr's drag is under way no hover is reported at all, so a drag
         // can leave and come back; once it has ended elsewhere (on a terminal), the pointer
@@ -538,7 +537,6 @@ export default class Files extends View {
         .children(list)
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))
-        .child(this.tail())))
-      .when(Boolean(this.file), el => el.child(this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")));
+        .child(this.tail()));
   }
 }
