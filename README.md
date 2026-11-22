@@ -30,37 +30,42 @@ The real order of spaces follows the sidebar, so `space.next`, `space.prev` and 
 
 Three commands can be bound in `keys.json`: `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
 
-### Install
-
-Built against Herdr 0.1.16. From a clone of this repository:
-
-```sh
-cp layouts/main-folders.json ~/.config/herdr-app/layouts/
-cp -R mods/space-folders ~/.config/herdr-app/mods/
-herdr-app check ~/.config/herdr-app/mods/space-folders
-herdr-app do layout.switch '{"name":"main-folders"}'
-```
-
-Your own layout stays as it was: `layout.switch` goes back to it, and deleting the two copied items removes this one.
-
-The layout and the sidebar are copies of Herdr's `main` and `spaces`, so they don't pick up changes Herdr makes to those later.
-
 ## Unread agents
 
-Puts an idle agent back under Done, with the done dot, as a reminder to look at it later.
+Marks an idle agent as unread: it goes back under Done, with the done dot, as a reminder to look at it later.
 
 - **Mark as unread:** click the empty ring at the end of an idle agent's row, or right-click the row.
-- **Mark as read:** click the dot again, or right-click the row. It also happens by itself: when you open the agent again after having been somewhere else, and when the agent starts working.
+- **Mark as read:** click the same spot again, or right-click the row. It also happens by itself: when you open the agent again after having been somewhere else, and when the agent starts working.
 
 Marking the agent you are looking at keeps it marked until you leave and come back. The mark lives in the list only: the tab bar and the spaces sidebar still show the agent as idle.
 
 One command can be bound in `keys.json`: `agents-unread.toggle` marks the agent you are looking at, or clears its mark.
 
-To install it, copy `mods/agents-unread` as for space folders, check it, and set the `agents` block of your layout to `{ "mod": "agents-unread" }`.
+## Install
+
+Built against Herdr 0.1.16. From a clone of this repository, this adds both mods and the layout that shows them:
+
+```sh
+cp layouts/main-folders.json ~/.config/herdr-app/layouts/
+cp -R mods/space-folders mods/agents-unread ~/.config/herdr-app/mods/
+herdr-app check ~/.config/herdr-app/mods/space-folders
+herdr-app check ~/.config/herdr-app/mods/agents-unread
+herdr-app do layout.switch '{"name":"main-folders"}'
+```
+
+Your own layout stays as it was: `layout.switch` goes back to it, and deleting the copied files removes all of this.
+
+For only one of the two, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, or `{ "mod": "agents-unread" }` in the `agents` block. Herdr's shipped layouts are read-only, so clone one first:
+
+```sh
+herdr-app do layout.clone '{"name":"main","as":"my-layout"}'
+```
+
+The layout and both mods are copies of Herdr's `main`, `spaces` and `agents`, so they don't pick up changes Herdr makes to those later.
 
 ## How the repository works
 
-`.gitignore` is an allowlist: everything in the folder is ignored unless it is listed there. Herdr's own mods and layouts sit next to the custom ones and are replaced on every start, and its state files change constantly. A new mod, layout or theme needs one line in `.gitignore`.
+Herdr's own mods and layouts sit next to the custom ones and are replaced on every start, and its state files change constantly. So `.gitignore` is an allowlist: everything in the folder is ignored unless it is listed there, and a new mod, layout or theme needs one line.
 
 ## License
 
