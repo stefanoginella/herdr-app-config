@@ -134,6 +134,16 @@ export function ago(seconds, now = Date.now() / 1000) {
   return `${Math.floor(s / (86400 * 365))}y`;
 }
 
+// An author's initials, for the circle in a commit's row: the first letter of the first and of
+// the last word of the name ("Ada Lovelace": AL), or the first two of a name of one word. What
+// is in brackets is left out ("dependabot[bot]": DE), and an address is cut at its @.
+export function initials(name) {
+  const words = String(name ?? "").replace(/[\[(<].*?[\])>]/g, " ").split("@")[0].split(/[\s._\-]+/).filter(Boolean);
+  if (!words.length) return "?";
+  const first = Array.from(words[0]), last = words.length > 1 ? Array.from(words[words.length - 1]) : [];
+  return (first[0] + (last[0] ?? first[1] ?? "")).toUpperCase();
+}
+
 // A day and a time, for a commit's own line: "22 Nov 2026, 14:05".
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export function when(seconds) {

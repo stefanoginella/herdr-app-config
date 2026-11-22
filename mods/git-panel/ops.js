@@ -74,9 +74,10 @@ export async function probe(cwd, on) {
 }
 
 // The repositories under a folder: the folders that hold a `.git`, as deep as $2 says, without
-// going into one that was found or into the folders of installed packages. The script has no
-// values in it: the folder and the depth are its arguments.
-const BELOW = 'find "$1" -maxdepth "$2" \\( -name node_modules -o -name .venv -o -name venv -o -name target -o -name vendor -o -name Library -o -name .cache -o -name .Trash \\) -prune -o -name .git -print -prune 2>/dev/null | head -n 80';
+// going into one that was found, into the folders of installed packages or into a site's
+// uploaded files (`uploads`: half a million of them in one WordPress site here, five seconds
+// to walk). The script has no values in it: the folder and the depth are its arguments.
+const BELOW = 'find "$1" -maxdepth "$2" \\( -name node_modules -o -name .venv -o -name venv -o -name target -o -name vendor -o -name uploads -o -name Library -o -name .cache -o -name .Trash \\) -prune -o -name .git -print -prune 2>/dev/null | head -n 80';
 // A folder that is not searched: a home folder, or the top of the disk, is too much to read.
 const tooWide = (dir) => dir === "/" || dir === home() || /^\/(Users|home)\/[^/]+\/?$/.test(dir) || dir === "/root";
 

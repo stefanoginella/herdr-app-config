@@ -10,7 +10,7 @@
 //   act()       runs a request (ops.js) and says what went wrong
 //   show()      asks the tab's diff pane for a file; edit() asks its editor
 //
-// The panel reads only while it is on screen (visible()), and writes only what ops.js lists.
+// The panel reads only while it is on screen (shows()), and writes only what ops.js lists.
 
 import { View, div, svg, PathBuilder } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
@@ -33,6 +33,8 @@ const CHROME = (name) => `mods/workspace-chrome/${name}.svg`;
 // The graph: a row's height, a column's width, the room left of the first column, and the
 // most columns drawn (a wider history is drawn with its last columns on top of each other).
 const ROW = 26, LANE = 12, PAD = 9, LANES = 9;
+// In a row: the circle with the author's initials, and the least room the date has.
+const AVATAR = 16, AGO = 28;
 // The key of the row for what is not committed yet.
 const WORK = "WORK";
 // Commits read at first, and more with each "Load more".
@@ -46,9 +48,11 @@ const TICK = 1500, HERE_EVERY = 15000, THERE_EVERY = 8000;
 // there is asked about again after a while: a remote may have been added.
 const HUB_EVERY = 60000, HUB_RUNNING = 15000, HUB_AGAIN = 600000;
 const NOTE_FOR = 5000;
-// How deep repositories are looked for under the pane's own, and under a folder that is not
-// one; and how long what was found is believed.
-const DEPTH_IN = 5, DEPTH_UNDER = 4, SURVEY_EVERY = 300000;
+// How deep repositories are looked for under the pane's folder, and how long what was found is
+// believed. The depth is that of the `.git` inside one, so 6 finds a repository five folders
+// down. A WordPress theme is four down (wordpress/wp-content/themes/<name>): at 4 a project
+// folder that is no repository itself, with its only ones there, showed none.
+const DEPTH = 6, SURVEY_EVERY = 300000;
 // No request runs longer than this (ops.js waits two minutes for the network). One still
 // marked as running after it was cut off (the mod was reloaded under it), and is let go.
 const BUSY_MOST = 135000;
@@ -85,7 +89,8 @@ function location() {
 }
 
 // Whether a copy of this mod in the layout is on screen: no block around it hidden, and every
-// stack around it showing its way. A copy that is not in the layout (a window) is.
+// stack around it showing its way. A copy in a window can't be told from that one: it is
+// on screen as long as it is open (`shows()`).
 function visible() {
   const walk = (node, shown) => {
     if (!node || typeof node !== "object") return null;
@@ -160,6 +165,10 @@ export default class GitPanel extends View {
 
   where() { return this.pin ?? location(); }
 
+  // Whether this copy is on screen. One pinned to a folder is a test window, which is not in
+  // the layout: without this it read only while the layout's own panel was shown.
+  shows() { return Boolean(this.pin) || visible(); }
+
   // The folder the pane is in, and the repository chosen for it when one was.
   folder() { return JSON.stringify(this.where()); }
 
@@ -193,7 +202,7 @@ export default class GitPanel extends View {
     const now = Date.now();
     if (this.busy && now - this.busyAt > BUSY_MOST) { this.busy = null; cx.notify(); }
     if (this.writing && now - this.writing > BUSY_MOST * 1.5) { this.writing = null; cx.notify(); }
-    if (!visible()) return;
+    if (!this.shows()) return;
     // A read that took long is not started again at once: in a big repository an agent at
     // work changes files all the time, and the reads would run back to back.
     if (now - this.last < this.cost * 4) return;
@@ -251,7 +260,7 @@ export default class GitPanel extends View {
     if (!at) {
       // The repository chosen is gone: back to the folder's own. Or the folder is in none:
       // the first one under it is shown, and the others are in the header's list.
-      const under = chosen ? [] : (await ops.below(cwd, on, DEPTH_UNDER)).filter((d) => !this.bad.has(d));
+      const under = chosen ? [] : (await ops.below(cwd, on, DEPTH)).filter((d) => !this.bad.has(d));
       if (this.key() !== context) return;
       // One that can't be read is not tried again: it would be chosen, fail, and be chosen.
       if (chosen) { this.bad.add(chosen); delete this.choice[folder]; } else if (under.length) this.choice[folder] = under[0];
@@ -305,7 +314,7 @@ export default class GitPanel extends View {
     this.spawn(async (cx) => {
       try {
         const here = (await ops.probe(cwd, on))?.root ?? null, base = here ?? cwd;
-        const [outside, inside] = await Promise.all([here ? ops.around(here, on) : [], ops.below(base, on, here ? DEPTH_IN : DEPTH_UNDER)]);
+        const [outside, inside] = await Promise.all([here ? ops.around(here, on) : [], ops.below(base, on, DEPTH)]);
         entry.base = base;
         entry.repos = [...outside.map((root) => ({ root, kind: "around" })), ...(here ? [{ root: here, kind: "here" }] : []), ...inside.map((root) => ({ root, kind: "inside" }))];
       } catch { /* the list stays as it was */ }
@@ -578,6 +587,15 @@ export default class GitPanel extends View {
     return palette[n % palette.length];
   }
 
+  // Whose commit a row is: the author's initials in a circle, in a color of the theme that is
+  // always the same for a name. So one author among others stands out without being read.
+  author(name, t) {
+    const palette = [t.ansi4, t.ansi2, t.ansi5, t.ansi3, t.ansi6, t.ansi1, t.ansi12, t.ansi10, t.ansi13, t.ansi11, t.ansi14, t.ansi9];
+    const color = palette[Math.abs(git.hash(name)) % palette.length];
+    return div().flex_none().w(AVATAR).h(AVATAR).rounded(AVATAR / 2).bg(color + "30").flex().items_center().justify_center()
+      .text_size(8.5).font_semibold().text_color(color).child(git.initials(name));
+  }
+
   // One line of the graph, as a shape. The same few shapes make every row, so each is made
   // once and kept: making them again on every draw fills the memory all mods share.
   path(x1, y1, x2, y2, loose) {
@@ -641,7 +659,10 @@ export default class GitPanel extends View {
     } else {
       el.child(div().flex_1().min_w(0).truncate().text_color(c.parents.length > 1 ? t.muted : t.foreground).child(c.subject));
       if (runState) el.child(div().flex_none().w(6).h(6).rounded(3).bg(checkColor(t, runState)));
-      el.child(div().flex_none().text_size(10.5).text_color(t.dim).child(git.ago(c.time)));
+      // The author, then the date in a column of its own width: the circles line up down
+      // the list, whatever the dates are.
+      el.child(this.author(c.author, t));
+      el.child(div().flex_none().min_w(AGO).flex().justify_end().text_size(10.5).text_color(t.dim).child(git.ago(c.time)));
     }
     return el;
   }
@@ -930,7 +951,7 @@ export default class GitPanel extends View {
     if (this.other) return this.other.render(cx);
     for (const [name, value] of Object.entries(this.pending)) localStorage.setItem(name, value);
     this.pending = {};
-    const shown = visible();
+    const shown = this.shows();
     if (shown && this.key() !== this.context) this.after(cx, async (cx) => { if (this.key() !== this.context) this.refresh(cx); });
     // A menu or a dialog left something to do. Taken in a task: only one copy gets it.
     if (ops.waiting()) this.after(cx, async (cx) => {
