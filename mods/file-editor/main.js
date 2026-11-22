@@ -12,15 +12,19 @@
 // What is open, and every unsaved text, is kept in this copy's localStorage as it is typed, so
 // closing the pane, a reload of the mod or a restart loses nothing.
 //
+// A file git has is held against the last commit: a strip beside the text marks where its
+// lines were added, changed or deleted (diff.js), and next-change and prev-change go there.
+//
 // The editing itself is Herdr's `Editor`: undo, several cursors (Alt-click, Cmd-Alt-Up/Down),
 // indenting, bracket pairs, folding. What this mod adds is in edit.js, and reaches it as key
 // commands (keys.json, section `mod:file-editor`): save, find, replace, find-next, find-prev,
 // escape, preview, close, bold, italic, code, strike, link, bullets, numbers, tasks, comment,
-// line-up, line-down, duplicate, next-same.
+// line-up, line-down, duplicate, next-same, next-change, prev-change.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextView } from "gpui-base";
-import { props, shared, setShared, readTextFile, writeTextFile, theme, settings, nextCommand, notify, keys, checking, panes } from "herdr";
+import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes } from "herdr";
 import * as edit from "./edit.js";
+import * as diff from "./diff.js";
 import * as remote from "./remote.js";
 
 const MOD = "file-editor";
@@ -33,6 +37,19 @@ const MOST = 400000;
 const LOOK_EVERY = 5000;
 // How long after the last key the unsaved text is put in localStorage.
 const STASH_AFTER = 800;
+// How long after a key the marks of what changed are worked out again, and the least time
+// between two looks at what the last commit has.
+const MARK_AFTER = 200, HEAD_EVERY = 2000;
+// The strip of marks: its width, and the least height of a mark.
+const RULER = 8, MARK = 4;
+// The text's size, and how tall a row of it is for that size (GPUI's line height, the golden
+// ratio, on whole pixels of the zoomed window).
+const SIZE = 13;
+const rowHeight = zoom => Math.round(SIZE * 1.618034 * zoom) / zoom;
+const NO_MARKS = { marks: [], lines: 1 };
+// Going to a change: how many lines around it are brought into sight with it, and how long
+// the editor is given to scroll between two moves of the cursor.
+const AROUND = 3, MOVE_AFTER = 40;
 const STORE = "state";
 const REFOCUS = 300, REFOCUS_SOON = 60;
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", cjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html", markdown: "md", mdx: "md" };
@@ -80,7 +97,7 @@ export default class FileEditor extends View {
       for (;;) { const command = await nextCommand(); this.command(command, cx); cx.notify(); }
     });
     // A file on another machine is read again when its tab is shown, not on a timer.
-    if (!checking()) cx.timer.every(LOOK_EVERY, cx => { const d = this.doc(); if (d && !d.on) this.look(d, cx); });
+    if (!checking()) cx.timer.every(LOOK_EVERY, cx => { const d = this.doc(); if (d && !d.on) { this.look(d, cx); this.head(d, cx); } });
   }
 
   // The pane is going (or the app): what was typed is kept for the next time.
@@ -133,7 +150,7 @@ export default class FileEditor extends View {
     // keyboard from the text again: so it is taken once more, a moment later.
     if (show) cx.timer.after(REFOCUS, () => { if (this.active === id && !this.find.focused) this.focus(); });
     if (d) {
-      if (show) { this.active = id; this.focus(); this.look(d, cx); }
+      if (show) { this.active = id; this.focus(); this.look(d, cx); this.head(d, cx); }
       return;
     }
     d = {
@@ -145,6 +162,9 @@ export default class FileEditor extends View {
       preview: Boolean(o.preview), error: null,
       notice: null, // "changed": on disk under unsaved text (`disk` has it); "gone"; "closing": asked to close unsaved
       disk: null, saving: false, looking: false,
+      head: null, oid: null, // the file as the last commit has it, and git's name for that. null: git has none
+      diff: NO_MARKS, drawn: "", // the lines that differ from `head` (diff.js), and the same as drawn
+      stale: false, marking: false, cost: 0, heading: false, headAt: 0,
     };
     this.docs.push(d);
     if (show || !this.active) this.active = id;
@@ -169,13 +189,14 @@ export default class FileEditor extends View {
         const t = theme(), ext = d.name.includes(".") ? d.name.split(".").pop().toLowerCase() : "txt";
         d.state = EditorState.new({
           language: LANG[ext] ?? ext, value: shown, readonly: Boolean(d.readonly), soft_wrap: true,
-          font_family: settings().font_family, font_size: 13,
+          font_family: settings().font_family, font_size: SIZE,
           syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 },
         });
         d.state.on("change", (_e, cx) => this.changed(d, cx));
         d.state.on("submit", (e, cx) => this.entered(d, e, cx));
-        d.state.on("focus", (_e, cx) => this.look(d, cx));
+        d.state.on("focus", (_e, cx) => { this.look(d, cx); this.head(d, cx); });
         if (show && this.active === d.id) this.focus();
+        this.head(d, cx);
       } catch (e) {
         d.error = "This file can't be shown (too large, or unreadable)";
         console.log(`${MOD}: ${d.path}: ${e}`);
@@ -203,6 +224,7 @@ export default class FileEditor extends View {
     if (searching) this.search(false);
     if (dirty !== d.dirty || searching) { d.dirty = dirty; cx.notify(); }
     if (!d.readonly) this.stash(cx);
+    this.remark(d, cx);
   }
 
   // Enter was pressed: its line break is in already. In Markdown, a list goes on.
@@ -253,7 +275,84 @@ export default class FileEditor extends View {
     const at = Math.min(sel.start, text.length);
     d.state.set_selected_range({ start: at, end: at });
     if (this.find.open && d.id === this.active) this.search(false);
+    this.mark(d);
     this.store();
+  }
+
+  // Reads the file as the last commit has it, when that is not what was read before: the
+  // lines that differ from it are marked. A file git doesn't have, in a repository or outside
+  // one, has no marks. Only whole files: one cut short would differ in its end.
+  head(d, cx) {
+    if (!d?.state || d.readonly || d.heading || Date.now() - d.headAt < HEAD_EVERY) return;
+    d.heading = true; d.headAt = Date.now();
+    const path = d.path, here = () => this.docs.includes(d) && d.path === path;
+    const git = (...args) => exec("git", args, { cwd: path.slice(0, path.lastIndexOf("/")) || "/", on: d.on, timeout: 10000 });
+    cx.spawn(async cx => {
+      try {
+        const at = await git("rev-parse", "--verify", "--quiet", `HEAD:./${d.name}`);
+        const oid = at.code === 0 ? at.stdout.trim() : null;
+        if (!here() || oid === d.oid) return;
+        let text = null;
+        if (oid) {
+          const blob = await git("cat-file", "blob", oid);
+          if (!here() || blob.code !== 0) return;
+          if (!blob.stdout.includes("\0") && blob.stdout.length <= MOST) text = blob.stdout;
+        }
+        d.oid = oid; d.head = text;
+        if (this.mark(d)) cx.notify();
+      } catch { /* no git, or the machine is away: the next look tries again */ }
+      finally { d.heading = false; }
+    });
+  }
+
+  // Works the marks out again. True when they are no longer the ones drawn.
+  mark(d) {
+    const began = Date.now();
+    d.stale = false;
+    d.diff = d.head === null ? NO_MARKS : diff.compare(d.head, d.text);
+    d.cost = Date.now() - began;
+    const now = JSON.stringify(d.diff), differs = now !== d.drawn;
+    d.drawn = now;
+    return differs;
+  }
+
+  // Soon, and once for a burst of typing: the longer the last time took, the later.
+  remark(d, cx) {
+    d.stale = true;
+    if (d.marking || d.head === null) return;
+    d.marking = true;
+    cx.timer.after(Math.max(MARK_AFTER, d.cost * 10), cx => {
+      d.marking = false;
+      if (d.stale && this.docs.includes(d) && this.mark(d)) cx.notify();
+    });
+  }
+
+  // To the next change (`by` 1) or the one before (-1), from the cursor and going round, or
+  // to `mark`. Its lines are selected, which is what shows them: the keyboard goes to the text.
+  //
+  // The editor scrolls only as far as the first line selected needs, which coming from above
+  // is the pane's last row: the change itself would stay out of sight. And of two moves made
+  // at once it follows the last only. So the cursor goes there in three moves, a frame or
+  // two apart: under the change, above it, then the change. Whichever side it comes from,
+  // the change's first lines end up in sight, with a few of the lines around them.
+  change(by, mark, cx) {
+    const d = this.doc();
+    if (!d?.state || d.preview) return;
+    if (d.stale) this.mark(d);
+    const m = mark ?? diff.next(d.diff.marks, edit.position(d.text, d.state.selected_range().start).line - 1, by);
+    if (!m) return;
+    const text = d.text, lines = d.diff.lines;
+    const at = line => { const o = diff.range(text, { line: Math.max(0, Math.min(lines - 1, line)), count: 0 }).start; return { start: o, end: o }; };
+    const moves = [at(m.line + m.count + AROUND), at(m.line - AROUND), diff.range(text, m)];
+    const turn = this.turn = (this.turn ?? 0) + 1;
+    const move = (i, cx) => {
+      // Not when another jump began meanwhile, or the text is no longer what was measured.
+      if (turn !== this.turn || this.doc() !== d || d.text !== text) return;
+      d.state.set_selected_range(moves[i]);
+      if (i + 1 < moves.length) cx.timer.after(MOVE_AFTER, cx => move(i + 1, cx));
+    };
+    move(0, cx);
+    d.state.focus();
   }
 
   // `then`: what a save that went through is followed by.
@@ -381,6 +480,8 @@ export default class FileEditor extends View {
     if (name === "find-prev") return this.step(-1);
     if (name === "escape") { if (d?.notice === "closing") d.notice = null; else if (this.find.open) this.closeFind(); return; }
     if (name === "close") return this.shut(d, cx);
+    if (name === "next-change") return this.change(1, null, cx);
+    if (name === "prev-change") return this.change(-1, null, cx);
     if (name === "preview") {
       if (!d?.markdown || !d.state) return;
       d.preview = !d.preview;
@@ -423,6 +524,8 @@ export default class FileEditor extends View {
         d.path = m.to + d.path.slice(m.from.length); d.name = base(d.path); d.id = idOf(d.path, d.on);
         if (this.active === was) this.active = d.id;
         if (d.notice === "gone") d.notice = null;
+        // Under its new name git may have another file, or none.
+        d.head = d.oid = null; d.headAt = 0; this.mark(d);
         any = true;
       }
       if (any) cx.spawn(async () => this.store());
@@ -454,7 +557,7 @@ export default class FileEditor extends View {
             .when(on, el => el.bg(t.selected))
             .when(!on, el => el.hover(s => s.bg(t.hover)))
             .tooltip(o.on ? `${o.on}: ${o.path}` : o.path)
-            .on_click((_e, cx) => { this.active = o.id; if (this.find.open) this.search(false); this.focus(); this.look(o, cx); this.store(); cx.notify(); })
+            .on_click((_e, cx) => { this.active = o.id; if (this.find.open) this.search(false); this.focus(); this.look(o, cx); this.head(o, cx); this.store(); cx.notify(); })
             .child(div().min_w(0).truncate().child(o.name))
             .child(h_flex().id(`fe-shut-${o.n}`).size(18).flex_none().items_center().justify_center().rounded(5)
               .text_size(o.dirty ? 9 : 13).text_color(o.dirty ? t.foreground : t.dim)
@@ -465,6 +568,8 @@ export default class FileEditor extends View {
         })))
       .when(Boolean(d?.state), el => el
         .when(Boolean(d.markdown), el => el.child(this.button(t, "fe-preview", d.preview ? "Edit" : "Preview", hint(d.preview ? "Back to the text" : "Show it rendered", "preview"), cx => this.command("preview", cx), { on: d.preview })))
+        .when(d.diff.marks.length > 0 && !d.preview, el => el.child(this.button(t, "fe-changes", `±${d.diff.marks.length}`,
+          hint(`${d.diff.marks.length === 1 ? "1 change" : `${d.diff.marks.length} changes`} since the last commit: go to the next`, "next-change"), cx => this.command("next-change", cx))))
         .child(this.button(t, "fe-find", "Find", hint("Find in this file", "find"), cx => this.command("find", cx), { on: this.find.open }))
         .when(!d.readonly, el => el.child(this.button(t, "fe-save", d.saving ? "Saving…" : "Save", hint(d.dirty ? "Save" : "Nothing to save", "save"), cx => this.command("save", cx), { off: !d.dirty }))));
   }
@@ -523,6 +628,29 @@ export default class FileEditor extends View {
         .child(field(this.to, "to"))
         .child(this.button(t, "fe-find-one", "Replace", "Replace this match, and go to the next (↩)", () => this.replaceOne(), { off: !n }))
         .child(this.button(t, "fe-find-all", "Replace all", "Replace every match", () => this.replaceAll(), { off: !n }))));
+  }
+
+  // The strip beside the text: the file from top to bottom, with a mark where its lines differ
+  // from the last commit. It is a map and not a margin: Herdr's editor gives a mod nothing to
+  // draw beside a line, and doesn't say how far it is scrolled. So the strip is as tall as the
+  // file's lines would be, and no taller than the pane: a short file's marks are level with
+  // their lines (until a long line wraps above them), a long file's show where to scroll to.
+  // A click goes to the lines.
+  ruler(t, d) {
+    const lines = Math.max(1, d.diff.lines), color = { added: t.ansi2, changed: t.ansi4, deleted: t.ansi1 };
+    return div().w(RULER).flex_none().border_l(1).border_color(t.border)
+      .child(div().id(`fe-ruler-${d.n}`).relative().w_full().h(lines * rowHeight(settings().zoom || 1)).max_h("100%").overflow_hidden()
+        .children(d.diff.marks.map((m, i) => {
+          // What reaches the last line hangs from the bottom, so its least height stays inside.
+          const last = m.line + Math.max(1, m.count) >= lines;
+          return div().id(`fe-mark-${d.n}-${i}`).absolute().left(0).w_full().min_h(MARK).cursor_pointer()
+            .when(last, el => el.bottom(0))
+            .when(!last, el => el.top(`${(m.line / lines) * 100}%`))
+            .h(`${(m.count / lines) * 100}%`)
+            .tooltip(diff.say(m))
+            .on_click((_e, cx) => { this.change(0, m, cx); cx.notify(); })
+            .child(div().ml(2).w(4).h_full().min_h(MARK).rounded(1).bg(color[m.kind]));
+        })));
   }
 
   // A line that asks: a file changed under unsaved text, gone, or closing with unsaved text.
@@ -585,7 +713,9 @@ export default class FileEditor extends View {
         : d.preview ? div().id(`fe-view-${d.n}`).flex_1().min_h(0).overflow_y_scrollbar().px(28).py(20)
             .on_mouse_down("left", () => this.handle.focus())
             .child(div().w_full().max_w(820).child(TextView.markdown(`fe-md-${d.n}`, d.text).selectable(true)))
-        : v_flex().id(`fe-text-${d.n}`).flex_1().min_h(0).on_key_down((e, cx) => this.typed(e, cx))
-            .child(Editor.new(d.state).flex_1().min_h(0)));
+        : h_flex().flex_1().min_h(0).items_stretch()
+            .child(v_flex().id(`fe-text-${d.n}`).flex_1().min_w(0).min_h(0).on_key_down((e, cx) => this.typed(e, cx))
+              .child(Editor.new(d.state).flex_1().min_h(0)))
+            .when(d.head !== null, el => el.child(this.ruler(t, d))));
   }
 }

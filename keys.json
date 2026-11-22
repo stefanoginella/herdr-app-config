@@ -93,7 +93,9 @@
     "alt-up": "file-editor.line-up",
     "alt-down": "file-editor.line-down",
     "cmd-shift-d": "file-editor.duplicate",
-    "cmd-d": "file-editor.next-same"
+    "cmd-d": "file-editor.next-same",
+    "alt-f3": "file-editor.next-change",
+    "alt-shift-f3": "file-editor.prev-change"
   },
   "mod:file-editor > Input": {
     "cmd-f": "file-editor.find"
