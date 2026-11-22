@@ -1,6 +1,8 @@
-# Herdr Configuration
+# Herdr App Configuration
 
-A setup for the [Herdr](https://herdr.dev) desktop app. This repository is the app's home folder, `~/.config/herdr-app`, with only the customized files tracked. Everything Herdr writes there itself is ignored.
+My personal setup for the [Herdr](https://herdr.dev) desktop app. It is opinionated: everything here follows my own preferences and the way I work. Feel free to fork it or use it as inspiration.
+
+This repository is the app's home folder, `~/.config/herdr-app`, with only the customized files tracked. Everything Herdr writes there itself is ignored.
 
 ## What's here
 
