@@ -5,6 +5,8 @@
 // for a file through shared state; the editor that belongs to that tab takes the request:
 //   file-editor.open   { tab, path, on, at }    path is absolute; on: the machine, null for here
 //   file-editor.moved  { from, to, on, at }     a file or a folder was renamed or moved
+// And it says which file it shows, for the panel to mark it in the tree:
+//   file-editor.shown  { [tab]: { path, on } }  no entry: the tab's editor shows no file
 //
 // Only whole files are edited: one cut short for its size is shown read-only. A file on another
 // machine is saved through a shell script there (remote.js). Nothing is saved until asked
@@ -28,7 +30,7 @@ import * as diff from "./diff.js";
 import * as remote from "./remote.js";
 
 const MOD = "file-editor";
-const OPEN = "file-editor.open", MOVED = "file-editor.moved";
+const OPEN = "file-editor.open", MOVED = "file-editor.moved", SHOWN = "file-editor.shown";
 // A request older than this was left by a window that closed before it was taken.
 const FRESH = 10000;
 // More text than this is shown cut short, and read-only.
@@ -103,6 +105,7 @@ export default class FileEditor extends View {
   // The pane is going (or the app): what was typed is kept for the next time.
   async close() {
     this.store();
+    if (this.tab) this.say(null);
   }
 
   doc() {
@@ -532,6 +535,21 @@ export default class FileEditor extends View {
     }
   }
 
+  // Leaves the file shown in shared state, where the Files panel reads it. Only when it is
+  // another one than the last told: setting shared state draws every mod again, this one too.
+  tell(cx) {
+    const now = this.doc()?.id ?? "";
+    if (!this.tab || now === this.told) return;
+    this.told = now;
+    cx.spawn(async () => { const d = this.doc(); this.told = d?.id ?? ""; this.say(d); });
+  }
+
+  say(d) {
+    const all = { ...shared(SHOWN) };
+    if (d) all[this.tab] = { path: d.path, on: d.on }; else delete all[this.tab];
+    setShared(SHOWN, all);
+  }
+
   button(t, id, label, tip, action, o = {}) {
     return h_flex().id(id).h(24).min_w(24).px(7).flex_none().items_center().justify_center().rounded(6).cursor_pointer()
       .text_size(12).text_color(o.on ? t.foreground : t.muted)
@@ -698,6 +716,7 @@ export default class FileEditor extends View {
   render(cx) {
     this.requests(cx);
     this.arrived(cx);
+    this.tell(cx);
     const t = theme(), d = this.doc();
     const empty = text => v_flex().id("fe-empty").flex_1().min_h(0).items_center().justify_center().p(24).text_size(13).text_color(t.dim)
       .on_mouse_down("left", () => this.handle.focus()).child(text);

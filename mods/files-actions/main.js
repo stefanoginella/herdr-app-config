@@ -1,5 +1,6 @@
 // A lazy file browser for the focused pane's folder. A click on a file opens it in the tab's
-// editor, a pane beside the terminals (the `file-editor` mod).
+// editor, a pane beside the terminals (the `file-editor` mod). The file that editor shows is
+// highlighted, or the closed folder it is in.
 // Each entry has its file type's icon; what git ignores is faded, and a folder with changes
 // inside has a dot. Right-click an entry to open it in an editor, rename it, duplicate it, move
 // it to the Trash or make a new file or folder by it (menu.js); right-click the header or the
@@ -11,7 +12,7 @@
 // Modified from Herdr's `files` mod (version 0.1.16, Apache-2.0): see NOTICE at the repository root.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, theme, settings, window, props, openOverlay, notify, nextCommand, keys, run, setShared } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, theme, settings, window, props, openOverlay, notify, nextCommand, keys, run, shared, setShared } from "herdr";
 import Menu, { any } from "./menu.js";
 import Naming from "./naming.js";
 import Confirm from "./confirm.js";
@@ -430,7 +431,23 @@ export default class Files extends View {
     else run("pane.split", { pane: beside.pane, direction: "right", mod: EDITOR, props: { tab } });
   }
 
-  // `s`: what every row needs. { dark, parent: the folder's name, ignored: it is inside an ignored folder }
+  // The row that stands for the file the tab's editor shows (its `file-editor.shown`): the
+  // file's own, or the closed folder it is in, the topmost one. A path under the folder shown,
+  // or null: the tab has no editor, the editor no file, or the file is not under this folder.
+  shown() {
+    const tab = focused()?.tab, s = tab ? shared(`${EDITOR}.shown`)?.[tab] : null;
+    if (!this.root || typeof s?.path !== "string" || (s.on ?? null) !== (this.on ?? null) || !s.path.startsWith(`${this.root}/`)) return null;
+    // An editor that went without a word (a crash) left its file behind.
+    if (!panes().some(p => p.tab === tab && p.mod === EDITOR)) return null;
+    const path = s.path.slice(this.root.length + 1);
+    for (let at = path.indexOf("/"); at >= 0; at = path.indexOf("/", at + 1)) {
+      if (!this.folders.has(path.slice(0, at))) return path.slice(0, at);
+    }
+    return path;
+  }
+
+  // `s`: what every row needs. { dark, parent: the folder's name, ignored: it is inside an
+  // ignored folder, shown: the row to highlight (shown()) }
   rows(prefix, depth, out, t, s) {
     if (out.length >= TOTAL || depth > 40) return out;
     const d = this.drag, aim = this.over?.dir ?? null;
@@ -446,7 +463,8 @@ export default class Files extends View {
       const target = aim !== null && aim !== "" && ops.within(path, aim);
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer()
         .when(target, el => el.bg(path === aim ? t.selected : t.hover))
-        .when(!target, el => el.hover(st => st.bg(t.hover)))
+        .when(!target && path === s.shown, el => el.bg(t.selected))
+        .when(!target && path !== s.shown, el => el.hover(st => st.bg(t.hover)))
         .when(Boolean(d?.moving) && !d.away && d.path === path, el => el.opacity(0.5))
         // Herdr's file drag: the name follows the pointer, and a terminal takes it as a path.
         // The move within the list is this panel's own, on the same press.
@@ -525,7 +543,7 @@ export default class Files extends View {
     // A menu or a dialog left something to do. Taken in a task: only one copy gets it.
     if (ops.waiting()) cx.spawn(async cx => { const r = ops.take(); if (r) this.act(r, cx); });
     const t = theme();
-    const list = this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored });
+    const list = this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored, shown: this.shown() });
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .on_mouse_move((e, cx) => this.follow(e, cx))
       // A release is not always seen (over a toast, outside the window), and a drag left behind
