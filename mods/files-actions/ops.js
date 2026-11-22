@@ -5,6 +5,7 @@
 // runs it and reports what went wrong. A request is one of:
 //   { op: "move",    root, on, from, to }   paths under root; a rename is a move in place
 //   { op: "copy",    root, on, from, dir }  a duplicate next to the original, named as Finder names it
+//   { op: "make",    root, on, to, dir }    a new, empty file at `to`, or (dir) a new folder
 //   { op: "trash",   root, on, from }
 //   { op: "restore", root, on, trashed, to }   out of the Trash again; trashed is absolute
 //   { op: "add",     root, on, to, sources }   copies of files from elsewhere on this Mac (absolute
@@ -52,6 +53,11 @@ export function nameError(name) {
 // Never onto something else: 17. Only a change of case ($3) may find its target there, and
 // only as the same file (`-ef`), which is what it finds where names ignore case.
 const MOVE = 'if { [ -e "$2" ] || [ -L "$2" ]; } && ! { [ "$3" = case ] && [ "$1" -ef "$2" ]; }; then exit 17; fi; [ -e "$1" ] || [ -L "$1" ] || exit 18; mv -- "$1" "$2"';
+
+// A new, empty file at $1, or a folder ($3 = dir), in the folder $2 (gone: 20). Never onto
+// something else (17): the check is for the message, and `mkdir` and the no-clobber create are
+// what hold if a name is taken in between.
+const MAKE = 'if [ -e "$1" ] || [ -L "$1" ]; then exit 17; fi; [ -d "$2" ] || exit 20; if [ "$3" = dir ]; then mkdir -- "$1"; else ( set -C; : > "$1" ); fi';
 
 // A copy of $1 in the folder $2, never onto something else. The name is $3 + " copy" + $4, then
 // " copy 2", " copy 3"… from $5 on, and the free one is claimed here ($5 = 0: the name itself or
@@ -182,6 +188,12 @@ export async function perform(r) {
       if (done.code === 20) return { error: "The folder it was going to is no longer there" };
       if (done.code === 22) return { error: "A folder can't be copied into itself" };
       return done.code === 0 ? { name: done.stdout } : { error: done.stderr.trim() || "It could not be copied" };
+    }
+    if (r.op === "make") {
+      const done = await exec("sh", ["-c", MAKE, "files-actions", abs(r.to), parent(abs(r.to)), r.dir ? "dir" : "file"], { on: r.on });
+      if (done.code === 17) return taken(r.to);
+      if (done.code === 20) return { error: "The folder it was going to is no longer there" };
+      return done.code === 0 ? {} : { error: done.stderr.trim() || "It could not be created" };
     }
     if (r.op === "clip") {
       if (!canShare(r.on)) return { error: "Only files on this Mac can go on its clipboard" };

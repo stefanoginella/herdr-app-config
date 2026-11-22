@@ -14,6 +14,7 @@ const MOD = "files-actions";
 const ROW = 31;
 const ICON = {
   open: `mods/${MOD}/open.svg`, trash: `mods/${MOD}/trash.svg`, copy: `mods/${MOD}/copy.svg`, paste: `mods/${MOD}/clipboard.svg`,
+  file: `mods/${MOD}/file-plus.svg`, folder: "mods/workspace-chrome/folder-plus.svg",
   rename: "mods/workspace-chrome/square-pen.svg", duplicate: "mods/workspace-chrome/layers.svg", reveal: "mods/workspace-chrome/folder.svg",
 };
 
@@ -24,6 +25,12 @@ function rows(m) {
   const reveal = (target) => ({ label: "Reveal in Finder", icon: "reveal", act: () => ops.request({ op: "open", app: "finder", ...target }) });
   // `to`: the folder, under root, that takes what is on the clipboard ("": root itself).
   const paste = (to, rule) => ({ label: `Paste in “${ops.base(to || m.root)}”`, icon: "paste", rule, act: () => ops.request({ op: "paste", root: m.root, on: m.on, to }) });
+  const naming = (n) => openOverlay({ mod: MOD, kind: "dialog", width: 440, height: 214, props: { naming: { root: m.root, on: m.on, ...n } } });
+  // `into`: the folder, under root, the new file or folder is made in ("": root itself).
+  const create = (into, rule) => [
+    { label: "New File…", icon: "file", rule, act: () => naming({ into, make: "file" }) },
+    { label: "New Folder…", icon: "folder", act: () => naming({ into, make: "folder" }) },
+  ];
   const apps = ops.canOpen(m.on), share = ops.canShare(m.on);
   if (m.path) {
     const name = ops.base(m.path), abs = `${m.root}/${m.path}`;
@@ -35,7 +42,9 @@ function rows(m) {
       if (!m.dir) out.push(openIn("textedit", target));
       out.push(reveal(target));
     }
-    out.push({ label: "Rename…", icon: "rename", rule: apps, act: () => openOverlay({ mod: MOD, kind: "dialog", width: 440, height: 214, props: { naming: { root: m.root, on: m.on, path: m.path } } }) });
+    // In the folder clicked, or next to the file clicked.
+    out.push(...create(m.dir ? m.path : ops.parent(m.path), apps));
+    out.push({ label: "Rename…", icon: "rename", rule: true, act: () => naming({ path: m.path }) });
     out.push({ label: "Duplicate", icon: "duplicate", act: () => ops.request({ op: "copy", root: m.root, on: m.on, from: m.path, dir: m.dir }) });
     if (share) {
       out.push({ label: "Copy", icon: "copy", rule: true, act: () => ops.request({ op: "clip", root: m.root, on: m.on, from: m.path }) });
@@ -59,8 +68,12 @@ function rows(m) {
     if (m.projectVault) out.push(openIn("obsidian", target));
     out.push(reveal(target));
   }
-  // Nothing clicked (the header, the room under the list): the folder shown takes the paste.
-  if (share && !m.path && m.root) out.push(paste("", true));
+  // Nothing clicked (the header, the room under the list): the folder shown takes what is new,
+  // and the paste.
+  if (!m.path && m.root) {
+    out.push({ section: ops.base(m.root), rule: out.length > 0 }, ...create(""));
+    if (share) out.push(paste(""));
+  }
   return out;
 }
 

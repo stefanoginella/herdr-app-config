@@ -1,8 +1,9 @@
 // A lazy file browser for the focused pane's folder. A click on a file opens it in the tab's
 // editor, a pane beside the terminals (the `file-editor` mod).
 // Each entry has its file type's icon; what git ignores is faded, and a folder with changes
-// inside has a dot. Right-click an entry to open it in an editor, rename it, duplicate it or move
-// it to the Trash (menu.js); right-click the header or the room under the list for the project.
+// inside has a dot. Right-click an entry to open it in an editor, rename it, duplicate it, move
+// it to the Trash or make a new file or folder by it (menu.js); right-click the header or the
+// room under the list for the project and the folder shown.
 // Drag an entry onto a folder, or under the list for the top folder, to move it, or onto a
 // terminal to paste its path there: its name follows the pointer (Herdr's own file drag).
 // Files dropped from Finder, or pasted from the clipboard, are copied in.
@@ -50,6 +51,7 @@ function failed(r) {
   if (r.op === "clip") return "Couldn't copy it to the clipboard";
   if (r.op === "trash") return "Couldn't move it to the Trash";
   if (r.op === "copy") return "Couldn't duplicate it";
+  if (r.op === "make") return `Couldn't create the ${r.dir ? "folder" : "file"}`;
   if (r.op === "restore") return "Couldn't put it back";
   const what = ops.parent(r.from) === ops.parent(r.to) ? "rename" : "move";
   return r.undo ? `Couldn't undo the ${what}` : `Couldn't ${what} it`;
@@ -117,7 +119,7 @@ async function directory(path, on) {
 
 export default class Files extends View {
   init(_props, cx) {
-    // Opened by itself as a popup or a dialog: the menu, the rename prompt, the Trash question.
+    // Opened by itself as a popup or a dialog: the menu, the name prompt, the Trash question.
     const p = props();
     const Other = p?.menu ? Menu : p?.naming ? Naming : p?.confirm ? Confirm : null;
     if (Other) {
@@ -243,7 +245,7 @@ export default class Files extends View {
       projectVault: ops.vaultOf(this.vaults, project),
     };
     // A popup is as tall as its items; height is only the most.
-    if (any(m)) openOverlay({ mod: MOD, kind: "popup", width: 236, height: 560, props: { menu: m } });
+    if (any(m)) openOverlay({ mod: MOD, kind: "popup", width: 236, height: 620, props: { menu: m } });
   }
 
   // Runs what the menu, a dialog or a drop asked for (ops.js), then shows what became of it.
@@ -265,11 +267,14 @@ export default class Files extends View {
       else if (!quiet) {
         if (r.root === this.root && (r.on ?? null) === (this.on ?? null)) {
           if (r.op === "move") this.moved(r.from, r.to); else if (r.op === "trash") this.gone(r.from);
+          else if (r.op === "make") this.made(r.to, Boolean(r.dir));
         }
         // The editor goes on with a file it has open under its new name.
         if (r.op === "move") setShared(`${EDITOR}.moved`, { from: `${r.root}/${r.from}`, to: `${r.root}/${r.to}`, on: r.on ?? null, at: Date.now() });
         // Only the last thing done can be taken back: after a duplicate, nothing can.
         if (turn === this.turn) { this.last = reverse(r, done); this.lastAt = Date.now(); }
+        // A new file is made to be written: it opens in the editor.
+        if (r.op === "make" && !r.dir && r.root === this.root && (r.on ?? null) === (this.on ?? null)) this.open(r.to);
         const where = ops.parent(r.to ?? "") || ops.base(r.root), name = ops.base(r.to ?? "");
         // A drop is easy to make by accident: say where the entry went. An undo says what it did.
         if (r.dropped) notify({ title: `Moved “${name}”`, body: [`to ${where}`, undoKey() && `${undoKey()} to undo`].filter(Boolean).join(" · ") });
@@ -345,6 +350,16 @@ export default class Files extends View {
     const list = this.entries.get(ops.parent(to));
     if (entry && list) {
       list.push({ ...entry, name: ops.base(to) });
+      list.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
+    }
+  }
+
+  // A new entry: the folder it is in opens, so it is seen, and it shows there at once.
+  made(path, dir) {
+    const into = ops.parent(path), list = this.entries.get(into);
+    if (into) this.folders.add(into);
+    if (list && !list.some(e => e.name === ops.base(path))) {
+      list.push({ name: ops.base(path), dir });
       list.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
     }
   }
