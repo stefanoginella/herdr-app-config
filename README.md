@@ -13,7 +13,9 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 | `mods/files-actions/` | [The Files panel, with file type icons, a right-click menu, drag to move and undo](#file-actions) |
 | `mods/file-editor/` | [A text editor that opens as a pane, from the Files panel](#file-editor) |
 | `mods/project-search/` | [Search and replace in every file of the project, in a panel](#project-search) |
-| `layouts/main-folders.json` | Herdr's default layout, showing the first three and the search panel: see [Install](#install) |
+| `mods/git-panel/` | [A Git panel: the history as a graph, branches, remotes, tags, stashes, and everyday actions](#git-panel) |
+| `mods/git-diff/` | [A diff pane beside the terminals, side by side, with the changed words marked](#git-diff) |
+| `layouts/main-folders.json` | Herdr's default layout, showing the first three, the search panel and the Git panel: see [Install](#install) |
 | `keys.json`, `settings.json` | Personal key bindings and settings |
 | `AGENTS.override.md`, `CLAUDE.md` | Notes for coding agents working in this folder |
 
@@ -118,24 +120,74 @@ A project on another machine is searched there, where ripgrep must be installed 
 
 The keys are in `keys.json`: Cmd+Shift+F, F4 and Shift+F4 under `global`, Cmd+Shift+F again in the two `mod:file-editor` sections (Herdr's editor keeps that key for itself), and the panel's own under `mod:project-search` and `mod:project-search > Input`. One more command can be bound: `project-search.undo`.
 
+## Git panel
+
+The repository the focused pane is in, in the panel on the right, in place of Herdr's Changes: the tab bar's Changes button opens it. It follows the pane you are in, on this Mac or another machine.
+
+- **Graph:** every branch, tag and remote branch as lines of commits, newest on top, with merges drawn as curves. A filled name is the branch you are on; a name with a small cloud is in the same place as its remote branch. HEAD is a ring, a merge is hollow. The first 1,000 commits are read, and "Load more" reads on.
+- **Uncommitted changes:** a row of its own on top of the graph, hanging from HEAD by a dashed line. Selected, the lower half of the panel lists the files, staged and not.
+- **Several repositories:** the panel shows the repository the pane's folder is in. When there are others, the name in the header becomes a list: the repositories inside that one (nested ones, submodules, a few folders down), and the ones it is itself inside of. In a folder that is not a repository but holds some, the first is shown and the list has the rest. The choice is remembered for that folder. Folders of installed packages (`node_modules`, `vendor`, `.venv`, `target`) are not looked into, nor is a home folder.
+- **Stage and commit:** the `+` and `−` on a file's row (they show while the pointer is on it) stage and unstage it; the same in the headings do it for all. Type a message and press Cmd+Enter, or the Commit button. Enter is a new line: the field grows for a body. With nothing staged, everything is committed.
+- **Have the message written:** the sparkle at the right of the message field asks `claude -p` or `codex exec` for it: a Conventional Commit heading and a body, in the style of the repository's earlier commits. It takes a few seconds, and what comes back is in the field to edit. Right-click the sparkle to choose who writes: Claude (Haiku or Sonnet) or Codex. See [below](#the-message-writer) for what is sent.
+- **A commit:** click it to read its message and see its files below. Click a file to see its diff in the [diff pane](#git-diff).
+- **Refs:** the other view lists branches, each remote's branches, tags and stashes. A branch shows how far it is ahead and behind its upstream. Click one to see its commit below; double-click a branch to switch to it; right-click, Show in Graph, to go to it there.
+- **Fetch, pull, push:** the three buttons in the header, with how many commits wait in each direction. Pull is fast-forward only. Push is never forced, and a branch with no upstream is pushed to `origin` and starts tracking it.
+- **Right-click** a commit, a branch, a tag, a stash or a file for the rest: new branch or tag here, switch, fast-forward, push, delete a branch or a tag, apply or drop a stash, open the file in the [editor](#file-editor), copy an ID, a name or a path.
+- **Stashes:** "Stash all" in the changes list puts everything uncommitted away, untracked files too. A stash shows its files like a commit, with Apply and Pop.
+- **Discard:** right-click a changed file, Discard Changes. It asks first, and the changes are not thrown away: they become a stash named "Discarded: …", which can be applied again. A file with staged changes too goes back to the last commit, and the stash holds both.
+- **GitHub:** when the repository is on GitHub and [`gh`](https://cli.github.com) is installed and logged in, a branch shows its open pull request's number with the state of its checks, a commit shows a dot for its workflow run (green, red, or yellow while it runs), and a tag says when it is a release. The menus open them on GitHub. It is read once a minute while the panel is shown, more often while a workflow runs. Without `gh` there are simply no marks.
+
+What the panel never does: rebase, merge, cherry-pick, reset, force push or delete a branch that is not merged. Those stay in a terminal. While a rebase or a merge is under way it only looks, and says so.
+
+Before anything is changed the panel checks that what it showed is still true: that HEAD is on the same branch, that the branch or the stash clicked is still the same commit. If an agent moved something in between, nothing is done and the panel says why.
+
+The panel reads the repository only while it is on screen: when a file changes on this Mac, and every few seconds on another machine.
+
+Five commands can be bound in `keys.json`: `git-panel.fetch`, `git-panel.pull`, `git-panel.push`, `git-panel.refresh` and `git-panel.write` (the message writer). They reach the panel while it is shown.
+
+### The message writer
+
+The program runs on this Mac, with your own login to it, in your home folder, with no tools and no session kept. It is sent, as its prompt: the diff of what is about to be committed (what is staged, else everything, cut at 60,000 characters), the text of new files (a few thousand characters), the branch's name and the last twelve commit messages. So whatever is in that diff goes to Anthropic or OpenAI: look before you ask when a change holds something secret. For a repository on another machine git is read there, and the program still runs here.
+
+Who can write, and with which model, is the list at the top of `mods/git-panel/write.js`: a model's name is the program's own (`claude --model`, `codex exec --model`), and Codex's change over time.
+
+## Git diff
+
+A pane beside the terminals for reading a change, opened by clicking a file in the [Git panel](#git-panel): of what is not committed, of a commit, or of a stash. One a tab; the next file clicked shows in the same pane.
+
+- **Side by side** when the pane is wide and the longest line fits in half of it, else one column with the old and the new line numbers. `S`, or the button in the header, switches.
+- **The words that changed** inside a changed line are colored stronger than the line.
+- **Unchanged lines** are left out, three around each change, with a row that says how many were skipped. Click that row, press `W`, or use the header's button for the whole file.
+- **Files:** listed on the left, in two groups for uncommitted changes (staged, not staged). `J` and `K`, or the arrows, go to the next and the previous one.
+- **Viewed:** `V`, or the Viewed button, ticks the file and goes to the next one not viewed. The header counts them. A tick on an uncommitted file goes away when the file changes again.
+- **To the editor:** `O`, or the pencil, opens the file as it is now in the [editor](#file-editor), at the first changed line for an uncommitted file.
+
+Uncommitted changes are read again as files change. The pane only reads: it changes nothing in the repository. The keys count while the pane has the keyboard. A diff is cut at 6,000 lines, and it is not syntax-colored.
+
+Six commands can be bound in `keys.json`: `git-diff.next`, `git-diff.prev`, `git-diff.viewed`, `git-diff.mode`, `git-diff.whole` and `git-diff.edit`.
+
 ## Install
 
 Built against Herdr 0.1.16. From a clone of this repository, this adds the mods and the layout that shows them:
 
 ```sh
 cp layouts/main-folders.json ~/.config/herdr-app/layouts/
-cp -R mods/space-folders mods/agents-unread mods/files-actions mods/file-editor mods/project-search ~/.config/herdr-app/mods/
+cp -R mods/space-folders mods/agents-unread mods/files-actions mods/file-editor mods/project-search mods/git-panel mods/git-diff ~/.config/herdr-app/mods/
 herdr-app check ~/.config/herdr-app/mods/space-folders
 herdr-app check ~/.config/herdr-app/mods/agents-unread
 herdr-app check ~/.config/herdr-app/mods/files-actions
 herdr-app check ~/.config/herdr-app/mods/file-editor
 herdr-app check ~/.config/herdr-app/mods/project-search
+herdr-app check ~/.config/herdr-app/mods/git-panel
+herdr-app check ~/.config/herdr-app/mods/git-diff
 herdr-app do layout.switch '{"name":"main-folders"}'
 ```
 
 Your own layout stays as it was: `layout.switch` goes back to it, and deleting the copied files removes all of this.
 
 For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `global` section of your `keys.json`. For the editor's keys, copy the two `mod:file-editor` sections of this repository's `keys.json` into yours. For the search panel, copy the two `mod:project-search` sections, and `cmd-shift-f`, `f4` and `shift-f4` from `global`.
+
+`git-panel` needs `git-diff`, which is what a click on a file opens, and both use `file-editor` for "open in the editor". Copy each mod's folder whole, `mod.json` included: a mod folder Herdr first sees without one is docked into the shown layout by itself.
 
 `files-actions` needs `file-editor`: it is what a click on a file opens. `project-search` needs `file-editor` too, and ripgrep. In a layout of your own it needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it.
 
