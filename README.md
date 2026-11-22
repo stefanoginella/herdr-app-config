@@ -7,7 +7,8 @@ A setup for the [Herdr](https://herdr.dev) desktop app. This repository is the a
 | Path | What it is |
 |---|---|
 | `mods/space-folders/` | The Spaces sidebar, with folders |
-| `layouts/main-folders.json` | Herdr's default layout, showing that sidebar |
+| `mods/agents-unread/` | The Agents list, with "mark as unread" |
+| `layouts/main-folders.json` | Herdr's default layout, showing those two |
 | `keys.json`, `settings.json` | Personal key bindings and settings |
 | `AGENTS.override.md`, `CLAUDE.md` | Notes for coding agents working in this folder |
 
@@ -42,10 +43,23 @@ Your own layout stays as it was: `layout.switch` goes back to it, and deleting t
 
 The layout and the sidebar are copies of Herdr's `main` and `spaces`, so they don't pick up changes Herdr makes to those later.
 
+## Unread agents
+
+Puts an idle agent back under Done, with the done dot, as a reminder to look at it later.
+
+- **Mark as unread:** click the empty ring at the end of an idle agent's row, or right-click the row.
+- **Mark as read:** click the dot again, or right-click the row. It also happens by itself: when you open the agent again after having been somewhere else, and when the agent starts working.
+
+Marking the agent you are looking at keeps it marked until you leave and come back. The mark lives in the list only: the tab bar and the spaces sidebar still show the agent as idle.
+
+One command can be bound in `keys.json`: `agents-unread.toggle` marks the agent you are looking at, or clears its mark.
+
+To install it, copy `mods/agents-unread` as for space folders, check it, and set the `agents` block of your layout to `{ "mod": "agents-unread" }`.
+
 ## How the repository works
 
 `.gitignore` is an allowlist: everything in the folder is ignored unless it is listed there. Herdr's own mods and layouts sit next to the custom ones and are replaced on every start, and its state files change constantly. A new mod, layout or theme needs one line in `.gitignore`.
 
 ## License
 
-Apache-2.0, see [LICENSE](LICENSE). `mods/space-folders/main.js` and `layouts/main-folders.json` are modified copies of files from Herdr, which is also Apache-2.0: see [NOTICE](NOTICE).
+Apache-2.0, see [LICENSE](LICENSE). `mods/space-folders/main.js`, `mods/agents-unread/main.js` and `layouts/main-folders.json` are modified copies of files from Herdr, which is also Apache-2.0: see [NOTICE](NOTICE).

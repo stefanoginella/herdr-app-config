@@ -10,13 +10,27 @@ Why this file has this name: Codex reads one instruction file per folder and pre
 
 Everything not listed here is Herdr's and is replaced on every start.
 
-- **Layout `main-folders`** (`layouts/main-folders.json`): a clone of Herdr's `main`. The only difference is that its `spaces` block shows the mod `space-folders`.
+- **Layout `main-folders`** (`layouts/main-folders.json`): a clone of Herdr's `main`. The only differences are that its `spaces` block shows the mod `space-folders` and its `agents` block shows the mod `agents-unread`.
 - **Mod `space-folders`** (`mods/space-folders/`): a clone of Herdr's `spaces` sidebar (from version 0.1.16) with one level of named, foldable folders of spaces.
   - `main.js`: the sidebar. `arrange()` reconciles the model with the open spaces and syncs the real space order to it with `space.move`; `section()` draws; `row()`, `folderRow()`, `emptyRow()` and `tail()` carry the drag-and-drop handlers.
   - `model.js`: the folder state and every change to it. Always `load()`, change the copy, `save()`.
   - `menu.js`: the right-click menus (space, folder, root). `naming.js`: the new/rename dialog. The mod opens itself for both, with `props().menu` or `props().naming`.
   - State lives in shared `space.folders`: `{ root: [spaceId | { id, name, folded, spaces }], projects: { projectKey: folderId }, next }`.
   - Key commands: `space-folders.new-folder`, `space-folders.fold-all`, `space-folders.unfold-all`. None is bound.
+
+- **Mod `agents-unread`** (`mods/agents-unread/`): a clone of Herdr's `agents` list (from version 0.1.16) where an idle agent can be marked unread. A marked agent is drawn as done: the done dot, and the Done section in the priority view.
+  - `main.js`: the list. `settle()` drops the marks that have served; `render()` turns a marked idle agent's status into `done` before anything is drawn; `row()` wraps the status dot in the click target and opens the menu on right-click.
+  - `unread.js`: the marks and every change to them. `menu.js`: a row's right-click menu (mark as unread or read, pin or unpin). The mod opens itself for it, with `props().menu`.
+  - State lives in shared `agents.unread`: `{ address: { left } }`. `left` means another pane has had the focus since the mark.
+  - Key command: `agents-unread.toggle`, for the agent being looked at. It is not bound.
+
+## Behavior to preserve in `agents-unread`
+
+- Unread is this mod's alone: Herdr's status is untouched, so the tab bar, the spaces sidebar and the sounds still treat a marked agent as idle.
+- Only an idle agent can be marked. A mark goes when the agent is focused again after another pane had the focus, when the agent is no longer idle, or by hand. Marking the agent being looked at must not clear at once: that is what `left` is for.
+- `left` turns true only while another pane is known to have the focus. With no focused pane (a popup, a terminal block) nothing changes.
+- A mark whose agent is not listed is dropped only after its machine's layout has been readable for 10 seconds. Before that the agent may only be unlisted while a layout loads.
+- The row's dot target takes the same room as the dot it wraps, so rows with and without it line up.
 
 ## Behavior to preserve in `space-folders`
 
@@ -30,7 +44,7 @@ Everything not listed here is Herdr's and is replaced on every start.
 
 - The window is live: an edit applies to the running app within a second. After every change run `herdr-app check mods/<name>` and `herdr-app status`, and look with `herdr-app shot`.
 - Pointer drags and typing cannot be driven from a shell. Say so when a change to those paths was not tried by hand.
-- These clones do not receive Herdr's updates. When Herdr changes `spaces` or `main`, compare the shipped file with the clone and port what matters.
+- These clones do not receive Herdr's updates. When Herdr changes `spaces`, `agents` or `main`, compare the shipped file with the clone and port what matters.
 
 ## Git
 

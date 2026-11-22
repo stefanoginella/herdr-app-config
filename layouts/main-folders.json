@@ -40,7 +40,7 @@
               "id": "agents",
               "type": "block",
               "content": {
-                "mod": "agents"
+                "mod": "agents-unread"
               },
               "size": {
                 "weight": 1
