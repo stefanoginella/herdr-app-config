@@ -118,6 +118,20 @@ Everything not listed here is Herdr's and is replaced on every start.
 
   The originals: `defaults/mods/spaces/main.js` for `space-folders`, `defaults/mods/agents/main.js` for `agents-unread`, `defaults/mods/files/main.js` for `files-actions`, `defaults/layouts/main.json` for `main-folders`.
 
+- The diffs show only what changed in the cloned files, so read Herdr's changelog too: every entry after the version named under "What is custom", up to the installed one.
+
+  ```sh
+  gh api "repos/herdrdev/herdr-app/contents/CHANGELOG.md" -H "Accept: application/vnd.github.raw"
+  ```
+
+  Hold each entry against every custom mod, `file-editor` included (it has no original to diff), and sort it into one of four:
+  - **Replaces a mod:** Herdr now does what one of them does (folders of spaces, unread agents, a text editor pane, the Files panel's menu, icons, drag or undo). Tell the owner what switching would gain and lose. The owner decides: a mod stays until they say otherwise.
+  - **Lifts a limit:** it gives a mod what this file says a mod can't have (more than one selection, a scroll position, a mark beside a line of the editor, word of a file drag leaving the panel, a place for the keyboard in a mod pane, a `writeTextFile` on another machine). Use it, then delete the workaround and its note here.
+  - **Moves what a workaround stands on:** how a mod pane gets the keyboard, key sections and their order, Cmd+F and the menu bar, file drags, `exec`, `writeTextFile`. Try again the behavior under the matching "Behavior to preserve" heading.
+  - **Nothing for this setup.**
+
+  Report every entry of the first three kinds to the owner, also when it needs no change.
+
 - The icons in `mods/files-actions/icons/` are a release of Material Icon Theme (MIT), named in `icons/map.js` and in `NOTICE`. To update them, follow the header of `icons/build.py`, then update the version in `NOTICE`.
 
 ## Git
