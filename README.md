@@ -8,10 +8,10 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 
 | Path | What it is |
 |---|---|
-| `mods/space-folders/` | The Spaces sidebar, with folders |
-| `mods/agents-unread/` | The Agents list, with "mark as unread" |
-| `mods/files-actions/` | The Files panel, with file type icons, a right-click menu, drag to move and undo |
-| `layouts/main-folders.json` | Herdr's default layout, showing those three |
+| `mods/space-folders/` | [The Spaces sidebar, with folders](#space-folders) |
+| `mods/agents-unread/` | [The Agents list, with "mark as unread"](#unread-agents) |
+| `mods/files-actions/` | [The Files panel, with file type icons, a right-click menu, drag to move and undo](#file-actions) |
+| `layouts/main-folders.json` | Herdr's default layout, showing those three: see [Install](#install) |
 | `keys.json`, `settings.json` | Personal key bindings and settings |
 | `AGENTS.override.md`, `CLAUDE.md` | Notes for coding agents working in this folder |
 
