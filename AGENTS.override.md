@@ -10,7 +10,7 @@ Why this file has this name: Codex reads one instruction file per folder and pre
 
 Everything not listed here is Herdr's and is replaced on every start.
 
-- **Layout `main-folders`** (`layouts/main-folders.json`): a clone of Herdr's `main`. The only differences are that its `spaces` block shows the mod `space-folders` and its `agents` block shows the mod `agents-unread`.
+- **Layout `main-folders`** (`layouts/main-folders.json`): a clone of Herdr's `main` (from version 0.1.16). The only differences are that its `spaces` block shows the mod `space-folders` and its `agents` block shows the mod `agents-unread`.
 - **Mod `space-folders`** (`mods/space-folders/`): a clone of Herdr's `spaces` sidebar (from version 0.1.16) with one level of named, foldable folders of spaces.
   - `main.js`: the sidebar. `arrange()` reconciles the model with the open spaces and syncs the real space order to it with `space.move`; `section()` draws; `row()`, `folderRow()`, `emptyRow()` and `tail()` carry the drag-and-drop handlers.
   - `model.js`: the folder state and every change to it. Always `load()`, change the copy, `save()`.
@@ -44,7 +44,13 @@ Everything not listed here is Herdr's and is replaced on every start.
 
 - The window is live: an edit applies to the running app within a second. After every change run `herdr-app check mods/<name>` and `herdr-app status`, and look with `herdr-app shot`.
 - Pointer drags and typing cannot be driven from a shell. Say so when a change to those paths was not tried by hand.
-- These clones do not receive Herdr's updates. When Herdr changes `spaces`, `agents` or `main`, compare the shipped file with the clone and port what matters.
+- These clones do not receive Herdr's updates, so check them after Herdr updates. Each clone was made from the version named under "What is custom". When `herdr-app --version` is newer, see what Herdr changed in each original since then, port what matters into the clone, and update the version named here, in `README.md` and in `NOTICE`. Herdr's source is public at `github.com/herdrdev/herdr-app`, tagged per version (`v0.1.16`), with the shipped files under `defaults/`. The installed original is already the new version, so only the old one is fetched:
+
+  ```sh
+  diff <(gh api "repos/herdrdev/herdr-app/contents/defaults/mods/agents/main.js?ref=v0.1.16" -H "Accept: application/vnd.github.raw") mods/agents/main.js
+  ```
+
+  The originals: `defaults/mods/spaces/main.js` for `space-folders`, `defaults/mods/agents/main.js` for `agents-unread`, `defaults/layouts/main.json` for `main-folders`.
 
 ## Git
 
