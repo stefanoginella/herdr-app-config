@@ -29,6 +29,8 @@ Placement survives restarts. It is also remembered by project (the repo, else th
 The real order of spaces follows the sidebar, so `space.next`, `space.prev` and `space.select:N` match what is drawn.
 
 Three commands can be bound in `keys.json`: `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
+A space's menu also opens its project in VS Code, and in Obsidian when the project is inside one of its vaults. The project is the repo's top folder, else the folder the space is in. Both are for spaces on this Mac.
+
 
 ## Unread agents
 

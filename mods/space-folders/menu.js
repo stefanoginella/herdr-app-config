@@ -1,5 +1,6 @@
 // The sidebar's right-click menus, opened as a popup with props { menu, target, keys }:
-//   "space":  Herdr's own space items, plus moving it between folders. target { id, git, nested, kids }
+//   "space":  Herdr's own space items, opening its project in an editor, and moving it between
+//             folders. target { id, git, nested, kids, open: { folder, vault } | null }
 //   "folder": new space here, rename, remove. target { id }
 //   "root":   new folder, new space.
 // ↑/↓ move, Enter runs, Esc closes. Drawn like Herdr's own menu.
@@ -8,9 +9,11 @@ import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, keys } from "herdr";
 import * as model from "./model.js";
+import * as opening from "./open.js";
 
 const MOD = "space-folders";
-const icon = (name) => `mods/workspace-chrome/${name}.svg`;
+// Herdr's icons, and this mod's one own.
+const icon = (name) => (name === "open" ? `mods/${MOD}/open.svg` : `mods/workspace-chrome/${name}.svg`);
 const ROW = 31;
 // More folders than this to move to, and their list scrolls.
 const MANY = 7;
@@ -41,6 +44,7 @@ function rows(p) {
     const at = model.folderOf(m, tg.id);
     const opts = { kids: tg.kids ?? [], keys: p.keys ?? {} };
     const move = (dest) => () => change((m) => model.file(m, tg.id, dest, opts));
+    const openIn = (app) => ({ label: `Open in ${opening.appName(app)}`, icon: "open", act: () => opening.request({ app, ...tg.open }) });
     return [
       { label: "Rename", icon: "square-pen", hint: shortcut("space.rename"), act: () => run("space.rename", { id: tg.id }) },
       ...(tg.git ? [
@@ -48,6 +52,8 @@ function rows(p) {
         { label: "Open worktree", icon: "git-branch", act: worktree("open", { width: 560, height: 480 }) },
       ] : []),
       ...(tg.git === "linked" ? [{ label: "Remove worktree", icon: "git-branch", act: worktree("remove", small) }] : []),
+      // The project in an editor on this Mac; Obsidian only when it is in one of its vaults.
+      ...(tg.open ? [{ ...openIn("vscode"), rule: true }, ...(tg.open.vault ? [openIn("obsidian")] : [])] : []),
       // A worktree space drawn under its repo's goes where that one goes.
       ...(tg.nested ? [] : [
         { section: "Move to", rule: true },

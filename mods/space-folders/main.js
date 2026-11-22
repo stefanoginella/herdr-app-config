@@ -9,11 +9,14 @@
 // right-click menus (menu.js) and the naming dialog (naming.js): this mod opens itself for both.
 // The real space order follows the sidebar, so space.next and space.select:N do too.
 // Keys can run `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
+// A space's menu also opens its project (the repo's top folder, else where it is) in VS Code,
+// and in Obsidian when that is in one of its vaults (open.js).
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, ScrollHandle } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, props, home, nextCommand } from "herdr";
+import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, props, home, nextCommand, notify } from "herdr";
 import * as model from "./model.js";
+import * as opening from "./open.js";
 import Menu, { naming } from "./menu.js";
 import Naming from "./naming.js";
 
@@ -92,7 +95,7 @@ export default class Spaces extends View {
       this.other.init(cx);
       return;
     }
-    this.git = {}; // where() -> { name, branch, ahead, behind, repo, linked }, null: not a repo
+    this.git = {}; // where() -> { name, branch, ahead, behind, repo, top, linked }, null: not a repo
     this.checked = {}; // where() -> when it was last looked at
     this.unsure = new Set(); // where()s git couldn't answer for (a machine away)
     this.pending = new Set(); // where()s to look at next
@@ -127,6 +130,9 @@ export default class Spaces extends View {
     try { this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]")); } catch { this.folded = new Set(); }
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
+    this.vaults = []; // Obsidian's vaults: a project in one can be opened there
+    this.refreshVaults(cx);
+    cx.timer.every(60000, cx => this.refreshVaults(cx));
     // Refresh only when the refs could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
   }
@@ -188,6 +194,17 @@ export default class Spaces extends View {
   sameRepo(key, keys) {
     const repo = this.git[key]?.repo;
     return [key, ...(repo ? [...keys].filter((k) => this.git[k]?.repo === repo) : [])];
+  }
+
+  refreshVaults(cx) {
+    cx.spawn(async () => { this.vaults = await opening.vaults(); });
+  }
+
+  // What a space's menu can open in an editor: { folder, vault } (its repo's top folder, else
+  // where it is; the Obsidian vault that is in), or null for a space on another machine.
+  project(w, g) {
+    const folder = g?.top ?? place(w, panes());
+    return folder && opening.possible(w.machine) ? { folder, vault: opening.vaultOf(this.vaults, folder) } : null;
   }
 
   refreshMachines(cx) {
@@ -291,7 +308,7 @@ export default class Spaces extends View {
       );
       const name = repo.endsWith("/.git") ? base(repo.slice(0, -5)) : base(repo).replace(/\.git$/, "");
       const [ahead, behind] = counts.code === 0 ? counts.stdout.trim().split(/\s+/).map(Number) : [0, 0];
-      const info = { name, branch: branch.code === 0 ? branch.stdout.trim().replace(/^refs\/heads\//, "") : "(detached)", ahead, behind, repo: JSON.stringify([on, repo]), linked: repo !== `${top}/.git` };
+      const info = { name, branch: branch.code === 0 ? branch.stdout.trim().replace(/^refs\/heads\//, "") : "(detached)", ahead, behind, repo: JSON.stringify([on, repo]), top, linked: repo !== `${top}/.git` };
       this.git[key] = info;
       if (!on) this.watch(repo, cx);
     } catch {
@@ -325,7 +342,7 @@ export default class Spaces extends View {
 
   // The menus are this mod again, as a popup (menu.js). A popup is as tall as its items; height is only the most.
   menu(kind, target = {}) {
-    openOverlay({ mod: MOD, kind: "popup", width: 236, height: 450, props: { menu: kind, target, keys: this.keys } });
+    openOverlay({ mod: MOD, kind: "popup", width: 236, height: 560, props: { menu: kind, target, keys: this.keys } });
   }
 
   // Key commands, e.g. "cmd-shift-n": "space-folders.new-folder" in keys.json.
@@ -798,7 +815,7 @@ export default class Spaces extends View {
         this.aim(next, cx);
       })
       .on_mouse_up("left", (_e, cx) => this.release(cx, (d) => { if (d.row === w.id) run("space.select", { id: w.id }); }))
-      .on_mouse_down("right", () => this.menu("space", { id: w.id, git: g ? (g.linked ? "linked" : "main") : null, nested: Boolean(tree), kids: tree ? [] : at.kids }))
+      .on_mouse_down("right", () => this.menu("space", { id: w.id, git: g ? (g.linked ? "linked" : "main") : null, nested: Boolean(tree), kids: tree ? [] : at.kids, open: this.project(w, g) }))
       .child(
         h_flex()
           .gap(9)
@@ -826,8 +843,14 @@ export default class Spaces extends View {
       .child(div().absolute().right(5).text_color(tone(t, w.status)).child(glyph(w.status))));
   }
 
-  render() {
+  render(cx) {
     if (this.other) return this.other.render();
+    // The menu left a project to open. Taken in a task: only one copy gets it.
+    if (opening.waiting()) cx.spawn(async () => {
+      const r = opening.take();
+      const done = r ? await opening.perform(r) : {};
+      if (done.error) notify({ title: `Couldn't open it in ${opening.appName(r.app)}`, body: done.error, level: "error" });
+    });
     const t = theme();
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];

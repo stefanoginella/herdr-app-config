@@ -16,6 +16,7 @@ Everything not listed here is Herdr's and is replaced on every start.
   - `model.js`: the folder state and every change to it. Always `load()`, change the copy, `save()`.
   - `menu.js`: the right-click menus (space, folder, root). `naming.js`: the new/rename dialog. The mod opens itself for both, with `props().menu` or `props().naming`.
   - State lives in shared `space.folders`: `{ root: [spaceId | { id, name, folded, spaces }], projects: { projectKey: folderId }, next }`.
+  - `open.js`: opening a space's project in VS Code or Obsidian, from the space menu. The menu leaves a request in shared `space-folders.open`; the sidebar takes it and runs it.
   - Key commands: `space-folders.new-folder`, `space-folders.fold-all`, `space-folders.unfold-all`. None is bound.
 
 - **Mod `agents-unread`** (`mods/agents-unread/`): a clone of Herdr's `agents` list (from version 0.1.16) where an idle agent can be marked unread. A marked agent is drawn as done: the done dot, and the Done section in the priority view.
