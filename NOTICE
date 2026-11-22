@@ -13,7 +13,8 @@ licensed under the Apache License, Version 2.0:
 - layouts/main-folders.json is a modified copy of Herdr's `main` layout
   (version 0.1.16). Its Spaces block shows `space-folders` instead of `spaces`,
   its Agents block shows `agents-unread` instead of `agents`, and its Files
-  block shows `files-actions` instead of `files`.
+  block shows `files-actions` instead of `files`. It also has two blocks of
+  its own for `project-search`: the Search panel, and one that only takes a key.
 
 This repository also includes the icons of Material Icon Theme
 (https://github.com/material-extensions/vscode-material-icon-theme, version

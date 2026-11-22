@@ -140,6 +140,19 @@
                       "content": {
                         "mod": "changes"
                       }
+                    },
+                    {
+                      "id": "search",
+                      "type": "block",
+                      "content": {
+                        "mod": "project-search",
+                        "props": {
+                          "back": {
+                            "stack": "panel-body",
+                            "child": "files"
+                          }
+                        }
+                      }
                     }
                   ],
                   "active": "files"
@@ -164,6 +177,24 @@
           },
           "size": {
             "px": 28
+          }
+        },
+        {
+          "id": "search-keys",
+          "type": "block",
+          "content": {
+            "mod": "project-search",
+            "props": {
+              "keys": true,
+              "show": {
+                "stack": "panel-body",
+                "child": "search",
+                "panel": "panel"
+              }
+            }
+          },
+          "size": {
+            "px": 0
           }
         }
       ],

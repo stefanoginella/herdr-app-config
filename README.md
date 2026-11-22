@@ -12,7 +12,8 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 | `mods/agents-unread/` | [The Agents list, with "mark as unread"](#unread-agents) |
 | `mods/files-actions/` | [The Files panel, with file type icons, a right-click menu, drag to move and undo](#file-actions) |
 | `mods/file-editor/` | [A text editor that opens as a pane, from the Files panel](#file-editor) |
-| `layouts/main-folders.json` | Herdr's default layout, showing the first three: see [Install](#install) |
+| `mods/project-search/` | [Search and replace in every file of the project, in a panel](#project-search) |
+| `layouts/main-folders.json` | Herdr's default layout, showing the first three and the search panel: see [Install](#install) |
 | `keys.json`, `settings.json` | Personal key bindings and settings |
 | `AGENTS.override.md`, `CLAUDE.md` | Notes for coding agents working in this folder |
 
@@ -62,6 +63,7 @@ The Files panel, with more to look at and more to do. A click on a file opens it
 - **To a terminal:** drag a file or a folder onto a terminal to paste its path there, quoted and without Enter: a quick way to hand a file to an agent. Nothing is moved.
 - **Undo:** Cmd+Z takes back the last move, rename or Trash, once, and a toast says what it did. A trashed file comes back out of the Trash. It is for slips: it works for five minutes, while the panel still shows the same folder. After a duplicate, a copy or a new file or folder there is nothing to take back.
 - **From Finder:** drop files or folders from Finder onto a folder, onto a file for that file's folder, or under the list for the top folder. They are copied: the originals stay where they are.
+- **Search:** the lens in the header goes to the [search panel](#project-search), and right-clicking a folder offers Find in Folder.
 - **To and from the clipboard:** right-click, Copy puts a file or a folder on the clipboard, for Cmd+V in Finder; Paste copies in what was copied in Finder, or here. Dragging out to Finder is not possible: Herdr's file drag stays inside its window.
 
 Nothing is ever overwritten: a new file or folder, a rename, a move, a copy or a paste onto a name that exists is refused.
@@ -93,25 +95,49 @@ A file on another machine is edited the same way. It is saved by a short shell s
 
 The keys are in `keys.json` under `mod:file-editor`, so they count only while the keyboard is in the editor. Cmd+F is also under `mod:file-editor > Input`: Herdr's editor keeps that key for itself, and this section takes it back while the keyboard is in the text. There, Cmd+B, Cmd+D, Cmd+Shift+D and Cmd+/ do the above instead of what they do elsewhere (the sidebar, splitting a pane, help), and Cmd+Z undoes text instead of the last file action.
 
+## Project search
+
+Search every file of the project, and replace, in a panel that takes the place of Files and Changes: what Cmd+Shift+F is in VS Code. The searching is [ripgrep](https://github.com/BurntSushi/ripgrep)'s, which must be installed (`brew install ripgrep`).
+
+- **Open:** Cmd+Shift+F, or the lens in the Files panel's header. From the editor, text selected on one line becomes the query. The Files button in the panel's header goes back.
+- **The project:** the repository the focused pane is in, else its folder. In a repository the search runs as you type; elsewhere, where nothing says how much there is to read, on Enter.
+- **Options:** match case (`Aa`), whole words (`ab`) and regular expression (`.*`). The syntax is ripgrep's: no lookaround, no backreferences.
+- **Filters:** the `…` button opens "files to include" and "files to exclude", comma-separated: `src`, `*.ts`, `docs/**` count at any depth, and `./src` is the folder at the project's top. Dotfiles are searched; what git ignores is not, unless "Search ignored files too" is ticked. Closed, the filters don't count.
+- **Find in Folder:** right-click a folder in the Files panel to search only there.
+- **Results:** grouped by file, foldable. Click a match to open the file in the [editor](#file-editor) with the match selected. F4 and Shift+F4 go to the next and the previous result from anywhere. At most 2,000 matches are listed, and 500 matched lines of one file: the panel says when there are more.
+- **Keyboard:** Down from a field goes to the list, where Up and Down move, Enter opens, Left and Right fold, and Cmd+Backspace dismisses. Tab goes through the fields, Alt+Up and Alt+Down bring back earlier queries, and Escape gives the keyboard back to the pane.
+- **Right-click a result:** open it in the editor or in VS Code at its line, reveal it in Finder, copy its path, its path in the project or its line, replace it, or dismiss it from the list.
+- **To a terminal:** drag a result onto a terminal to paste its file's path there.
+- **Replace:** the chevron left of the query opens the replace row, and every match shows what it becomes. With a regular expression `$1` is the first group; in plain text a `$` is a dollar. Replace one match or one file from its row, or all of them with the button beside the field, which asks first. Only the matches listed are replaced.
+- **What a replace writes:** the files themselves, at once. A file that changed since the search is left alone, whole, and so is one that is not UTF-8 text or is larger than 1 MB. A file open in the editor shows its new text, or asks when it has unsaved text.
+- **Undo:** "Undo replace" under the fields takes back the last replace, in every file that is still as the replace left it.
+
+The search reads the files on disk: unsaved text in the editor is not searched. Results come when the search is done, not one by one.
+
+A project on another machine is searched there, where ripgrep must be installed too, and replaced there as the editor saves a file there. VS Code and Finder are for files on this Mac.
+
+The keys are in `keys.json`: Cmd+Shift+F, F4 and Shift+F4 under `global`, Cmd+Shift+F again in the two `mod:file-editor` sections (Herdr's editor keeps that key for itself), and the panel's own under `mod:project-search` and `mod:project-search > Input`. One more command can be bound: `project-search.undo`.
+
 ## Install
 
 Built against Herdr 0.1.16. From a clone of this repository, this adds the mods and the layout that shows them:
 
 ```sh
 cp layouts/main-folders.json ~/.config/herdr-app/layouts/
-cp -R mods/space-folders mods/agents-unread mods/files-actions mods/file-editor ~/.config/herdr-app/mods/
+cp -R mods/space-folders mods/agents-unread mods/files-actions mods/file-editor mods/project-search ~/.config/herdr-app/mods/
 herdr-app check ~/.config/herdr-app/mods/space-folders
 herdr-app check ~/.config/herdr-app/mods/agents-unread
 herdr-app check ~/.config/herdr-app/mods/files-actions
 herdr-app check ~/.config/herdr-app/mods/file-editor
+herdr-app check ~/.config/herdr-app/mods/project-search
 herdr-app do layout.switch '{"name":"main-folders"}'
 ```
 
 Your own layout stays as it was: `layout.switch` goes back to it, and deleting the copied files removes all of this.
 
-For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `global` section of your `keys.json`. For the editor's keys, copy the two `mod:file-editor` sections of this repository's `keys.json` into yours.
+For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `global` section of your `keys.json`. For the editor's keys, copy the two `mod:file-editor` sections of this repository's `keys.json` into yours. For the search panel, copy the two `mod:project-search` sections, and `cmd-shift-f`, `f4` and `shift-f4` from `global`.
 
-`files-actions` needs `file-editor`: it is what a click on a file opens.
+`files-actions` needs `file-editor`: it is what a click on a file opens. `project-search` needs `file-editor` too, and ripgrep. In a layout of your own it needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it.
 
 For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "agents-unread" }` in the `agents` block, or `{ "mod": "files-actions" }` in the `files` block. Herdr's shipped layouts are read-only, so clone one first:
 

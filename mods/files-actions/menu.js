@@ -7,15 +7,18 @@
 
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { props, closeOverlay, openOverlay, theme } from "herdr";
+import { props, closeOverlay, openOverlay, theme, setShared, run } from "herdr";
 import * as ops from "./ops.js";
 
 const MOD = "files-actions";
+// The Search panel: what it reads in shared state, and the command that shows it (its header).
+const SEARCH = "project-search";
 const ROW = 31;
 const ICON = {
   open: `mods/${MOD}/open.svg`, trash: `mods/${MOD}/trash.svg`, copy: `mods/${MOD}/copy.svg`, paste: `mods/${MOD}/clipboard.svg`,
   file: `mods/${MOD}/file-plus.svg`, folder: "mods/workspace-chrome/folder-plus.svg",
   rename: "mods/workspace-chrome/square-pen.svg", duplicate: "mods/workspace-chrome/layers.svg", reveal: "mods/workspace-chrome/folder.svg",
+  find: "mods/workspace-chrome/search.svg",
 };
 
 // Rows: { label, icon, act, rule? (a line above) } and { section, rule? } (a heading, not a choice).
@@ -31,6 +34,11 @@ function rows(m) {
     { label: "New File…", icon: "file", rule, act: () => naming({ into, make: "file" }) },
     { label: "New Folder…", icon: "folder", act: () => naming({ into, make: "folder" }) },
   ];
+  // `folder`: the one, under root, the Search panel is asked to search ("": root itself).
+  const find = (folder) => ({ label: "Find in Folder…", icon: "find", act: () => {
+    setShared(`${SEARCH}.ask`, { folder: folder ? `${m.root}/${folder}` : m.root, on: m.on ?? null, at: Date.now() });
+    run(`${SEARCH}.open`);
+  } });
   const apps = ops.canOpen(m.on), share = ops.canShare(m.on);
   if (m.path) {
     const name = ops.base(m.path), abs = `${m.root}/${m.path}`;
@@ -44,6 +52,7 @@ function rows(m) {
     }
     // In the folder clicked, or next to the file clicked.
     out.push(...create(m.dir ? m.path : ops.parent(m.path), apps));
+    if (m.dir) out.push(find(m.path));
     out.push({ label: "Rename…", icon: "rename", rule: true, act: () => naming({ path: m.path }) });
     out.push({ label: "Duplicate", icon: "duplicate", act: () => ops.request({ op: "copy", root: m.root, on: m.on, from: m.path, dir: m.dir }) });
     if (share) {
@@ -71,7 +80,7 @@ function rows(m) {
   // Nothing clicked (the header, the room under the list): the folder shown takes what is new,
   // and the paste.
   if (!m.path && m.root) {
-    out.push({ section: ops.base(m.root), rule: out.length > 0 }, ...create(""));
+    out.push({ section: ops.base(m.root), rule: out.length > 0 }, ...create(""), find(""));
     if (share) out.push(paste(""));
   }
   return out;

@@ -34,6 +34,9 @@
     "f2": "tab.rename",
     "shift-f2": "space.rename",
     "cmd-z": "files-actions.undo",
+    "cmd-shift-f": "project-search.open",
+    "f4": "project-search.next",
+    "shift-f4": "project-search.prev",
     "cmd-/": "app.help",
     "cmd-shift-/": "app.help",
     "cmd-b": "layout.toggle:sidebar",
@@ -95,9 +98,20 @@
     "cmd-shift-d": "file-editor.duplicate",
     "cmd-d": "file-editor.next-same",
     "alt-f3": "file-editor.next-change",
-    "alt-shift-f3": "file-editor.prev-change"
+    "alt-shift-f3": "file-editor.prev-change",
+    "cmd-shift-f": "file-editor.search-project"
   },
   "mod:file-editor > Input": {
-    "cmd-f": "file-editor.find"
+    "cmd-f": "file-editor.find",
+    "cmd-shift-f": "file-editor.search-project"
+  },
+  "mod:project-search": {
+    "alt-up": "project-search.older",
+    "alt-down": "project-search.newer"
+  },
+  "mod:project-search > Input": {
+    "down": "project-search.list",
+    "tab": "project-search.tab",
+    "shift-tab": "project-search.back-tab"
   }
 }

@@ -1,9 +1,12 @@
 // A text editor that opens as a pane beside the terminals: the files of a tab as a strip of
 // tabs, long lines wrapped, find and replace, Markdown shortcuts and a rendered preview.
 //
-// One editor a tab. The Files panel (`files-actions`) splits it in with props { tab } and asks
-// for a file through shared state; the editor that belongs to that tab takes the request:
-//   file-editor.open   { tab, path, on, at }    path is absolute; on: the machine, null for here
+// One editor a tab. The Files panel (`files-actions`) and the Search panel (`project-search`)
+// split it in with props { tab } and ask for a file through shared state; the editor that
+// belongs to that tab takes the request:
+//   file-editor.open   { tab, path, on, at, select? }   path is absolute; on: the machine, null
+//                      for here; select: { line (from 1), start, end (in that line) }, what a
+//                      search found there, to show selected
 //   file-editor.moved  { from, to, on, at }     a file or a folder was renamed or moved
 // And it says which file it shows, for the panel to mark it in the tree:
 //   file-editor.shown  { [tab]: { path, on } }  no entry: the tab's editor shows no file
@@ -21,16 +24,18 @@
 // indenting, bracket pairs, folding. What this mod adds is in edit.js, and reaches it as key
 // commands (keys.json, section `mod:file-editor`): save, find, replace, find-next, find-prev,
 // escape, preview, close, bold, italic, code, strike, link, bullets, numbers, tasks, comment,
-// line-up, line-down, duplicate, next-same, next-change, prev-change.
+// line-up, line-down, duplicate, next-same, next-change, prev-change, search-project.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextView } from "gpui-base";
-import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes } from "herdr";
+import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, run } from "herdr";
 import * as edit from "./edit.js";
 import * as diff from "./diff.js";
 import * as remote from "./remote.js";
 
 const MOD = "file-editor";
 const OPEN = "file-editor.open", MOVED = "file-editor.moved", SHOWN = "file-editor.shown";
+// The Search panel (`project-search`), and what it reads in shared state (its header).
+const SEARCH = "project-search", ASK = "project-search.ask";
 // A request older than this was left by a window that closed before it was taken.
 const FRESH = 10000;
 // More text than this is shown cut short, and read-only.
@@ -52,6 +57,8 @@ const NO_MARKS = { marks: [], lines: 1 };
 // Going to a change: how many lines around it are brought into sight with it, and how long
 // the editor is given to scroll between two moves of the cursor.
 const AROUND = 3, MOVE_AFTER = 40;
+// How long a place asked for is gone to again, when the file turns out to have changed on disk.
+const GOAL_FOR = 3000;
 const STORE = "state";
 const REFOCUS = 300, REFOCUS_SOON = 60;
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", cjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html", markdown: "md", mdx: "md" };
@@ -152,8 +159,11 @@ export default class FileEditor extends View {
     // Herdr focuses the pane after the click that asked for the file, which can take the
     // keyboard from the text again: so it is taken once more, a moment later.
     if (show) cx.timer.after(REFOCUS, () => { if (this.active === id && !this.find.focused) this.focus(); });
+    // What a search found is gone to a moment later: once the text is drawn, and after
+    // Herdr has focused the pane, which takes the keyboard (and so the selection) from it.
+    const reveal = d => { if (show && o.select) cx.timer.after(REFOCUS_SOON, cx => { if (this.active === d.id) this.reveal(d, o.select, cx); }); };
     if (d) {
-      if (show) { this.active = id; this.focus(); this.look(d, cx); this.head(d, cx); }
+      if (show) { this.active = id; this.focus(); this.look(d, cx); this.head(d, cx); reveal(d); }
       return;
     }
     d = {
@@ -199,6 +209,7 @@ export default class FileEditor extends View {
         d.state.on("submit", (e, cx) => this.entered(d, e, cx));
         d.state.on("focus", (_e, cx) => { this.look(d, cx); this.head(d, cx); });
         if (show && this.active === d.id) this.focus();
+        reveal(d);
         this.head(d, cx);
       } catch (e) {
         d.error = "This file can't be shown (too large, or unreadable)";
@@ -262,7 +273,11 @@ export default class FileEditor extends View {
         }
         if (text === d.base || text.includes("\0") || text.length > MOST) return;
         if (d.dirty && d.text !== text) { d.notice = "changed"; d.disk = text; }
-        else this.take(d, text);
+        else {
+          this.take(d, text);
+          // The place just asked for is another one in the new text.
+          if (d.goal && Date.now() - d.goal.at < GOAL_FOR && this.active === d.id) this.reveal(d, d.goal.select, cx);
+        }
         cx.notify();
       } catch { /* unreadable for now: the next look tries again */ }
       finally { d.looking = false; }
@@ -346,7 +361,13 @@ export default class FileEditor extends View {
     if (!m) return;
     const text = d.text, lines = d.diff.lines;
     const at = line => { const o = diff.range(text, { line: Math.max(0, Math.min(lines - 1, line)), count: 0 }).start; return { start: o, end: o }; };
-    const moves = [at(m.line + m.count + AROUND), at(m.line - AROUND), diff.range(text, m)];
+    this.travel(d, [at(m.line + m.count + AROUND), at(m.line - AROUND), diff.range(text, m)], cx);
+  }
+
+  // The cursor goes through `moves` (selections of the text as it is now), a frame or two
+  // apart, and the keyboard goes to the text: see change().
+  travel(d, moves, cx) {
+    const text = d.text;
     const turn = this.turn = (this.turn ?? 0) + 1;
     const move = (i, cx) => {
       // Not when another jump began meanwhile, or the text is no longer what was measured.
@@ -356,6 +377,21 @@ export default class FileEditor extends View {
     };
     move(0, cx);
     d.state.focus();
+  }
+
+  // Shows what a search found: `select` is { line (from 1), start, end (in that line) }. Its
+  // text is selected, which is what shows it, and brought into sight as a change is. The line
+  // is counted in the editor's text: with unsaved typing above it, it is the wrong one.
+  reveal(d, select, cx) {
+    const line = Math.floor(Number(select?.line)) - 1;
+    if (!d?.state || !(line >= 0)) return;
+    d.goal = { select, at: d.goal?.select === select ? d.goal.at : Date.now() };
+    // The rendered page has no selection to show.
+    if (d.preview) { d.preview = false; this.store(); }
+    const text = d.text, whole = diff.range(text, { line, count: 1 });
+    const within = n => Math.max(whole.start, Math.min(whole.end, whole.start + (Number(n) || 0)));
+    const at = n => { const o = diff.range(text, { line: Math.max(0, n), count: 0 }).start; return { start: o, end: o }; };
+    this.travel(d, [at(line + AROUND), at(line - AROUND), { start: within(select.start), end: within(select.end) }], cx);
   }
 
   // `then`: what a save that went through is followed by.
@@ -485,6 +521,13 @@ export default class FileEditor extends View {
     if (name === "close") return this.shut(d, cx);
     if (name === "next-change") return this.change(1, null, cx);
     if (name === "prev-change") return this.change(-1, null, cx);
+    if (name === "search-project") {
+      // What is selected, on one line, is what is looked for: as in the find bar.
+      const sel = d?.state && !d.preview ? d.state.selected_range() : null;
+      const picked = sel && sel.end > sel.start ? d.text.slice(sel.start, sel.end) : "";
+      setShared(ASK, { ...(picked && !picked.includes("\n") ? { query: picked } : {}), at: Date.now() });
+      return void run(`${SEARCH}.open`);
+    }
     if (name === "preview") {
       if (!d?.markdown || !d.state) return;
       d.preview = !d.preview;
@@ -513,7 +556,7 @@ export default class FileEditor extends View {
       this.seen.open = o.at;
       cx.spawn(async cx => {
         if (shared(OPEN)?.at === o.at) setShared(OPEN, null);
-        if (Date.now() - o.at < FRESH) this.load({ path: o.path, on: o.on ?? null }, cx);
+        if (Date.now() - o.at < FRESH) this.load({ path: o.path, on: o.on ?? null, select: o.select ?? null }, cx);
         cx.notify();
       });
     }

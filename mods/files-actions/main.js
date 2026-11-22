@@ -8,6 +8,7 @@
 // Drag an entry onto a folder, or under the list for the top folder, to move it, or onto a
 // terminal to paste its path there: its name follows the pointer (Herdr's own file drag).
 // Files dropped from Finder, or pasted from the clipboard, are copied in.
+// The header's lens, and a folder's "Find in Folder…", go to the Search panel (`project-search`).
 // The key command `files-actions.undo` takes back the last move, rename or Trash.
 // Modified from Herdr's `files` mod (version 0.1.16, Apache-2.0): see NOTICE at the repository root.
 import { View, div, svg, image } from "gpui-kit";
@@ -22,6 +23,8 @@ import * as ops from "./ops.js";
 const MOD = "files-actions";
 // The mod that shows a file, one pane a tab, and what it reads in shared state (its header).
 const EDITOR = "file-editor";
+// The Search panel, which its own command shows.
+const SEARCH = "project-search";
 const CLEAR = "#00000000";
 // How often Obsidian's list of vaults is read again.
 const VAULTS_EVERY = 60000;
@@ -72,11 +75,13 @@ function keyLabel(chord) {
   const parts = chord.split("-"), key = parts.pop() || "-";
   return ["ctrl", "alt", "shift", "cmd"].filter(m => parts.includes(m)).map(m => SIGN[m]).join("") + (key.length === 1 ? key.toUpperCase() : key);
 }
-// The key bound to undo, when there is one: said after a drop.
-function undoKey() {
-  const bound = keys().find(k => k.action === `${MOD}.undo` && !k.keys.includes(" "));
+// The key bound to an action, when there is one.
+function keyOf(action) {
+  const bound = keys().find(k => k.action === action && !k.keys.includes(" "));
   return bound ? keyLabel(bound.keys) : null;
 }
+// The key bound to undo: said after a drop.
+const undoKey = () => keyOf(`${MOD}.undo`);
 
 // A mod pane (the editor) is in no folder: while one has the focus, the panel goes on showing
 // the folder of the terminal that had it before, in that tab.
@@ -555,7 +560,13 @@ export default class Files extends View {
       .child(h_flex().id("files-head").h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .on_mouse_down("right", () => this.menu())
         .child(div().font_semibold().child("Files"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? "")))
+        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? ""))
+        // To the Search panel, which takes this one's place.
+        .child(h_flex().id("files-search").size(24).flex_none().items_center().justify_center().rounded(6).cursor_pointer()
+          .hover(st => st.bg(t.hover))
+          .tooltip(keyOf(`${SEARCH}.open`) ? `Search in the project (${keyOf(`${SEARCH}.open`)})` : "Search in the project")
+          .on_click(() => run(`${SEARCH}.open`))
+          .child(svg("mods/workspace-chrome/search.svg").size(15).flex_none().text_color(t.muted))))
       .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(5).border_1().border_color(this.over?.dir === "" ? t.accent : CLEAR).rounded_b(10)
         // A release outside the list never reaches it, and must not turn the next one here
         // into a drop. While Herdr's drag is under way no hover is reported at all, so a drag
