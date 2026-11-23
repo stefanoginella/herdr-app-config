@@ -37,6 +37,7 @@
 !/mods/git-panel/
 !/mods/git-diff/
 !/mods/go-to-file/
+!/mods/editor-links/
 
 # Your themes and assets, once there are some
 !/themes/

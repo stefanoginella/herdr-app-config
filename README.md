@@ -14,6 +14,7 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 | `mods/file-editor/` | [A text editor that opens as a pane, from the Files panel](#file-editor) |
 | `mods/project-search/` | [Search and replace in every file of the project, in a panel](#project-search) |
 | `mods/go-to-file/` | [Go to a file of the project by its name, in a popup](#go-to-file) |
+| `mods/editor-links/` | [Cmd-click a file path in a terminal to open it in the editor](#file-editor) |
 | `mods/git-panel/` | [A Git panel: the history as a graph, branches, remotes, tags, stashes, and everyday actions](#git-panel) |
 | `mods/git-diff/` | [A diff pane beside the terminals, side by side, with the changed words marked](#git-diff) |
 | `layouts/main-folders.json` | Herdr's default layout, showing the first three, the search panel and the Git panel: see [Install](#install) |
@@ -92,11 +93,15 @@ A text editor beside the terminals. Click a file in the Files panel and it opens
 - **Preview:** Cmd+Shift+V, or the Preview button, shows a Markdown file rendered.
 - **Changes since the last commit:** a file git has gets a thin strip on the right of its text, with a mark where lines were added (green), changed (blue) or deleted (red), unsaved typing included. The strip is the whole file from top to bottom, not a margin: in a file shorter than the pane a mark is level with its lines, until a long line wraps above them, and in a longer file it shows where in the file they are. Click a mark, or press Alt+F3 and Alt+Shift+F3, or the `±` button that counts the changes, to go to a change with its lines selected. A file git does not have yet has no marks.
 
+- **From a terminal:** Cmd-click a file path in a terminal, an agent's `src/app.ts:42:7` for one, and it opens in that tab's editor at that line and column (`editor-links`). Paths on another machine open there. Images, PDFs, archives, folders and missing files go to Herdr's usual opener instead.
+- **The pane's name:** the pane's header says which file the editor shows. A name you give the pane yourself stays.
+- **Text size:** the text is as large as the terminals' (`font_size`), as Herdr's own file preview and diff are.
+
 Undo, redo, indenting, bracket pairs and folding are Herdr's own editor. Files too large to edit open read-only.
 
 A file on another machine is edited the same way. It is saved by a short shell script that Herdr runs there, sent along with every save: nothing is installed on that machine, which only needs `sh`. The file keeps its permissions, and a save is refused when the file changed there meanwhile.
 
-The keys are in `keys.json` under `mod:file-editor`, so they count only while the keyboard is in the editor. Cmd+F is also under `mod:file-editor > Input`: Herdr's editor keeps that key for itself, and this section takes it back while the keyboard is in the text. There, Cmd+B, Cmd+D, Cmd+Shift+D and Cmd+/ do the above instead of what they do elsewhere (the sidebar, splitting a pane, help), and Cmd+Z undoes text instead of the last file action.
+The keys are in `keys.json` under `mod:file-editor`, so they count only while the keyboard is in the editor. Cmd+F is also under `mod:file-editor > Input`: Herdr's editor keeps that key for itself, and the editor binds that section's keys itself, deeper than Herdr's, while the keyboard is in the text. (Since Herdr 0.1.17 a section named that way binds nothing on its own; the editor, the search panel and Go to file read theirs from `keys.json` and install them.) There, Cmd+B, Cmd+D, Cmd+Shift+D and Cmd+/ do the above instead of what they do elsewhere (the sidebar, splitting a pane, help), and Cmd+Z undoes text instead of the last file action.
 
 ## Project search
 
@@ -188,7 +193,7 @@ Built against Herdr 0.1.17. From a clone of this repository, this adds the mods 
 
 ```sh
 cp layouts/main-folders.json ~/.config/herdr-app/layouts/
-cp -R mods/space-folders mods/agents-unread mods/files-actions mods/file-editor mods/project-search mods/go-to-file mods/git-panel mods/git-diff ~/.config/herdr-app/mods/
+cp -R mods/space-folders mods/agents-unread mods/files-actions mods/file-editor mods/project-search mods/go-to-file mods/git-panel mods/git-diff mods/editor-links ~/.config/herdr-app/mods/
 herdr-app check ~/.config/herdr-app/mods/space-folders
 herdr-app check ~/.config/herdr-app/mods/agents-unread
 herdr-app check ~/.config/herdr-app/mods/files-actions
@@ -197,6 +202,7 @@ herdr-app check ~/.config/herdr-app/mods/project-search
 herdr-app check ~/.config/herdr-app/mods/go-to-file
 herdr-app check ~/.config/herdr-app/mods/git-panel
 herdr-app check ~/.config/herdr-app/mods/git-diff
+herdr-app check ~/.config/herdr-app/mods/editor-links
 herdr-app do layout.switch '{"name":"main-folders"}'
 ```
 
@@ -206,7 +212,7 @@ For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `gl
 
 `git-panel` needs `git-diff`, which is what a click on a file opens, and both use `file-editor` for "open in the editor". Copy each mod's folder whole, `mod.json` included: a mod folder Herdr first sees without one is docked into the shown layout by itself.
 
-`files-actions` needs `file-editor`: it is what a click on a file opens. `project-search` needs `file-editor` too, and ripgrep; so does `go-to-file`, which is in no layout: its key opens it. In a layout of your own it needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it.
+`editor-links` needs `file-editor`, and is turned on by the layout's `"link_handlers": ["editor-links"]` (Herdr adds it to a layout of your own the first time it sees the mod). `files-actions` needs `file-editor`: it is what a click on a file opens. `project-search` needs `file-editor` too, and ripgrep; so does `go-to-file`, which is in no layout: its key opens it. In a layout of your own it needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it.
 
 For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "agents-unread" }` in the `agents` block, or `{ "mod": "files-actions" }` in the `files` block. Herdr's shipped layouts are read-only, so clone one first:
 

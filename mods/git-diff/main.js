@@ -32,7 +32,16 @@ const DIFF = ["diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-rena
 // A request older than this was left by a window that closed before taking it.
 const FRESH = 10000;
 // The text: its size, a character's width at that size, a row's height, a line number's room.
-const SIZE = 12, CHAR = 7.23, ROW = 20, NUMBER = 44, SIGN = 16;
+// The size is the terminals' (as Herdr's own Changes diff has it since 0.1.17), else BASE; the
+// rest grow with it from what they were at 12 px. fit() sets them, as each draw begins.
+const BASE = 12, SIGN = 16;
+let SIZE = BASE, CHAR = 7.23, ROW = 20, NUMBER = 44;
+function fit() {
+  SIZE = Number(settings()?.font_size) || BASE;
+  CHAR = SIZE * (7.23 / 12);
+  ROW = Math.round(SIZE * (20 / 12));
+  NUMBER = Math.round(SIZE * (44 / 12));
+}
 // The list of files: its width, the most files drawn, and the pane's width under which it
 // is left out.
 const LIST = 250, FILES = 500, NARROW = 700;
@@ -513,6 +522,7 @@ export default class GitDiff extends View {
   }
 
   render(cx) {
+    fit();
     for (const [name, value] of Object.entries(this.pending)) localStorage.setItem(name, value);
     this.pending = {};
     this.requests(cx);

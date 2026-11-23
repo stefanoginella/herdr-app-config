@@ -50,10 +50,12 @@ const STASH_AFTER = 800;
 const MARK_AFTER = 200, HEAD_EVERY = 2000;
 // The strip of marks: its width, and the least height of a mark.
 const RULER = 8, MARK = 4;
-// The text's size, and how tall a row of it is for that size (GPUI's line height, the golden
-// ratio, on whole pixels of the zoomed window).
+// The text's size: the terminals' (as Herdr's own Files preview has it since 0.1.17), else SIZE.
+// And how tall a row of it is for that size (GPUI's line height, the golden ratio, on whole
+// pixels of the zoomed window).
 const SIZE = 13;
-const rowHeight = zoom => Math.round(SIZE * 1.618034 * zoom) / zoom;
+const textSize = () => Number(settings()?.font_size) || SIZE;
+const rowHeight = (zoom, size) => Math.round(size * 1.618034 * zoom) / zoom;
 const NO_MARKS = { marks: [], lines: 1 };
 // Going to a change: how many lines around it are brought into sight with it, and how long
 // the editor is given to scroll between two moves of the cursor.
@@ -205,7 +207,7 @@ export default class FileEditor extends View {
         const t = theme(), ext = d.name.includes(".") ? d.name.split(".").pop().toLowerCase() : "txt";
         d.state = EditorState.new({
           language: LANG[ext] ?? ext, value: shown, readonly: Boolean(d.readonly), soft_wrap: true,
-          font_family: settings().font_family, font_size: SIZE,
+          font_family: settings().font_family, font_size: textSize(),
           syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 },
         });
         d.state.on("change", (_e, cx) => this.changed(d, cx));
@@ -597,7 +599,20 @@ export default class FileEditor extends View {
     const now = this.doc()?.id ?? "";
     if (!this.tab || now === this.told) return;
     this.told = now;
-    cx.spawn(async () => { const d = this.doc(); this.told = d?.id ?? ""; this.say(d); });
+    cx.spawn(async () => { const d = this.doc(); this.told = d?.id ?? ""; this.say(d); await null; this.name(d); });
+  }
+
+  // The pane is named after the file it shows (its header says so), unless someone named it
+  // otherwise: a name that is neither the last this copy gave nor an open file's is left alone.
+  // Herdr keeps the name with the tab, so after a restart it is an open file's.
+  name(d) {
+    const me = panes().find(p => p.mod === MOD && p.tab === this.tab);
+    if (!me) return;
+    const want = d?.name ?? "", has = me.name ?? "";
+    const ours = !has || has === this.named || this.docs.some(o => o.name === has);
+    if (has === want || !ours) return;
+    this.named = want;
+    run("pane.rename", { pane: me.pane, name: want });
   }
 
   say(d) {
@@ -713,7 +728,7 @@ export default class FileEditor extends View {
   ruler(t, d) {
     const lines = Math.max(1, d.diff.lines), color = { added: t.ansi2, changed: t.ansi4, deleted: t.ansi1 };
     return div().w(RULER).flex_none().border_l(1).border_color(t.border)
-      .child(div().id(`fe-ruler-${d.n}`).relative().w_full().h(lines * rowHeight(settings().zoom || 1)).max_h("100%").overflow_hidden()
+      .child(div().id(`fe-ruler-${d.n}`).relative().w_full().h(lines * rowHeight(settings().zoom || 1, textSize())).max_h("100%").overflow_hidden()
         .children(d.diff.marks.map((m, i) => {
           // What reaches the last line hangs from the bottom, so its least height stays inside.
           const last = m.line + Math.max(1, m.count) >= lines;
@@ -791,7 +806,7 @@ export default class FileEditor extends View {
             .child(div().w_full().max_w(820).child(TextView.markdown(`fe-md-${d.n}`, d.text).selectable(true)))
         : h_flex().flex_1().min_h(0).items_stretch()
             .child(v_flex().id(`fe-text-${d.n}`).flex_1().min_w(0).min_h(0).on_key_down((e, cx) => this.typed(e, cx))
-              .child(Editor.new(d.state).flex_1().min_h(0)))
+              .child(Editor.new(d.state).font_family(settings().font_family).text_size(textSize()).flex_1().min_h(0)))
             .when(d.head !== null, el => el.child(this.ruler(t, d))));
   }
 }
