@@ -36,6 +36,7 @@
 !/mods/project-search/
 !/mods/git-panel/
 !/mods/git-diff/
+!/mods/go-to-file/
 
 # Your themes and assets, once there are some
 !/themes/

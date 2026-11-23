@@ -17,6 +17,7 @@
     "cmd-shift-l": "layout.switch",
     "cmd-n": "space.new",
     "cmd-p": "mod.open:picker",
+    "cmd-o": "mod.open:go-to-file",
     "cmd-shift-p": "app.palette",
     "cmd-,": "app.settings",
     "cmd-d": "pane.split:right",
@@ -113,5 +114,9 @@
     "down": "project-search.list",
     "tab": "project-search.tab",
     "shift-tab": "project-search.back-tab"
+  },
+  "mod:go-to-file > Input": {
+    "up": "go-to-file.up",
+    "down": "go-to-file.down"
   }
 }

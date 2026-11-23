@@ -13,6 +13,7 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 | `mods/files-actions/` | [The Files panel, with file type icons, a right-click menu, drag to move and undo](#file-actions) |
 | `mods/file-editor/` | [A text editor that opens as a pane, from the Files panel](#file-editor) |
 | `mods/project-search/` | [Search and replace in every file of the project, in a panel](#project-search) |
+| `mods/go-to-file/` | [Go to a file of the project by its name, in a popup](#go-to-file) |
 | `mods/git-panel/` | [A Git panel: the history as a graph, branches, remotes, tags, stashes, and everyday actions](#git-panel) |
 | `mods/git-diff/` | [A diff pane beside the terminals, side by side, with the changed words marked](#git-diff) |
 | `layouts/main-folders.json` | Herdr's default layout, showing the first three, the search panel and the Git panel: see [Install](#install) |
@@ -120,6 +121,21 @@ A project on another machine is searched there, where ripgrep must be installed 
 
 The keys are in `keys.json`: Cmd+Shift+F, F4 and Shift+F4 under `global`, Cmd+Shift+F again in the two `mod:file-editor` sections (Herdr's editor keeps that key for itself), and the panel's own under `mod:project-search` and `mod:project-search > Input`. One more command can be bound: `project-search.undo`.
 
+## Go to file
+
+Go to a file of the project by typing some of its name: what Cmd+P is in VS Code. Here it is Cmd+O, since Cmd+P is Herdr's own "Go to…" for tabs. The listing is [ripgrep](https://github.com/BurntSushi/ripgrep)'s, which must be installed.
+
+- **Open:** Cmd+O, from a terminal or the editor. Cmd+O again or Escape closes it.
+- **The project:** the repository the focused pane is in, else its folder: the same files the [search panel](#project-search) searches. Dotfiles are listed; what git ignores is not.
+- **Type:** words in any order, each anywhere in the path. A word counts most in the file's name in one piece, then in its folders, then as letters in order: `gp main` finds `git-panel/main.js`. A word with a `/` is looked for in the whole path. The letters that matched in the name are marked.
+- **Go to a line:** end with `:12`, or `:12:5` for a column. `:12` alone is a line of the file the editor shows.
+- **Open a file:** Up and Down move, Enter opens the file in the [editor](#file-editor), or click it. The tab gets an editor pane when it has none.
+- **Lately:** with nothing typed the files opened from here come first, newest first, so Cmd+O and Enter goes back to the file before. Among equal results a file opened lately wins.
+
+The files are listed when the popup opens: a file made while it is open is not there until the next time. At most 20,000 files are listed. In a bigger project the popup asks the project's machine for the files that match, a moment after you stop typing.
+
+The keys are in `keys.json`: Cmd+O under `global`, and Up and Down under `mod:go-to-file > Input`.
+
 ## Git panel
 
 The repository the focused pane is in, in the panel on the right, in place of Herdr's Changes: the tab bar's Changes button opens it. It follows the pane you are in, on this Mac or another machine.
@@ -172,12 +188,13 @@ Built against Herdr 0.1.16. From a clone of this repository, this adds the mods 
 
 ```sh
 cp layouts/main-folders.json ~/.config/herdr-app/layouts/
-cp -R mods/space-folders mods/agents-unread mods/files-actions mods/file-editor mods/project-search mods/git-panel mods/git-diff ~/.config/herdr-app/mods/
+cp -R mods/space-folders mods/agents-unread mods/files-actions mods/file-editor mods/project-search mods/go-to-file mods/git-panel mods/git-diff ~/.config/herdr-app/mods/
 herdr-app check ~/.config/herdr-app/mods/space-folders
 herdr-app check ~/.config/herdr-app/mods/agents-unread
 herdr-app check ~/.config/herdr-app/mods/files-actions
 herdr-app check ~/.config/herdr-app/mods/file-editor
 herdr-app check ~/.config/herdr-app/mods/project-search
+herdr-app check ~/.config/herdr-app/mods/go-to-file
 herdr-app check ~/.config/herdr-app/mods/git-panel
 herdr-app check ~/.config/herdr-app/mods/git-diff
 herdr-app do layout.switch '{"name":"main-folders"}'
@@ -185,11 +202,11 @@ herdr-app do layout.switch '{"name":"main-folders"}'
 
 Your own layout stays as it was: `layout.switch` goes back to it, and deleting the copied files removes all of this.
 
-For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `global` section of your `keys.json`. For the editor's keys, copy the two `mod:file-editor` sections of this repository's `keys.json` into yours. For the search panel, copy the two `mod:project-search` sections, and `cmd-shift-f`, `f4` and `shift-f4` from `global`.
+For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `global` section of your `keys.json`. For the editor's keys, copy the two `mod:file-editor` sections of this repository's `keys.json` into yours. For the search panel, copy the two `mod:project-search` sections, and `cmd-shift-f`, `f4` and `shift-f4` from `global`. For going to a file, copy the `mod:go-to-file > Input` section and `cmd-o` from `global`.
 
 `git-panel` needs `git-diff`, which is what a click on a file opens, and both use `file-editor` for "open in the editor". Copy each mod's folder whole, `mod.json` included: a mod folder Herdr first sees without one is docked into the shown layout by itself.
 
-`files-actions` needs `file-editor`: it is what a click on a file opens. `project-search` needs `file-editor` too, and ripgrep. In a layout of your own it needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it.
+`files-actions` needs `file-editor`: it is what a click on a file opens. `project-search` needs `file-editor` too, and ripgrep; so does `go-to-file`, which is in no layout: its key opens it. In a layout of your own it needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it.
 
 For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "agents-unread" }` in the `agents` block, or `{ "mod": "files-actions" }` in the `files` block. Herdr's shipped layouts are read-only, so clone one first:
 
