@@ -184,7 +184,7 @@ Six commands can be bound in `keys.json`: `git-diff.next`, `git-diff.prev`, `git
 
 ## Install
 
-Built against Herdr 0.1.16. From a clone of this repository, this adds the mods and the layout that shows them:
+Built against Herdr 0.1.17. From a clone of this repository, this adds the mods and the layout that shows them:
 
 ```sh
 cp layouts/main-folders.json ~/.config/herdr-app/layouts/
