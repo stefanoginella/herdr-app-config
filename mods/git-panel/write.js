@@ -11,12 +11,13 @@ import { READ } from "./git.js";
 
 // Who can write, and with which model. The first is the default. A model's name is the
 // program's own: `claude --model`, `codex exec --model` (see `codex`'s list of models). Small,
-// quick models are enough for this, and the answer comes in seconds.
+// quick models are enough for this, and the answer comes in seconds. The write button shows
+// the tool's glyph (`claude.svg`, `codex.svg` in this folder), so a new tool needs one too.
 export const WRITERS = [
   { id: "claude:haiku", tool: "claude", model: "haiku", label: "Claude · Haiku" },
   { id: "claude:sonnet", tool: "claude", model: "sonnet", label: "Claude · Sonnet" },
   { id: "codex:gpt-6-luna", tool: "codex", model: "gpt-6-luna", label: "Codex · GPT-6 Luna" },
-  { id: "codex:gpt-6.2-sol", tool: "codex", model: "gpt-6.2-sol", label: "Codex · GPT-6.2 Sol" },
+  { id: "codex:gpt-6.1-terra", tool: "codex", model: "gpt-6.1-terra", label: "Codex · GPT-6.1 Terra" },
 ];
 export const writer = (id) => WRITERS.find((w) => w.id === id) ?? WRITERS[0];
 

@@ -29,6 +29,7 @@ const MOD = "git-panel";
 const DIFF = "git-diff", EDITOR = "file-editor";
 const ICON = (name) => `mods/${MOD}/${name}.svg`;
 const CHROME = (name) => `mods/workspace-chrome/${name}.svg`;
+const CLAUDE = "#d97757";
 
 // The graph: a row's height, a column's width, the room left of the first column, and the
 // most columns drawn (a wider history is drawn with its last columns on top of each other).
@@ -880,12 +881,14 @@ export default class GitPanel extends View {
           // Cmd+Enter, should the field pass it on instead of saying "submit".
           .on_key_down((e, cx) => { if (e.key === "enter" && e.modifiers?.platform) { this.commit(cx); cx.stop_propagation(); cx.notify(); } })
           .child(div().flex_1().min_w(0).py(3).child(Textarea.new(this.input).w_full().text_size(12).text_color(t.foreground)))
-          .child(h_flex().id("git-write").flex_none().size(24).items_center().justify_center().rounded(6).text_color(this.writing ? t.accent : total ? t.muted : t.dim)
+          // The sparkle, and the glyph of who writes: Claude's in its orange, Codex's in the text color.
+          .child(h_flex().id("git-write").flex_none().h(24).px(5).gap(3).items_center().justify_center().rounded(6).text_color(this.writing ? t.accent : total ? t.muted : t.dim)
             .tooltip(this.writing ? `${who.label} is writing…` : `Write the message with ${who.label}. Right-click to choose who writes`)
             .when(Boolean(total) && !this.writing, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)))
             .on_click((_e, cx) => { cx.stop_propagation(); this.generate(cx); cx.notify(); })
             .on_mouse_down("right", () => this.menu({ kind: "writer", writers: write.WRITERS.map((w) => ({ id: w.id, label: w.label })), writer: who.id }))
-            .child(this.writing ? svg(CHROME("spinner")).size(13).spin(900) : svg(ICON("write")).size(13))))
+            .child(this.writing ? svg(CHROME("spinner")).size(13).spin(900) : svg(ICON("write")).size(13))
+            .child(svg(ICON(who.tool)).size(11).flex_none().when(who.tool === "claude", (e) => e.text_color(CLAUDE)))))
         .child(div().id("git-commit").h(32).px(12).flex().flex_none().items_center().rounded(8).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12)
           .tooltip("Commit (Cmd+Enter in the message)")
           .when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => { this.commit(cx); cx.notify(); })
