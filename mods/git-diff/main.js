@@ -21,6 +21,8 @@ import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, setting
 import * as diff from "./diff.js";
 
 const MOD = "git-diff";
+// The pane's name: a mod pane's own title is its folder's name.
+const TITLE = "Git Diff Viewer";
 const OPEN = `${MOD}.open`;
 const EDITOR = "file-editor";
 const ICON = (name) => `mods/${MOD}/${name}.svg`;
@@ -369,6 +371,16 @@ export default class GitDiff extends View {
     else run("pane.split", { pane: me.pane, direction: "down", mod: EDITOR, props: { tab: this.tab } });
   }
 
+  // Names the pane TITLE, once, when it has no name: a name someone gave it stays. From render(),
+  // so a step later (a command is not run inside the draw).
+  title(cx) {
+    if (this.titled || !this.tab || checking()) return;
+    const me = panes().find((p) => p.mod === MOD && p.tab === this.tab);
+    if (!me) return;
+    this.titled = true;
+    if (!me.name) cx.spawn(async () => { await null; run("pane.rename", { pane: me.pane, name: TITLE }); });
+  }
+
   // What the Git panel left in shared state, for this tab's pane.
   requests(cx) {
     const o = shared(OPEN);
@@ -523,6 +535,7 @@ export default class GitDiff extends View {
 
   render(cx) {
     fit();
+    this.title(cx);
     for (const [name, value] of Object.entries(this.pending)) localStorage.setItem(name, value);
     this.pending = {};
     this.requests(cx);

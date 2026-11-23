@@ -34,6 +34,8 @@ import * as remote from "./remote.js";
 import * as fieldKeys from "./fieldkeys.js";
 
 const MOD = "file-editor";
+// The pane's name while it shows no file.
+const TITLE = "File Editor";
 const OPEN = "file-editor.open", MOVED = "file-editor.moved", SHOWN = "file-editor.shown";
 // The Search panel (`project-search`), and what it reads in shared state (its header).
 const SEARCH = "project-search", ASK = "project-search.ask";
@@ -602,14 +604,15 @@ export default class FileEditor extends View {
     cx.spawn(async () => { const d = this.doc(); this.told = d?.id ?? ""; this.say(d); await null; this.name(d); });
   }
 
-  // The pane is named after the file it shows (its header says so), unless someone named it
-  // otherwise: a name that is neither the last this copy gave nor an open file's is left alone.
-  // Herdr keeps the name with the tab, so after a restart it is an open file's.
+  // The pane is named after the file it shows (its header says so), and TITLE with none: a mod
+  // pane's own title is its folder's name. A name someone gave it is left alone: one that is
+  // none of TITLE, the last this copy gave and an open file's. Herdr keeps the name with the tab,
+  // so after a restart it is one of those.
   name(d) {
     const me = panes().find(p => p.mod === MOD && p.tab === this.tab);
     if (!me) return;
-    const want = d?.name ?? "", has = me.name ?? "";
-    const ours = !has || has === this.named || this.docs.some(o => o.name === has);
+    const want = d?.name ?? TITLE, has = me.name ?? "";
+    const ours = !has || has === TITLE || has === this.named || this.docs.some(o => o.name === has);
     if (has === want || !ours) return;
     this.named = want;
     run("pane.rename", { pane: me.pane, name: want });
