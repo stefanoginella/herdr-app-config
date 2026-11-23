@@ -21,8 +21,9 @@ import Menu, { naming } from "./menu.js";
 import Naming from "./naming.js";
 
 const MOD = "space-folders";
-// A space's id says its machine: "<machine>/<id>" away, bare here.
-const machineOf = (id) => (id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : null);
+const machineOf = model.machineOf;
+// The machine new folders go on when nothing else says: the shown space's.
+const here = () => spaces().find((s) => s.active)?.machine ?? null;
 // A closed space leaves the folders once its machine's layout has been readable this long:
 // while a layout loads, its spaces aren't gone, only not listed yet.
 const QUIET = 5000;
@@ -355,7 +356,7 @@ export default class Spaces extends View {
 
   // Key commands, e.g. "cmd-shift-n": "space-folders.new-folder" in keys.json.
   command(name) {
-    if (name === "new-folder") naming({ title: "New folder" });
+    if (name === "new-folder") naming({ title: "New folder", on: here() });
     else if (name === "fold-all" || name === "unfold-all") this.change((m) => model.folders(m).forEach((f) => model.setFolded(m, f.id, name === "fold-all")));
   }
 
@@ -406,8 +407,7 @@ export default class Spaces extends View {
         continue;
       }
       const main = nested(r) ? list.find((o) => o.g && !o.g.linked && o.g.repo === r.g.repo && model.has(m, o.w.id)) : null;
-      if (main) model.moveSpace(m, r.w.id, { folder: model.folderOf(m, main.w.id)?.id ?? null, after: main.w.id });
-      else model.admit(m, r.w.id, keys[r.w.id], now);
+      if (!main || !model.moveSpace(m, r.w.id, { folder: model.folderOf(m, main.w.id)?.id ?? null, after: main.w.id })) model.admit(m, r.w.id, keys[r.w.id], now);
     }
     // A loose space that went into a filed project (a cd) joins that project's folder. Only a change
     // seen while this runs counts: after a restart, spaces stay where they were left.
@@ -492,7 +492,7 @@ export default class Spaces extends View {
   }
 
   // One machine's part of the sidebar (`only`; all of it when there is one machine): its loose
-  // spaces, and each folder with its spaces there. A folder with no spaces shows on this computer.
+  // spaces, and its own folders. With one machine, that is this computer's folders.
   // Returns [{ el, reveal }]: `reveal` marks what to bring into view for the active space.
   section(top, t, collapsed, only) {
     const mine = (n) => this.shown.has(n.r.w.id) && (only === undefined || (n.r.w.machine ?? null) === only);
@@ -511,8 +511,8 @@ export default class Spaces extends View {
         if (mine(e)) block(e, null, false);
         continue;
       }
+      if (e.f.on !== (only ?? null)) continue;
       const members = e.members.filter(mine);
-      if (only !== undefined && !members.length && !(only === null && !e.members.length)) continue;
       const inside = members.flatMap((n) => [n.r.w, ...n.kids.map((k) => k.w)]);
       out.push({ el: this.folderRow(e.f, inside, t, collapsed), reveal: e.f.folded && inside.some((w) => w.active) });
       if (e.f.folded) continue;
@@ -556,7 +556,7 @@ export default class Spaces extends View {
       const folded = this.folded.has(m);
       const icon = svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none();
       const badge = div().absolute().right(-3).bottom(-2).size(6).rounded(3).border_1().border_color(t.chrome).bg(connected ? t.ansi2 : t.dim);
-      const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
+      const head = h_flex().id(`machine-${m ?? "local"}`).on_mouse_down("right", () => this.menu("root", { machine: m })).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
         .when(collapsed, el => el.mt(4).w(RAIL_CELL).justify_center().rounded(6).tooltip(login ? `${m} needs a login: run ${login}. Click for Copy.` : m ? `${m} · ${connected ? "connected" : (machine?.state ?? "asleep").replace(/_/g, " ")}` : "This computer"))
         .cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => {
@@ -708,7 +708,7 @@ export default class Spaces extends View {
       .when(aimed && o.pos === "before", (el) => el.child(this.line(t, "top", 0)))
       .when(aimed && o.pos === "after" && f.folded, (el) => el.child(this.line(t, "bottom", 0)))
       .on_mouse_down("left", () => {
-        this.drag = { kind: "folder", id: f.id };
+        this.drag = { kind: "folder", id: f.id, on: f.on };
         this.over = null;
       })
       .on_mouse_move((e, cx) => {
@@ -716,7 +716,9 @@ export default class Spaces extends View {
         if (!d) return;
         const y = e.local_position?.y ?? 0, h = e.bounds?.height ?? 0;
         let next = null;
-        if (d.kind === "folder") {
+        // Only among one machine's folders, and only that machine's spaces go in.
+        if (d.on !== f.on) next = null;
+        else if (d.kind === "folder") {
           if (d.id !== f.id) next = { on: "folder", id: f.id, pos: y < h / 2 ? "before" : "after" };
         } else if (!d.fixed) next = { on: "folder", id: f.id, pos: y < BEFORE_ZONE ? "before" : "into" };
         this.aim(next, cx);
@@ -751,7 +753,8 @@ export default class Spaces extends View {
       .on_mouse_move((_e, cx) => {
         const d = this.drag;
         if (!d) return;
-        if (d.kind === "folder") this.aim(d.id === f.id ? null : { on: "folder", id: f.id, pos: "after" }, cx);
+        if (d.on !== f.on) this.aim(null, cx);
+        else if (d.kind === "folder") this.aim(d.id === f.id ? null : { on: "folder", id: f.id, pos: "after" }, cx);
         else this.aim(d.fixed ? null : { on: "folder", id: f.id, pos: "into" }, cx);
       })
       .on_mouse_up("left", (_e, cx) => this.release(cx))
@@ -803,7 +806,7 @@ export default class Spaces extends View {
       .when(o?.on === "folder" && o.pos === "after" && at.closes && o.id === at.folder, (el) => el.child(this.line(t, "bottom", 0)))
       .on_mouse_down("left", () => {
         // A worktree row stays under its repo's space: it's clicked, never dragged.
-        this.drag = { kind: "space", id: at.node, kids: at.kids, fixed: Boolean(tree), row: w.id };
+        this.drag = { kind: "space", id: at.node, kids: at.kids, fixed: Boolean(tree), row: w.id, on: w.machine ?? null };
         this.over = null;
       })
       .on_mouse_move((e, cx) => {
@@ -812,14 +815,13 @@ export default class Spaces extends View {
         const upper = (e.local_position?.y ?? 0) < (e.bounds?.height ?? 0) / 2;
         const pos = at.first && upper ? "before" : "after";
         let next = null;
-        if (d.kind === "folder") {
+        // Only within the machine's own part of the sidebar.
+        if (d.on !== (w.machine ?? null)) next = null;
+        else if (d.kind === "folder") {
           // Over a loose space: beside it. Over another folder's spaces: after that folder.
           if (!at.folder) next = { on: "space", id: at.node, folder: null, pos };
           else if (at.folder !== d.id) next = { on: "folder", id: at.folder, pos: "after" };
-        } else if (!d.fixed && d.id !== at.node) {
-          const source = spaces().find((s) => s.id === d.id);
-          if (source && (source.machine ?? null) === (w.machine ?? null)) next = { on: "space", id: at.node, folder: at.folder, pos };
-        }
+        } else if (!d.fixed && d.id !== at.node) next = { on: "space", id: at.node, folder: at.folder, pos };
         this.aim(next, cx);
       })
       .on_mouse_up("left", (_e, cx) => this.release(cx, (d) => { if (d.row === w.id) run("space.select", { id: w.id }); }))
@@ -887,7 +889,7 @@ export default class Spaces extends View {
         .when(collapsed, el => el.pl(0).pr(0).justify_center())
         .when(!collapsed, el => el.child(div().flex_1().child("Spaces"))
           .child(div().id("folder-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
-            .tooltip("New folder").on_click(() => naming({ title: "New folder" })).child(svg("mods/workspace-chrome/folder-plus.svg").size(14))))
+            .tooltip("New folder").on_click(() => naming({ title: "New folder", on: here() })).child(svg("mods/workspace-chrome/folder-plus.svg").size(14))))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
       .child(v_flex().id("spaces-list").flex_1().min_h(0).px(collapsed ? 0 : 8).pb(4).overflow_y_scrollbar().mode("always").track_scroll(this.scroll)

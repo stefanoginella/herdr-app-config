@@ -2,12 +2,13 @@
 //   "space":  Herdr's own space items, opening its project in an editor, and moving it between
 //             folders. target { id, git, nested, kids, open: { folder, vault } | null }
 //   "folder": new space here, rename, remove. target { id }
-//   "root":   new folder, new space.
+//   "root":   new folder, new space, on target { machine? } (else the shown space's machine).
+// Folders are per machine: a space moves only among its own machine's folders.
 // ↑/↓ move, Enter runs, Esc closes. Drawn like Herdr's own menu.
 
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { run, props, closeOverlay, openOverlay, theme, keys } from "herdr";
+import { run, props, closeOverlay, openOverlay, theme, keys, spaces } from "herdr";
 import * as model from "./model.js";
 import * as opening from "./open.js";
 
@@ -57,7 +58,7 @@ function rows(p) {
       // A worktree space drawn under its repo's goes where that one goes.
       ...(tg.nested ? [] : [
         { section: "Move to", rule: true },
-        ...model.folders(m).filter((f) => f.id !== at?.id).map((f) => ({ label: f.name, icon: "folder", many: true, act: move({ folder: f.id }) })),
+        ...model.foldersOn(m, model.machineOf(tg.id)).filter((f) => f.id !== at?.id).map((f) => ({ label: f.name, icon: "folder", many: true, act: move({ folder: f.id }) })),
         ...(at ? [{ label: "Out of folder", icon: "minus", act: move({ folder: null, after: at.id }) }] : []),
         { label: "New folder…", icon: "folder-plus", act: () => naming({ title: "New folder", around: tg.id, ...opts }) },
       ]),
@@ -68,14 +69,15 @@ function rows(p) {
     const f = model.folder(m, tg.id);
     if (!f) return [];
     return [
-      { label: "New space here", icon: "plus", act: () => { change((m) => model.expect(m, f.id, Date.now())); run("space.new"); } },
+      { label: "New space here", icon: "plus", act: () => { change((m) => model.expect(m, f.id, Date.now())); run("space.new", { machine: f.on ?? "" }); } },
       { label: "Rename", icon: "square-pen", act: () => naming({ title: "Rename folder", folder: f.id, value: f.name }) },
       { label: "Remove folder", icon: "x", rule: true, hint: f.spaces.length ? "spaces stay" : "", act: () => change((m) => model.removeFolder(m, f.id)) },
     ];
   }
+  const on = tg.machine !== undefined ? tg.machine : spaces().find((s) => s.active)?.machine ?? null;
   return [
-    { label: "New folder", icon: "folder-plus", act: () => naming({ title: "New folder" }) },
-    { label: "New space", icon: "plus", hint: shortcut("space.new"), act: () => run("space.new") },
+    { label: "New folder", icon: "folder-plus", hint: on ?? "", act: () => naming({ title: on ? `New folder on ${on}` : "New folder", on }) },
+    { label: "New space", icon: "plus", hint: shortcut("space.new"), act: () => run("space.new", { machine: on ?? "" }) },
   ];
 }
 

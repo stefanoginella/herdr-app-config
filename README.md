@@ -25,7 +25,9 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 
 Groups spaces into named folders in the sidebar. Folders are one level deep, and a space doesn't need one: it can stay at the root.
 
-- **Add a folder:** the folder button next to `+` in the Spaces header, or right-click the header or the empty area under the list.
+Each machine has folders of its own, drawn under its header, and a folder holds only that machine's spaces.
+
+- **Add a folder:** the folder button next to `+` in the Spaces header, or right-click the header or the empty area under the list: the folder goes on the machine of the space shown. Right-click a machine's header for a folder on that machine.
 - **Move a space:** drag it onto a folder to put it in, onto a row to place it before or after that row, or under the list to take it out of every folder. Or right-click it: Move to, Out of folder, New folder.
 - **Move a folder:** drag its header.
 - **Rename or remove a folder:** right-click it. Removing a folder leaves its spaces at the root. Nothing is closed.

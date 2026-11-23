@@ -15,7 +15,8 @@ Everything not listed here is Herdr's and is replaced on every start.
   - `main.js`: the sidebar. `arrange()` reconciles the model with the open spaces and syncs the real space order to it with `space.move`; `section()` draws; `row()`, `folderRow()`, `emptyRow()` and `tail()` carry the drag-and-drop handlers.
   - `model.js`: the folder state and every change to it. Always `load()`, change the copy, `save()`.
   - `menu.js`: the right-click menus (space, folder, root). `naming.js`: the new/rename dialog. The mod opens itself for both, with `props().menu` or `props().naming`.
-  - State lives in shared `space.folders`: `{ root: [spaceId | { id, name, folded, spaces }], projects: { projectKey: folderId }, next }`.
+  - State lives in shared `space.folders`: `{ root: [spaceId | { id, name, folded, on, spaces }], projects: { projectKey: folderId }, next }`.
+  - Folders are per machine: `on` is the folder's machine (null for this computer), and it holds only that machine's spaces. `model.moveSpace()` and `admit()` refuse a folder of another machine, a drag only aims within one machine's part, and `section()` draws a machine's own folders under its header. New folders go on the shown space's machine, or the machine whose header was right-clicked. `load()` splits a folder holding several machines' spaces (and one from before `on`) into one per machine (`<id>~<machine>`), and `save()` writes that once.
   - `open.js`: opening a space's project in VS Code or Obsidian, from the space menu. The menu leaves a request in shared `space-folders.open`; the sidebar takes it and runs it.
   - Key commands: `space-folders.new-folder`, `space-folders.fold-all`, `space-folders.unfold-all`. None is bound.
 

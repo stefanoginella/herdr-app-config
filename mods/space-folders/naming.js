@@ -1,6 +1,6 @@
 // Names a folder: a new one (optionally around a space), or one being renamed. Opened as a dialog
 // with props { naming: { title, value?, folder? (rename it), around? (a space to put in the new one),
-// kids?, keys? } }. Enter saves, Esc cancels. Drawn like Herdr's own prompt.
+// kids?, keys?, on? (the new one's machine; around a space, that space's) } }. Enter saves, Esc cancels. Drawn like Herdr's own prompt.
 
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
@@ -32,7 +32,8 @@ export default class Naming {
     else {
       // Around a space: the folder appears where that space was.
       const from = n.around ? model.folderOf(m, n.around) : null;
-      const id = model.addFolder(m, name, !n.around ? { start: true } : from ? { after: from.id } : { before: n.around });
+      const on = n.around ? model.machineOf(n.around) : n.on ?? null;
+      const id = model.addFolder(m, name, !n.around ? { start: true } : from ? { after: from.id } : { before: n.around }, on);
       if (n.around) model.file(m, n.around, { folder: id }, { kids: n.kids ?? [], keys: n.keys ?? {} });
     }
     model.save(m);

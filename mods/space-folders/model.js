@@ -1,8 +1,12 @@
 // Folders for the spaces sidebar: one level deep, kept in shared "space.folders":
 //
-//   { root:     [ spaceId | { id, name, folded, spaces: [spaceId] } ],   the sidebar, top to bottom
+//   { root:     [ spaceId | { id, name, folded, on, spaces: [spaceId] } ],   the sidebar, top to bottom
 //     projects: { projectKey: folderId },   where a project was filed, for the next space opened on it
 //     next:     { folder, at } | null }     "New space here": the folder waiting for the next new space
+//
+// A folder belongs to one machine (`on`: its name, null for this computer) and holds only that
+// machine's spaces, so each machine has folders of its own. The root list holds every machine's
+// entries; the sidebar draws each machine's part under its header.
 //
 // The sidebar, its menu and its naming dialog all change it through these functions:
 // load(), change the copy, save().
@@ -15,12 +19,21 @@ const NEXT_MS = 30000;
 
 const isFolder = (e) => e !== null && typeof e === "object";
 const ref = (e) => (isFolder(e) ? e.id : e);
+// A space's id says its machine: "<machine>/<id>" away, bare here.
+export const machineOf = (id) => (id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : null);
+const machineName = (v) => (typeof v === "string" && v !== "" ? v : null);
+// The machine a project key is for: its value is a JSON [machine, path] after "repo:" or "dir:".
+function keyMachine(key) {
+  try { return machineName(JSON.parse(key.slice(key.indexOf(":") + 1))[0]); } catch { return undefined; }
+}
 
 export function clean(name) {
   return String(name ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
 }
 
-// A copy of the stored model, repaired: anything malformed is dropped, a space listed twice stays where it's first.
+// A copy of the stored model, repaired: anything malformed is dropped, a space listed twice stays where
+// it's first. A folder holding another machine's spaces gives them to a folder of the same name on that
+// machine, right after it: that is also how folders from before `on` existed are split.
 export function load() {
   const raw = shared(KEY);
   const spacesSeen = new Set();
@@ -31,12 +44,31 @@ export function load() {
     if (typeof e === "string") {
       if (own(e)) root.push(e);
     } else if (isFolder(e) && typeof e.id === "string" && e.id !== "" && !ids.has(e.id)) {
-      ids.add(e.id);
-      root.push({ id: e.id, name: clean(e.name) || "Folder", folded: Boolean(e.folded), spaces: (Array.isArray(e.spaces) ? e.spaces : []).filter(own) });
+      const spaces = (Array.isArray(e.spaces) ? e.spaces : []).filter(own);
+      const on = "on" in e ? machineName(e.on) : spaces.length ? machineOf(spaces[0]) : null;
+      const name = clean(e.name) || "Folder";
+      const split = new Map([[on, { id: e.id, name, folded: Boolean(e.folded), on, spaces: [] }]]);
+      for (const s of spaces) {
+        const at = machineOf(s);
+        if (!split.has(at)) split.set(at, { id: `${e.id}~${at ?? "local"}`, name, folded: Boolean(e.folded), on: at, spaces: [] });
+        split.get(at).spaces.push(s);
+      }
+      for (const f of split.values()) if (!ids.has(f.id)) {
+        ids.add(f.id);
+        root.push(f);
+      }
     }
   }
   const projects = {};
-  if (isFolder(raw?.projects)) for (const [k, v] of Object.entries(raw.projects)) if (ids.has(v)) projects[k] = v;
+  const byId = new Map(root.filter(isFolder).map((f) => [f.id, f]));
+  if (isFolder(raw?.projects)) for (const [k, v] of Object.entries(raw.projects)) {
+    const f = byId.get(v);
+    const on = keyMachine(k);
+    if (!f || on === undefined) continue;
+    // A project of another machine than its folder's: the split folder of the same name there.
+    const there = f.on === on ? f : byId.get(`${v}~${on ?? "local"}`);
+    if (there) projects[k] = there.id;
+  }
   const next = isFolder(raw?.next) && ids.has(raw.next.folder) ? { folder: raw.next.folder, at: Number(raw.next.at) || 0 } : null;
   return { root, projects, next };
 }
@@ -44,20 +76,24 @@ export function load() {
 // The same text for the same model, however the store orders an object's keys.
 export function canon(m) {
   return JSON.stringify([
-    m.root.map((e) => (isFolder(e) ? [e.id, e.name, e.folded, e.spaces] : e)),
+    m.root.map((e) => (isFolder(e) ? [e.id, e.name, e.folded, e.on, e.spaces] : e)),
     Object.entries(m.projects).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
     m.next ? [m.next.folder, m.next.at] : null,
   ]);
 }
 
-// Writes only a real change: every write redraws every mod.
+// Writes only a real change: every write redraws every mod. A store from before `on` is written once,
+// so the machines worked out for its folders stay theirs.
 export function save(m) {
-  if (canon(m) === canon(load())) return false;
+  const old = (shared(KEY)?.root ?? []).some((e) => isFolder(e) && !("on" in e));
+  if (!old && canon(m) === canon(load())) return false;
   setShared(KEY, m);
   return true;
 }
 
 export const folders = (m) => m.root.filter(isFolder);
+// The folders of one machine (null: this computer).
+export const foldersOn = (m, on) => folders(m).filter((f) => f.on === (on ?? null));
 export const folder = (m, id) => m.root.find((e) => isFolder(e) && e.id === id) ?? null;
 export const folderOf = (m, space) => m.root.find((e) => isFolder(e) && e.spaces.includes(space)) ?? null;
 export const has = (m, space) => m.root.includes(space) || Boolean(folderOf(m, space));
@@ -79,10 +115,11 @@ function slot(list, { start, before, after }) {
   return list.length;
 }
 
-// Puts a space at dest: { folder: id | null (the root), start | before | after }.
+// Puts a space at dest: { folder: id | null (the root), start | before | after }. A folder of another
+// machine than the space's is refused.
 export function moveSpace(m, space, dest = {}) {
   const f = dest.folder ? folder(m, dest.folder) : null;
-  if (dest.folder && !f) return false;
+  if (dest.folder && (!f || f.on !== machineOf(space))) return false;
   take(m, space);
   const list = f ? f.spaces : m.root;
   list.splice(slot(list, dest), 0, space);
@@ -117,12 +154,16 @@ export function file(m, space, dest, { kids = [], keys = {} } = {}) {
 }
 
 // A space the model hasn't seen: into the folder waiting for it ("New space here"), else the folder
-// its project was filed in, else the end of the root.
+// its project was filed in, else the end of the root. Only a folder of the space's own machine.
 export function admit(m, space, key, now) {
   if (has(m, space)) return false;
-  const waiting = m.next && now - m.next.at < NEXT_MS ? folder(m, m.next.folder) : null;
-  m.next = null;
-  const f = waiting ?? (key ? folder(m, m.projects[key]) : null);
+  const on = machineOf(space);
+  const mine = (f) => (f && f.on === on ? f : null);
+  const due = m.next && now - m.next.at < NEXT_MS ? folder(m, m.next.folder) : null;
+  const waiting = mine(due);
+  // A waiting folder of another machine keeps waiting for a space there.
+  if (!due || waiting) m.next = null;
+  const f = waiting ?? (key ? mine(folder(m, m.projects[key])) : null);
   (f ? f.spaces : m.root).push(space);
   if (waiting && key) m.projects[key] ??= waiting.id;
   return true;
@@ -134,8 +175,9 @@ export function prune(m, gone) {
   for (const f of folders(m)) f.spaces = f.spaces.filter((s) => !gone(s));
 }
 
-export function addFolder(m, name, dest = { start: true }) {
-  const f = { id: `fd${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, name: clean(name) || "Folder", folded: false, spaces: [] };
+// A new folder on machine `on` (null: this computer).
+export function addFolder(m, name, dest = { start: true }, on = null) {
+  const f = { id: `fd${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, name: clean(name) || "Folder", folded: false, on: machineName(on), spaces: [] };
   m.root.splice(slot(m.root, dest), 0, f);
   return f.id;
 }
