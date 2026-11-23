@@ -430,6 +430,12 @@ export default class FileEditor extends View {
     this.store();
   }
 
+  // The rendered page has no selection to show a match by, nor a way to scroll to one: finding
+  // goes back to the text, as a result of the Search panel does (reveal()).
+  unpreview(d) {
+    if (d?.preview) { d.preview = false; this.store(); }
+  }
+
   // Finds the query again in the file shown. `reveal`: go to the first match from the cursor on.
   search(reveal) {
     const f = this.find, d = this.doc();
@@ -437,7 +443,8 @@ export default class FileEditor extends View {
     f.matches = r.matches; f.error = r.error ?? null;
     const sel = d?.state ? d.state.selected_range() : { start: 0, end: 0 };
     f.at = f.matches.findIndex(m => same(m, sel));
-    if (reveal && f.matches.length && d && !d.preview) {
+    if (reveal && f.matches.length && d) {
+      this.unpreview(d);
       const from = f.at >= 0 ? f.at : f.matches.findIndex(m => m.start >= sel.start);
       f.at = from < 0 ? 0 : from;
       d.state.set_selected_range(f.matches[f.at]);
@@ -447,7 +454,8 @@ export default class FileEditor extends View {
   // To the next match (`by` 1) or the one before (-1), from the cursor, going round.
   step(by) {
     const f = this.find, d = this.doc(), n = f.matches.length;
-    if (!d?.state || d.preview || !n) return;
+    if (!d?.state || !n) return;
+    this.unpreview(d);
     const sel = d.state.selected_range();
     let at = f.matches.findIndex(m => same(m, sel));
     if (at >= 0) at = (at + by + n) % n;
@@ -460,7 +468,8 @@ export default class FileEditor extends View {
   // The keyboard goes to the text, with the current match selected: there it shows.
   goTo() {
     const f = this.find, d = this.doc();
-    if (!d?.state || d.preview) return;
+    if (!d?.state) return;
+    this.unpreview(d);
     if (f.at >= 0 && f.matches[f.at]) d.state.set_selected_range(f.matches[f.at]);
     d.state.focus();
   }
@@ -491,6 +500,7 @@ export default class FileEditor extends View {
 
   openFind(replacing) {
     const f = this.find, d = this.doc();
+    this.unpreview(d);
     f.open = true;
     if (replacing) f.replacing = true;
     // What is selected, on one line, is what is looked for.
