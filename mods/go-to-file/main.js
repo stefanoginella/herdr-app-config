@@ -22,6 +22,7 @@ import { v_flex, h_flex, InputState, Input, ScrollHandle } from "gpui-base";
 import { spaces, panes, focused, theme, props, closeOverlay, run, shared, setShared, nextCommand, checking } from "herdr";
 import * as match from "./match.js";
 import * as ops from "./ops.js";
+import * as fieldKeys from "./fieldkeys.js";
 
 // The mod that shows a file, one pane a tab, and what it reads in shared state (its header).
 const EDITOR = "file-editor";
@@ -54,6 +55,8 @@ export default class GoToFile extends View {
     this.input.on("submit", () => this.pick(this.rows[this.at]));
     this.scroll = ScrollHandle.new();
     this.handle = cx.focus_handle();
+    // Up and Down in the field (keys.json, `mod:go-to-file > Input`): see fieldkeys.js.
+    fieldKeys.bind("go-to-file", cx);
     if (typeof p.query === "string") this.input.set_value(p.query);
     if (!this.pin) {
       this.input.focus();
@@ -239,7 +242,8 @@ export default class GoToFile extends View {
       .when(r.late, (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child("recent")));
   }
 
-  render() {
+  render(cx) {
+    fieldKeys.watch("go-to-file", cx);
     const t = theme(), rows = this.rows, q = match.parse(this.input.value());
     this.at = Math.max(0, Math.min(this.at, rows.length - 1));
     const name = this.root ? `${this.root.split("/").pop() || this.root}${this.on ? ` on ${this.on}` : ""}` : "";

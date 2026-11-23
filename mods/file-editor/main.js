@@ -31,6 +31,7 @@ import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, set
 import * as edit from "./edit.js";
 import * as diff from "./diff.js";
 import * as remote from "./remote.js";
+import * as fieldKeys from "./fieldkeys.js";
 
 const MOD = "file-editor";
 const OPEN = "file-editor.open", MOVED = "file-editor.moved", SHOWN = "file-editor.shown";
@@ -91,6 +92,8 @@ export default class FileEditor extends View {
     // The pane's own place for the keyboard, for when no text can take it (the preview, no
     // file): the keys in `mod:file-editor` count only while the keyboard is in this pane.
     this.handle = cx.focus_handle();
+    // Cmd+F and Cmd+Shift+F in the text (keys.json, `mod:file-editor > Input`): see fieldkeys.js.
+    fieldKeys.bind(MOD, cx);
     this.find = { open: false, replacing: false, cs: false, regex: false, matches: [], at: -1, error: null, focused: null };
     this.query = InputState.new({ placeholder: "Find" });
     this.to = InputState.new({ placeholder: "Replace" });
@@ -767,6 +770,7 @@ export default class FileEditor extends View {
   }
 
   render(cx) {
+    fieldKeys.watch(MOD, cx);
     this.requests(cx);
     this.arrived(cx);
     this.tell(cx);

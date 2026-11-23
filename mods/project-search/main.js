@@ -28,6 +28,7 @@ import Menu from "./menu.js";
 import Confirm from "./confirm.js";
 import * as search from "./search.js";
 import * as ops from "./ops.js";
+import * as fieldKeys from "./fieldkeys.js";
 
 const MOD = "project-search";
 // The mod that shows a file, one pane a tab, and what it reads in shared state (its header).
@@ -66,6 +67,8 @@ const fileKey = (path) => `\n${path}`;
 export default class ProjectSearch extends View {
   init(_props, cx) {
     const p = props();
+    // Down, Tab and Shift+Tab in the fields (keys.json, `mod:project-search > Input`): see fieldkeys.js.
+    fieldKeys.bind(MOD, cx);
     // Opened by itself as a popup or a dialog: a result's menu, the Replace All question.
     const Other = p?.menu ? Menu : p?.confirm ? Confirm : null;
     if (Other) {
@@ -749,6 +752,7 @@ export default class ProjectSearch extends View {
   }
 
   render(cx) {
+    fieldKeys.watch(MOD, cx);
     if (this.other) return this.other.render(cx);
     if (this.keysOnly) return div();
     this.place(cx);
