@@ -43,6 +43,9 @@ const WORK = "WORK";
 const PAGE = 1000, MOST = 10000;
 // Files listed for one commit, and uncommitted files drawn in one list.
 const FILES = 300;
+// The lower half's height, as a share of the panel's (`split`, dragged on the line above it,
+// kept; null: SPLIT). Neither half is ever shorter than SPLIT_LEAST.
+const SPLIT = 0.42, SPLIT_LEAST = 120;
 // How often the timer looks (it does nothing unless something is due), and when a look is due
 // with no word from the folder watch: on this machine, and on another, which has no watch.
 const TICK = 1500, HERE_EVERY = 15000, THERE_EVERY = 8000;
@@ -55,6 +58,10 @@ const NOTE_FOR = 5000;
 // down. A WordPress theme is four down (wordpress/wp-content/themes/<name>): at 4 a project
 // folder that is no repository itself, with its only ones there, showed none.
 const DEPTH = 6, SURVEY_EVERY = 300000;
+// With several repositories, how each one stands (branch, changes, ahead, behind) is read this
+// often, and not sooner than ten times as long as the last round took; for the first PEEK_MOST
+// of them, PEEK_AT_ONCE at a time. Up to STRIP_MOST are shown as a strip under the header.
+const PEEK_EVERY = 30000, PEEK_MOST = 12, PEEK_AT_ONCE = 4, STRIP_MOST = 6;
 // No request runs longer than this (ops.js waits two minutes for the network). One still
 // marked as running after it was cut off (the mod was reloaded under it), and is let go.
 const BUSY_MOST = 135000;
@@ -74,6 +81,8 @@ function unwrap(text) {
   }
   return out.join("\n");
 }
+// How a repository stands, from its status: { branch, changes (files), ahead, behind }.
+const stands = (st) => ({ branch: st.branch, changes: new Set([...st.staged, ...st.unstaged].map((f) => f.path)).size, ahead: st.ahead, behind: st.behind });
 const markColor = (t, mark) => (mark === "A" || mark === "U" ? t.ansi2 : mark === "D" || mark === "!" ? t.ansi1 : t.blocked);
 const checkColor = (t, state) => (state === "fail" ? t.ansi1 : state === "running" ? t.blocked : t.ansi2);
 
@@ -135,6 +144,8 @@ export default class GitPanel extends View {
     // { folder's key: top folder }. And who writes commit messages.
     try { this.choice = JSON.parse(localStorage.getItem("choice") ?? "{}") ?? {}; } catch { this.choice = {}; }
     this.writer = write.writer(localStorage.getItem("writer")).id;
+    const split = Number(localStorage.getItem("split"));
+    this.split = split > 0 && split < 1 ? split : null;
     this.surveys = new Map();
     this.bad = new Set();
     this.message = "";
@@ -186,7 +197,7 @@ export default class GitPanel extends View {
     this.stats = { staged: {}, unstaged: {} };
     this.commits = []; this.rows = []; this.width = 1; this.index = new Map(); this.pills = new Map();
     this.limit = PAGE; this.more = false; this.paged = null; this.stamp = null;
-    this.sel = null; this.details = new Map(); this.empty = null;
+    this.sel = null; this.details = new Map(); this.empty = null; this.offer = null;
     this.error = null; this.note = null; this.busy = null; this.stale = true; this.last = 0;
     this.turn = (this.turn ?? 0) + 1;
     this.hub = null; this.hubAt = 0; this.hubRoot = null;
@@ -218,6 +229,7 @@ export default class GitPanel extends View {
     // work changes files all the time, and the reads would run back to back.
     if (now - this.last < this.cost * 4) return;
     if (this.stale || now - this.last > (this.on ? THERE_EVERY : HERE_EVERY)) this.refresh(cx);
+    this.peek(now, cx);
     if (this.root && now - this.hubAt > (!this.hub?.repo ? HUB_AGAIN : this.hub.running ? HUB_RUNNING : HUB_EVERY)) this.readHub(cx);
     if (this.note && !this.note.error && now - this.note.at > NOTE_FOR) { this.note = null; cx.notify(); }
   }
@@ -307,7 +319,8 @@ export default class GitPanel extends View {
       this.stamp = stamp;
     }
     // What was selected may be gone: a commit rewritten, the last change committed.
-    if (this.sel?.kind === "work" && !dirty) this.sel = null;
+    if (this.offer && this.offer.branch !== st.branch) this.offer = null;
+    if (this.sel?.kind === "work" && !dirty && !this.offer) this.sel = null;
     if (this.sel?.kind === "commit" && !this.index.has(this.sel.sha)) this.sel = null;
     if (this.sel?.kind === "stash" && !this.stashes.some((s) => s.sha === this.sel.sha)) this.sel = null;
     if (!this.sel) this.sel = dirty ? { kind: "work" } : st.oid && this.index.has(st.oid) ? { kind: "commit", sha: st.oid } : null;
@@ -321,7 +334,7 @@ export default class GitPanel extends View {
     const had = this.surveys.get(folder);
     if (had && Date.now() - had.at < SURVEY_EVERY) return;
     const entry = had ?? { repos: [] };
-    entry.at = Date.now();
+    entry.at = Date.now(); entry.on = on;
     this.surveys.set(folder, entry);
     if (this.surveys.size > 30) this.surveys.delete(this.surveys.keys().next().value);
     this.spawn(async (cx) => {
@@ -333,6 +346,40 @@ export default class GitPanel extends View {
       } catch { /* the list stays as it was */ }
       cx.notify();
     });
+  }
+
+  // How each of the folder's repositories stands, for the strip and the list: { root: { branch,
+  // changes, ahead, behind } }. The one shown is read with the panel; the others here, once in
+  // a while and only while the panel is on screen (`tick()`).
+  peek(now, cx) {
+    const survey = this.surveys.get(this.folder());
+    if (!survey || survey.repos.length < 2 || survey.peeking) return;
+    if (now - (survey.peekedAt ?? 0) < Math.max(PEEK_EVERY, (survey.peekCost ?? 0) * 10)) return;
+    survey.peeking = true;
+    const on = survey.on ?? null, roots = survey.repos.slice(0, PEEK_MOST).map((r) => r.root);
+    cx.spawn(async (cx) => {
+      const began = Date.now(), states = {};
+      try {
+        for (let i = 0; i < roots.length; i += PEEK_AT_ONCE) {
+          await Promise.all(roots.slice(i, i + PEEK_AT_ONCE).map(async (root) => {
+            try {
+              const r = await exec("git", [...git.READ, ...git.statusArgs], { cwd: root, on, timeout: 10000 });
+              if (r.code === 0) states[root] = stands(git.parseStatus(r.stdout));
+            } catch { /* left out: the list shows it without */ }
+          }));
+        }
+      } finally {
+        survey.states = states; survey.peekedAt = Date.now(); survey.peekCost = Date.now() - began; survey.peeking = false;
+      }
+      cx.notify();
+    });
+  }
+
+  // What is known of how the folder's repositories stand, the one shown as read just now.
+  states(survey) {
+    const out = { ...(survey?.states ?? {}) };
+    if (this.root) out[this.root] = stands(this.status);
+    return out;
   }
 
   // Shows another of the folder's repositories (`to`: its top folder).
@@ -460,7 +507,9 @@ export default class GitPanel extends View {
     if (done.error) this.note = { error: done.error, at: Date.now() };
     else {
       if (done.note) this.say(done.note);
-      if (r.op === "commit") { this.message = ""; this.input.set_value(""); }
+      // A commit offers its push in the Commit button's place, until something else is chosen.
+      if (r.op === "commit") { this.message = ""; this.input.set_value(""); this.offer = { branch: r.expect?.branch ?? null }; this.sel = { kind: "work" }; }
+      if (r.op === "push") this.offer = null;
       // A new branch or tag is somewhere in the graph: show where.
       if ((r.op === "branch" || r.op === "tag") && this.index.has(r.at)) this.pick({ kind: "commit", sha: r.at }, true);
     }
@@ -529,6 +578,7 @@ export default class GitPanel extends View {
   // `reveal`: also scroll the graph to it. Not for a click on a row, which is on screen.
   pick(sel, reveal) {
     this.sel = sel;
+    if (sel.kind !== "work") this.offer = null;
     if (sel.kind === "commit") {
       this.load(sel.sha);
       const at = this.index.get(sel.sha);
@@ -576,7 +626,7 @@ export default class GitPanel extends View {
 
   menu(m) {
     const all = { ...this.about(), ...m };
-    if (this.root && any(all)) openOverlay({ mod: MOD, kind: "popup", width: 268, height: height(all), props: { menu: all } });
+    if (this.root && any(all)) openOverlay({ mod: MOD, kind: "popup", width: m.kind === "repos" ? 360 : 268, height: height(all), props: { menu: all } });
   }
 
   // The pane of `mod` in the focused tab takes what was left for it in shared state, or one
@@ -740,6 +790,7 @@ export default class GitPanel extends View {
     const st = this.status, h = this.current(), to = this.pushTarget();
     const name = this.root ? base(this.root) : "";
     const survey = this.surveys.get(this.folder()), repos = survey?.repos ?? [], many = Boolean(this.root) && repos.length > 1;
+    const states = many ? this.states(survey) : {}, strip = many && repos.length <= STRIP_MOST;
     const branch = st.branch ?? (st.oid ? `detached at ${short(st.oid)}` : this.root ? "no commits yet" : "");
     const tab = (view, label) => div().id(`git-view-${view}`).px(9).h(22).flex().items_center().rounded(6).text_size(11.5).cursor_pointer()
       .when(this.view === view, (e) => e.bg(t.selected).text_color(t.foreground)).when(this.view !== view, (e) => e.text_color(t.muted).hover((s) => s.text_color(t.foreground)))
@@ -751,7 +802,7 @@ export default class GitPanel extends View {
         .child(many
           ? h_flex().id("git-repo").flex_shrink(1).min_w(0).h(24).px(6).gap(3).items_center().rounded(6).text_size(11.5).text_color(t.muted).cursor_pointer().tooltip(`${repos.length} repositories here: choose which one to show`)
             .hover((s) => s.bg(t.hover).text_color(t.foreground))
-            .on_click(() => this.menu({ kind: "repos", repos, base: survey.base }))
+            .on_click(() => this.menu({ kind: "repos", repos, base: survey.base, states }))
             .child(div().min_w(0).truncate().child(name)).child(svg(CHROME("chevron-down")).size(11).flex_none())
           : div().flex_shrink(1).min_w(0).truncate().text_size(11.5).text_color(t.dim).child(name))
         .child(div().flex_1())
@@ -761,6 +812,7 @@ export default class GitPanel extends View {
             { off: !h?.upstream || h.gone, label: st.behind ? String(st.behind) : null, spin: this.busy === "pull" }))
           .child(this.button(t, "git-push", ICON("up"), to ? `Push to ${to.label}` : "No remote to push to", (cx) => this.push(cx),
             { off: !to, label: st.ahead ? String(st.ahead) : null, spin: this.busy === "push" }))))
+      .when(strip, (e) => e.child(h_flex().flex_wrap().px(12).pb(6).gap(4).children(repos.map((r, i) => this.chip(t, r, i, states[r.root])))))
       .when(Boolean(this.root), (e) => e.child(h_flex().h(32).px(12).pb(6).gap(8).items_center()
         .child(h_flex().flex_1().min_w(0).gap(5).items_center().text_size(12).text_color(t.muted)
           .child(svg(CHROME("git-branch")).size(12).flex_none())
@@ -773,6 +825,21 @@ export default class GitPanel extends View {
         .child(div().flex_1().min_w(0).child(this.note?.error ?? this.note?.text ?? ""))
         .when(Boolean(this.note?.error), (x) => x.child(div().id("git-note-x").flex_none().cursor_pointer().text_color(t.dim).hover((s) => s.text_color(t.foreground))
           .on_click((_e, cx) => { this.note = null; cx.notify(); }).child("✕")))));
+  }
+
+  // One of the folder's repositories in the strip: its name, a dot when it has changes, and
+  // how far it is ahead of its upstream and behind it. A click shows it.
+  chip(t, r, i, st) {
+    const shown = r.root === this.root;
+    const tip = [r.root, st?.branch ? `on ${st.branch}` : null, st ? (st.changes ? `${st.changes} changed` : "nothing to commit") : null].filter(Boolean).join(" · ");
+    return h_flex().id(`git-chip-${i}`).flex_none().max_w(170).h(22).px(7).gap(4).items_center().rounded(6).text_size(11.5).cursor_pointer().tooltip(tip)
+      .when(shown, (e) => e.bg(t.selected).text_color(t.foreground))
+      .when(!shown, (e) => e.text_color(t.muted).hover((x) => x.bg(t.hover).text_color(t.foreground)))
+      .on_click((_e, cx) => { if (!shown) { this.choose(r.root); this.refresh(cx); } cx.notify(); })
+      .child(div().min_w(0).truncate().child(base(r.root)))
+      .when(Boolean(st?.changes), (e) => e.child(div().flex_none().w(6).h(6).rounded(3).bg(t.blocked)))
+      .when(Boolean(st?.ahead), (e) => e.child(div().flex_none().text_size(10.5).text_color(t.dim).child(`↑${st.ahead}`)))
+      .when(Boolean(st?.behind), (e) => e.child(div().flex_none().text_size(10.5).text_color(t.dim).child(`↓${st.behind}`)));
   }
 
   // A foldable heading of the Refs view.
@@ -886,6 +953,11 @@ export default class GitPanel extends View {
     const st = this.status, here = { branch: st.branch };
     const total = st.staged.length + st.unstaged.length;
     const enabled = Boolean(this.message.trim() && total && !this.busy && !this.state);
+    // Just committed, with no new message typed: the button pushes. Only once the graph shows
+    // the commit (the push checks the branch is still on what was read).
+    const to = this.pushTarget(), h = this.current();
+    const offering = Boolean(this.offer && !this.message.trim() && to && h && h.sha === st.oid && (st.ahead > 0 || to.track) && !this.state);
+    const pushable = offering && !this.busy;
     const who = write.writer(this.writer);
     const rows = [];
     const list = (group, files) => files.slice(0, FILES).map((f, i) => this.file(t, `git-w-${group}-${i}`, { ...f, ...(this.stats[group][f.path] ?? {}) }, {
@@ -907,6 +979,7 @@ export default class GitPanel extends View {
       ]));
       rows.push(...list("unstaged", st.unstaged), ...more(st.unstaged));
     }
+    if (!total) rows.push(div().px(8).py(10).text_size(12).text_color(t.dim).child("Committed. Nothing else to commit."));
     return v_flex().size_full().min_h(0)
       .child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("git-work").absolute().inset_0().overflow_y_scroll().p(6).children(rows))
@@ -926,10 +999,15 @@ export default class GitPanel extends View {
             .on_mouse_down("right", () => this.menu({ kind: "writer", writers: write.WRITERS.map((w) => ({ id: w.id, label: w.label })), writer: who.id }))
             .child(this.writing ? svg(CHROME("spinner")).size(13).spin(900) : svg(ICON("write")).size(13))
             .child(svg(ICON(who.tool)).size(11).flex_none().when(who.tool === "claude", (e) => e.text_color(CLAUDE)))))
-        .child(div().id("git-commit").h(32).px(12).flex().flex_none().items_center().rounded(8).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12)
-          .tooltip("Commit (Cmd+Enter in the message)")
-          .when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => { this.commit(cx); cx.notify(); })
-          .child(this.busy === "commit" ? "Committing…" : st.staged.length ? "Commit" : "Commit all")));
+        .child(offering
+          ? h_flex().id("git-offer-push").h(32).px(12).gap(5).flex_none().items_center().rounded(8).bg(pushable ? t.solid : t.raised).text_color(pushable ? t.solid_foreground : t.dim).text_size(12)
+            .tooltip(`Push to ${to.label}`)
+            .when(pushable, (e) => e.cursor_pointer()).on_click((_e, cx) => { if (pushable) this.push(cx); cx.notify(); })
+            .child(this.busy === "push" ? "Pushing…" : st.ahead ? `Push ↑${st.ahead}` : "Push")
+          : div().id("git-commit").h(32).px(12).flex().flex_none().items_center().rounded(8).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12)
+            .tooltip("Commit (Cmd+Enter in the message)")
+            .when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => { this.commit(cx); cx.notify(); })
+            .child(this.busy === "commit" ? "Committing…" : st.staged.length ? "Commit" : "Commit all")));
   }
 
   // The files of a commit or a stash, under what is said about it.
@@ -987,6 +1065,45 @@ export default class GitPanel extends View {
     });
   }
 
+  // The lower half's height, from `split`: before it was ever dragged, 42% of the panel
+  // between 170 and 460 px, as it always was.
+  lower(tall) {
+    const want = this.split === null ? Math.max(170, Math.min(460, tall * SPLIT)) : tall * this.split;
+    return Math.round(Math.max(SPLIT_LEAST, Math.min(tall - SPLIT_LEAST - 80, want)));
+  }
+
+  // The line between the graph and the lower half: dragged, it moves; a double-click puts it
+  // back where it was at first. It reaches 3 px above the line, over the graph's last row.
+  splitter(t, lower) {
+    return div().id("git-split").absolute().left(0).right(0).top(-4).h(7).cursor_row_resize()
+      .on_mouse_down("left", (e, cx) => {
+        cx.stop_propagation();
+        if (e.click_count > 1) { this.split = null; this.remember("split", ""); this.dragging = null; cx.notify(); return; }
+        // The next frame draws the window's observers: the drag follows the pointer from there.
+        this.dragging = { y: e.position.y, from: lower };
+        cx.notify();
+      });
+  }
+
+  // The pointer moved with the line held. Positions come in the window's pixels.
+  drag(m, zoom, tall, cx) {
+    const d = this.dragging;
+    if (!d) return;
+    // Its release went outside the window and was never seen.
+    if (m.pressed_button !== "left") { this.drop(cx); return; }
+    // Kept inside lower()'s limits, so dragging back past one moves the line at once.
+    const to = Math.max(SPLIT_LEAST, Math.min(tall - SPLIT_LEAST - 80, d.from + (d.y - m.position.y) / zoom));
+    this.split = to / tall;
+    cx.notify();
+  }
+
+  drop(cx) {
+    if (!this.dragging) return;
+    this.dragging = null;
+    if (this.split !== null) this.remember("split", String(this.split));
+    cx.notify();
+  }
+
   render(cx) {
     if (this.other) return this.other.render(cx);
     for (const [name, value] of Object.entries(this.pending)) localStorage.setItem(name, value);
@@ -1000,18 +1117,24 @@ export default class GitPanel extends View {
     });
     const t = theme();
     // The size comes in the window's pixels: at a zoom, more of them than the panel's own.
-    const tall = (this.size?.height ?? 700) / (Number(settings()?.zoom) || 1);
+    const zoom = Number(settings()?.zoom) || 1, tall = (this.size?.height ?? 700) / zoom;
+    const lower = this.lower(tall);
     const el = v_flex().id("git-panel").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(12.5)
       .track_focus(this.handle)
       .on_size_change((size, cx) => { this.size = size; cx.notify(); })
       .on_key_down((e, cx) => {
         if (e.key === "escape" && this.typing) { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
       })
+      .when(Boolean(this.dragging), (e) => e
+        .on_window_mouse_move((m, cx) => this.drag(m, zoom, tall, cx))
+        .on_window_mouse_up("left", (_m, cx) => this.drop(cx)))
       .child(this.head(t));
     if (!this.root) el.child(div().p(14).text_color(t.dim).child(this.error ?? (this.loading ? "Reading the repository…" : "No folder")));
     else el
       .child(this.view === "refs" ? this.refs(t) : this.graph(t))
-      .child(div().flex_none().h(Math.round(Math.max(170, Math.min(460, tall * 0.42)))).border_t(1).border_color(t.border).child(this.detail(t)));
+      .child(div().flex_none().relative().h(lower).border_t(1).border_color(this.dragging ? t.accent : t.border)
+        .child(this.detail(t))
+        .child(this.splitter(t, lower)));
     const tasks = this.tasks;
     this.tasks = [];
     for (const body of tasks) this.after(cx, body);

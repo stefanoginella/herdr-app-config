@@ -11,8 +11,9 @@
 //                                               both: it has staged changes and others
 //   "work":   { staged, unstaged }              the counts
 //   "repo":   {}                                the header
-//   "repos":  { repos: [{ root, kind }], base }  the repositories to choose from; kind is
-//                                               "around", "here" or "inside" (of `base`)
+//   "repos":  { repos: [{ root, kind }], base, states }  the repositories to choose from; kind
+//                                               is "around", "here" or "inside" (of `base`);
+//                                               states: { root: how it stands } (main.js `stands`)
 //   "writer": { writers: [{ id, label }], writer }   who writes commit messages
 // ↑/↓ move, Enter runs, Esc closes. Drawn like Herdr's own menu.
 //
@@ -34,7 +35,15 @@ const ICON = {
 };
 const short = (sha) => sha.slice(0, 7);
 
-// Rows: { label, icon, act, rule? (a line above) } and { section, rule? } (a heading, not a choice).
+// How a repository of the "repos" list stands: its branch, a dot and the number of files
+// changed, and how far it is ahead of its upstream and behind it.
+const stands = (t, s) => h_flex().flex_none().gap(5).items_center().text_size(11).text_color(t.dim)
+  .when(Boolean(s.branch), (e) => e.child(div().max_w(110).truncate().child(s.branch)))
+  .when(Boolean(s.changes), (e) => e.child(h_flex().gap(3).items_center().text_color(t.blocked).child(div().w(6).h(6).rounded(3).bg(t.blocked)).child(String(s.changes))))
+  .when(Boolean(s.ahead), (e) => e.child(div().child(`↑${s.ahead}`)))
+  .when(Boolean(s.behind), (e) => e.child(div().child(`↓${s.behind}`)));
+
+// Rows: { label, icon, act, state?, rule? (a line above) } and { section, rule? } (a heading, not a choice).
 function rows(m) {
   const out = [];
   const at = { root: m.root, on: m.on };
@@ -149,7 +158,7 @@ function rows(m) {
     out.push({ label: "Stash All", icon: "stash", rule: true, act: ask({ op: "stash", expect: here }) });
   } else if (m.kind === "repos") {
     const name = (dir) => dir.slice(dir.lastIndexOf("/") + 1);
-    const row = (r, label) => ({ label, icon: r.root === m.root ? "check" : "folder", act: ask({ op: "repo", to: r.root }) });
+    const row = (r, label) => ({ label, icon: r.root === m.root ? "check" : "folder", state: m.states?.[r.root], act: ask({ op: "repo", to: r.root }) });
     const outside = m.repos.filter((r) => r.kind === "around"), here = m.repos.filter((r) => r.kind === "here"), inside = m.repos.filter((r) => r.kind === "inside");
     if (outside.length) out.push({ section: "Around this one" }, ...outside.map((r) => row(r, name(r.root))));
     if (here.length) out.push({ section: "The pane's own", rule: out.length > 0 }, ...here.map((r) => row(r, name(r.root))));
@@ -229,6 +238,7 @@ export default class Menu {
               .hover((s) => s.bg(t.hover))
               .on_click(() => choose(r))
               .child(ICON[r.icon] ? svg(ICON[r.icon]).size(14).flex_none().text_color(t.muted) : div().w(14).flex_none())
-              .child(div().flex_1().min_w(0).truncate().child(r.label)))));
+              .child(div().flex_1().min_w(0).truncate().child(r.label))
+              .when(Boolean(r.state), (el) => el.child(stands(t, r.state))))));
   }
 }
