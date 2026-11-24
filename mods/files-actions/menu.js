@@ -18,7 +18,7 @@ const ICON = {
   open: `mods/${MOD}/open.svg`, trash: `mods/${MOD}/trash.svg`, copy: `mods/${MOD}/copy.svg`, paste: `mods/${MOD}/clipboard.svg`,
   file: `mods/${MOD}/file-plus.svg`, folder: "mods/workspace-chrome/folder-plus.svg",
   rename: "mods/workspace-chrome/square-pen.svg", duplicate: "mods/workspace-chrome/layers.svg", reveal: "mods/workspace-chrome/folder.svg",
-  find: "mods/workspace-chrome/search.svg",
+  find: "mods/workspace-chrome/search.svg", add: "mods/workspace-chrome/files.svg",
 };
 
 // Rows: { label, icon, act, rule? (a line above) } and { section, rule? } (a heading, not a choice).
@@ -28,6 +28,9 @@ function rows(m) {
   const reveal = (target) => ({ label: "Reveal in Finder", icon: "reveal", act: () => ops.request({ op: "open", app: "finder", ...target }) });
   // `to`: the folder, under root, that takes what is on the clipboard ("": root itself).
   const paste = (to, rule) => ({ label: `Paste in “${ops.base(to || m.root)}”`, icon: "paste", rule, act: () => ops.request({ op: "paste", root: m.root, on: m.on, to }) });
+  // The same, for files picked in the system's file picker, which the panel opens: this copy is
+  // gone before the person has picked anything.
+  const add = (to) => ({ label: "Add Files…", icon: "add", act: () => ops.request({ op: "pick", root: m.root, on: m.on, to }) });
   const naming = (n) => openOverlay({ mod: MOD, kind: "dialog", width: 440, height: 214, props: { naming: { root: m.root, on: m.on, ...n } } });
   // `into`: the folder, under root, the new file or folder is made in ("": root itself).
   const create = (into, rule) => [
@@ -58,7 +61,7 @@ function rows(m) {
     if (share) {
       out.push({ label: "Copy", icon: "copy", rule: true, act: () => ops.request({ op: "clip", root: m.root, on: m.on, from: m.path }) });
       // Into the folder clicked, or next to the file clicked.
-      out.push(paste(m.dir ? m.path : ops.parent(m.path)));
+      out.push(paste(m.dir ? m.path : ops.parent(m.path)), add(m.dir ? m.path : ops.parent(m.path)));
     }
     if (ops.canTrash(m.on)) out.push({
       label: "Move to Trash…", icon: "trash", rule: true,
@@ -81,7 +84,7 @@ function rows(m) {
   // and the paste.
   if (!m.path && m.root) {
     out.push({ section: ops.base(m.root), rule: out.length > 0 }, ...create(""), find(""));
-    if (share) out.push(paste(""));
+    if (share) out.push(paste(""), add(""));
   }
   return out;
 }

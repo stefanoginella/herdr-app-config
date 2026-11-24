@@ -259,6 +259,40 @@ export function replaceAll(text, query, o, to) {
   return { text: out + text.slice(from), count: matches.length };
 }
 
+// How a file is indented: { size, hard }, for the editor's tab_size and hard_tabs. A Makefile,
+// or a text where more lines begin with a tab than with spaces, is indented with tabs. Else the
+// size is the step between the leading spaces of one line and the next that is the most common
+// of 2, 4 and 8 (the smaller one on a tie). Blank lines don't count, and only the first
+// INDENT_LINES lines are looked at. `fallback` when nothing says: no indented line.
+const INDENT_LINES = 2000, TAB_SIZE = 4, STEPS = [2, 4, 8];
+const TABBED = /^(gnu)?makefile$|\.(mk|make)$/i;
+export function indent(text, name = "", fallback = { size: 2, hard: false }) {
+  if (TABBED.test(name)) return { size: TAB_SIZE, hard: true };
+  let tabs = 0, spaces = 0, prev = 0;
+  const count = { 2: 0, 4: 0, 8: 0 };
+  for (let i = 0, n = 0; i < text.length && n < INDENT_LINES; n++) {
+    let end = text.indexOf("\n", i);
+    if (end < 0) end = text.length;
+    if (text[i] === "\t") tabs++;
+    else {
+      let w = 0;
+      while (text[i + w] === " ") w++;
+      const blank = i + w >= end || text[i + w] === "\r" || text[i + w] === "\t";
+      if (!blank) {
+        if (w >= 2) spaces++;
+        const step = Math.abs(w - prev);
+        if (step in count) count[step]++;
+        prev = w;
+      }
+    }
+    i = end + 1;
+  }
+  if (tabs > spaces) return { size: TAB_SIZE, hard: true };
+  let best = 0;
+  for (const s of STEPS) if (count[s] > (count[best] ?? 0)) best = s;
+  return best ? { size: best, hard: false } : fallback;
+}
+
 // Where the cursor is, for the status line: { line, column }, both from 1.
 export function position(text, at) {
   let line = 1, from = 0;

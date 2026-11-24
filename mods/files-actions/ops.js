@@ -11,6 +11,8 @@
 //   { op: "add",     root, on, to, sources }   copies of files from elsewhere on this Mac (absolute
 //                                              paths) into the folder `to`: a drop from Finder
 //   { op: "paste",   root, on, to }         the same, for the files on the clipboard
+//   { op: "pick",    root, on, to }         the same, for files the person picks: the panel opens
+//                                           the system's file picker when it takes this
 //   { op: "clip",    root, on, from }       onto the clipboard, as a file Finder can paste
 //   { op: "open",    app: "vscode" | "obsidian" | "textedit" | "finder", path, dir, repo?, vault? }
 //                                           path is absolute; "finder" shows it in its folder
@@ -161,8 +163,8 @@ async function open(r) {
 
 // Runs a request. Resolves with { error }, or with what it made: { name } for a copy,
 // { trashed } (where it is in the Trash, when `trash` said) for a trash, else {}.
-// "add" is run one source at a time, as { op: "add", root, on, to, source }; "paste" is the
-// panel's to turn into that (main.js).
+// "add" is run one source at a time, as { op: "add", root, on, to, source }; "paste" and "pick"
+// are the panel's to turn into that (main.js).
 export async function perform(r) {
   try {
     if (r.op === "open") return await open(r);

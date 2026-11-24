@@ -14,10 +14,11 @@
 //
 // Keys, while the pane has the keyboard: J/K or ↓/↑ the next and the previous file, V viewed
 // (and on to the next one not viewed), S side by side or not, W the whole file, O the editor.
+// The mouse's back and forward buttons, over the pane: the previous and the next file.
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, run, shared, setShared, nextCommand, checking } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, run, shared, setShared, nextCommand, checking, window as app } from "herdr";
 import * as diff from "./diff.js";
 
 const MOD = "git-diff";
@@ -142,6 +143,14 @@ export default class GitDiff extends View {
 
   tick(cx) {
     if (this.req?.source.kind !== "work" || !this.shown()) return;
+    // While Herdr is not the active app the lists aren't read: a watch only marks them stale,
+    // and the first tick with Herdr active again reads at once. A request (`take()`) still
+    // reads at once. `app` is Herdr's `window()`, as in the Git panel.
+    if (app()?.active === false) { this.away = true; return; }
+    if (this.away) { this.away = false; this.stale = true; }
+    // A reading that took long is not started again at once: in a big repository an agent at
+    // work changes files all the time, and the readings would run back to back.
+    if (Date.now() - (this.listedAt ?? 0) < (this.cost ?? 0) * 4) return;
     if (this.stale || (this.req.on && Date.now() - (this.listedAt ?? 0) > THERE_EVERY)) { this.stale = false; this.lists(cx); }
   }
 
@@ -154,6 +163,7 @@ export default class GitDiff extends View {
     cx.spawn(async (cx) => {
       try { await this.read(cx, req, s); }
       catch (e) { if (this.req === req) this.error = String(e?.message ?? e); }
+      this.cost = Date.now() - this.listedAt;
       // Whatever happened above, the next one can start: a request for another commit ends
       // this one early, and must not leave the pane waiting for ever.
       this.listing = false;
@@ -544,6 +554,9 @@ export default class GitDiff extends View {
     return v_flex().id("git-diff").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(12.5)
       .track_focus(this.handle)
       .on_size_change((size, cx) => { this.size = size; cx.notify(); })
+      // The mouse's side buttons: back to the file before, forward to the next one.
+      .on_mouse_down("back", (_e, cx) => { this.command("prev", cx); cx.notify(); })
+      .on_mouse_down("forward", (_e, cx) => { this.command("next", cx); cx.notify(); })
       .on_key_down((e, cx) => {
         const m = e.modifiers ?? {};
         if (m.control || m.alt || m.platform) return;

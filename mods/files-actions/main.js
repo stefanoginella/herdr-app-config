@@ -7,13 +7,14 @@
 // room under the list for the project and the folder shown.
 // Drag an entry onto a folder, or under the list for the top folder, to move it, or onto a
 // terminal to paste its path there: its name follows the pointer (Herdr's own file drag).
-// Files dropped from Finder, or pasted from the clipboard, are copied in.
+// Files dropped from Finder, pasted from the clipboard or picked (the menu's "Add Files…") are
+// copied in.
 // The header's lens, and a folder's "Find in Folder…", go to the Search panel (`project-search`).
 // The key command `files-actions.undo` takes back the last move, rename or Trash.
 // Modified from Herdr's `files` mod (version 0.1.16, Apache-2.0): see NOTICE at the repository root.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, theme, settings, window, props, openOverlay, notify, nextCommand, keys, run, shared, setShared } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, pickFiles, theme, settings, window, props, openOverlay, notify, nextCommand, keys, run, shared, setShared } from "herdr";
 import Menu, { any } from "./menu.js";
 import Naming from "./naming.js";
 import Confirm from "./confirm.js";
@@ -31,13 +32,6 @@ const VAULTS_EVERY = 60000;
 // How far the pointer goes from where it was pressed before the press is a drag, in window
 // pixels: where Herdr's own drag begins too.
 const DRAG_FROM = 2;
-// How long after its press a drag is trusted when the pointer is reported coming into the list:
-// that report can also be the echo of the drag before it, which a click right after must survive.
-const FRESH = 300;
-// A drag that leaves the panel says nothing more: no event tells it left. So it is taken to have
-// left when the last thing seen of it was at the panel's edge (within EDGE, the panel's pixels)
-// or fast (over FAST, window pixels a millisecond), and nothing came for GONE ms. Looked at every TICK.
-const EDGE = 14, FAST = 0.8, GONE = 150, TICK = 100;
 // The header's height with its border: under it, the pointer is over the list.
 const HEAD = 43;
 // How long the last change can be taken back. The key for it works wherever the keyboard is,
@@ -123,6 +117,57 @@ async function directory(path, on) {
   return out;
 }
 
+// One git scan of a repository at a time, shared by every copy of this panel (as Herdr's own
+// Files and Changes share theirs, from 0.1.18). A scan that took long is reused for longer: a
+// folder watch waits until `watchAt`, a poll until `pollAt`. While the window isn't active none
+// starts, unless `allowInactive`.
+// The key is this mod's own: its scan lists what git ignores too (`--ignored=matching`), which
+// Herdr's (`herdr.repoStatus.v2`) doesn't. Made once, and found again after a reload.
+const scans = globalThis[Symbol.for("files-actions.repoStatus.v1")] ??= new Map();
+
+async function repoStatus(root, on, { after, visiting, urgent, allowInactive }, cx, current) {
+  const repo = JSON.stringify([on, root]), now = Date.now();
+  for (const [key, scan] of scans) {
+    if (scan.pollAt <= now || (!scan.pollAt && scan.task.is_done())) scans.delete(key);
+  }
+  while (current()) {
+    let scan = scans.get(repo);
+    const pending = scan && !scan.pollAt && !scan.task.is_done();
+    const reusable = scan?.status?.code === 0 && Date.now() < scan.pollAt
+      && (scan.started >= after || (!urgent && Date.now() < scan.watchAt));
+    if (!reusable && (!pending || (visiting && scan.started !== undefined && scan.started < after))) {
+      if (!allowInactive && window()?.active === false) return null;
+      const next = {};
+      next.task = cx.spawn(async cx => {
+        await cx.sleep(25); // Let both listeners for a watch batch join before starting Git.
+        if (!allowInactive && window()?.active === false) return;
+        next.started = Date.now();
+        try {
+          // Writes nothing under .git (index lock, fsmonitor cookie): the folder watch would see it.
+          // An ignored folder is listed alone ("!! node_modules/"), not file by file.
+          next.status = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--ignored=matching"], { cwd: root, on });
+        } catch (error) {
+          next.error = error;
+        } finally {
+          const finished = Date.now(), duration = finished - next.started;
+          const delay = duration < 500 ? 0 : Math.min(60000, 5 * duration);
+          next.watchAt = finished + delay;
+          next.pollAt = finished + Math.max(10000, delay);
+          if (next.status?.code !== 0 && scans.get(repo) === next) scans.delete(repo);
+        }
+      });
+      scans.set(repo, next);
+      scan = next;
+    }
+    // Resume through our own host task, so another copy's close cannot cancel our follow-up work.
+    while (current() && !scan.pollAt && !scan.task.is_done()) await cx.sleep(50);
+    if (!current()) return null;
+    if (!scan.pollAt) continue; // The scanning copy closed or reloaded.
+    return scan;
+  }
+  return null;
+}
+
 export default class Files extends View {
   init(_props, cx) {
     // Opened by itself as a popup or a dialog: the menu, the name prompt, the Trash question.
@@ -140,28 +185,55 @@ export default class Files extends View {
     this.inIgnored = false; // the folder shown is itself inside an ignored one
     this.top = null; // the repo's top folder, null outside a repo
     this.vaults = []; this.vaultsAt = 0; // Obsidian's vaults, and when they were read
-    // The entry pressed: { path, name, dir, x, y, t } (where, in the window, and when). Once the
-    // pointer has left that spot it is `moving`, and `seen`: { x, y, t, leaving } is the last of it seen in
-    // the panel. `away`: taken to have left the panel (see EDGE).
+    // The entry pressed: { path, name, dir, x, y } (where, in the window). Once the pointer has
+    // left that spot it is `moving`; `out`: the pointer is outside the panel now (follow()).
     this.drag = null;
     this.over = null; // where it would land: { dir } (a folder's path, "" for the top), null: nowhere
     this.last = null; // the request that takes back the last move, rename or Trash, or null
     this.lastAt = 0; // when it was done
     this.turn = 0; // counts the changes begun, so that one ending late doesn't speak for the last
     this.refresh(cx);
-    cx.timer.every(10000, cx => this.refresh(cx));
+    cx.timer.every(500, cx => this.refreshIfDue(cx));
     cx.spawn(async cx => {
       for (;;) if ((await nextCommand()) === "undo") this.undo(cx);
     });
   }
 
-  watch(root, cx) {
-    if (this.on || this.watched === root) return;
-    this.watched = root;
-    const context = this.context;
+  // Refreshes when it is time to: the window came back to the front after something changed,
+  // the folder changed and the last scan's wait is over, or the poll is due. Never while the
+  // window isn't active, or while a load runs.
+  refreshIfDue(cx) {
+    const active = window()?.active !== false, context = this.context;
+    const refocused = active && this.windowActive === false;
+    this.windowActive = active;
+    if (!context) return;
+    if (refocused && (context.dirtyAt || !context.watch)) context.catchUp = true;
+    if (!active || this.loading) return;
+    const now = Date.now();
+    if (context.catchUp || (context.dirtyAt && now >= context.watchAt) || now >= context.pollAt) this.refresh(cx);
+  }
+
+  // Watches the folder shown (here only), for as long as it is shown: the watch is the
+  // context's, and cancelled when another folder is shown.
+  watchRoot(root, context, cx) {
+    if (context.on || context.watch?.root === root) return;
+    context.watch?.pending?.cancel();
+    const watch = { root };
+    context.watch = watch;
     cx.spawn(async cx => {
-      try { while (this.context === context) { await watchFolder(root); if (this.current(context)) this.refresh(cx); } }
-      catch { if (this.context === context) this.watched = null; }
+      try {
+        while (this.context === context && context.watch === watch) {
+          watch.pending = watchFolder(root);
+          const paths = await watch.pending;
+          // A cancelled watch answers with nothing.
+          if (paths.length && context.watch === watch && this.current(context)) {
+            context.dirtyAt = Date.now() + 1;
+            this.refreshIfDue(cx);
+          }
+        }
+      } catch {
+        if (context.watch === watch) context.watch = null;
+      }
     });
   }
 
@@ -178,26 +250,51 @@ export default class Files extends View {
     if (entries.length > PER_FOLDER || used + entries.length > TOTAL) this.limited = true;
   }
 
-  refresh(cx) {
+  // `force`: this panel just changed a file (act(), bring()). The scan is then made after the
+  // change, also while the window isn't active.
+  refresh(cx, force = false) {
     const { cwd, on } = location(), next = key();
-    if (next !== this.context?.key) {
-      if (this.context) this.saved.set(this.context.key, { folders: this.folders });
+    const visiting = next !== this.context?.key;
+    if (visiting) {
+      if (this.context) {
+        this.saved.set(this.context.key, { folders: this.folders });
+        // At most 64 folders can have a watch waiting: the one no longer shown lets go.
+        this.context.watch?.pending?.cancel();
+      }
       const saved = this.saved.get(next);
-      this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
-      this.pending = new Set(); this.marks = {}; this.changed = {}; this.watched = null; this.error = null; this.limited = false;
+      this.context = { key: next, cwd, on, dirtyAt: 0 }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
+      this.pending = new Set(); this.marks = {}; this.changed = {}; this.error = null; this.limited = false;
       this.ignored = new Set(); this.inIgnored = false; this.top = null; this.drag = null; this.over = null;
       // What undo takes back is of the folder that was shown.
       this.last = null;
       this.loading = false; this.again = false;
     }
-    if (!cwd) return;
-    // A change that lands while a load runs (a move just made) is read by one more load.
-    if (this.loading) { this.again = true; return; }
     const context = this.context;
+    const now = Date.now();
+    if (!cwd) {
+      context.catchUp = false;
+      context.dirtyAt = 0;
+      context.pollAt = now + 10000;
+      return;
+    }
+    // A change that lands while a load runs (a move just made) is read by one more load, forced
+    // if any of the asks was.
+    if (this.loading) { this.again = this.again === "force" || force ? "force" : true; return; }
+    if (force || (context.catchUp && !context.dirtyAt)) context.dirtyAt = now + 1;
+    const request = {
+      after: visiting ? now + 1 : context.dirtyAt || (context.lastStatus ?? -1) + 1,
+      visiting,
+      urgent: force || visiting || context.catchUp,
+      allowInactive: force || visiting,
+    };
+    context.catchUp = false;
+    context.pollAt = context.watchAt = now + 10000;
     this.loading = true;
     this.limited = false;
     cx.spawn(async cx => {
       try {
+        this.watchRoot(cwd, context, cx);
+        const dirtyAtListing = context.dirtyAt;
         for (const path of ["", ...this.folders]) {
           if (!this.current(context)) return;
           // Moved or put in the Trash since the load began: there is nothing to list.
@@ -205,12 +302,20 @@ export default class Files extends View {
           await this.loadFolder(path, context);
         }
         const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }).catch(() => null);
+        if (!this.current(context)) return;
         const marks = {}, changed = {}, ignored = new Set();
         const root = top?.code === 0 ? top.stdout.trim() : null;
+        let covered = dirtyAtListing;
         if (root) {
-          // Writes nothing under .git (index lock, fsmonitor cookie): the folder watch would refresh again.
-          // An ignored folder is listed alone ("!! node_modules/"), not file by file.
-          const status = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--ignored=matching"], { cwd, on }).catch(() => null);
+          const scan = await repoStatus(root, on, request, cx, () => this.context === context);
+          if (!scan || !this.current(context)) return;
+          const { status, started, pollAt, watchAt } = scan;
+          context.lastStatus = started;
+          context.pollAt = pollAt;
+          context.watchAt = watchAt;
+          covered = Math.min(dirtyAtListing, started);
+          // The scan reused began before what had to be seen: one more, at the next tick.
+          if (request.urgent && request.after > started) context.catchUp = true;
           let marked = 0;
           if (status?.code === 0) for (const entry of status.stdout.split("\0").filter(Boolean)) {
             const xy = entry.slice(0, 2), path = `${root}/${entry.slice(3)}`;
@@ -221,19 +326,23 @@ export default class Files extends View {
           for (const [path, mark] of Object.entries(marks)) {
             for (let dir = ops.parent(path); dir.length > root.length; dir = ops.parent(dir)) changed[dir] = mix(changed[dir], mark);
           }
+        } else {
+          context.watchAt = Date.now();
         }
+        // Not part of the scan: Obsidian's vaults, here only, at most once a minute.
         if (!on && Date.now() - this.vaultsAt > VAULTS_EVERY) {
           this.vaults = await ops.vaults();
           this.vaultsAt = Date.now();
         }
         if (!this.current(context)) return;
-        this.marks = marks; this.changed = changed; this.ignored = ignored; this.top = root; this.error = null; this.watch(cwd, cx);
+        if (context.dirtyAt <= covered) context.dirtyAt = 0;
+        this.marks = marks; this.changed = changed; this.ignored = ignored; this.top = root; this.error = null;
         this.inIgnored = [...ignored].some(path => ops.within(cwd, path));
       } catch (e) { if (this.current(context)) this.error = String(e); }
       finally {
         if (this.context === context) {
           this.loading = false;
-          if (this.again) { this.again = false; this.refresh(cx); }
+          if (this.again) { const forced = this.again === "force"; this.again = false; this.refresh(cx, forced); }
         }
         cx.notify();
       }
@@ -256,7 +365,7 @@ export default class Files extends View {
 
   // Runs what the menu, a dialog or a drop asked for (ops.js), then shows what became of it.
   act(r, cx) {
-    if (r.op === "add" || r.op === "paste") return this.bring(r, cx);
+    if (r.op === "add" || r.op === "paste" || r.op === "pick") return this.bring(r, cx);
     // These change no file: the tree, and what undo takes back, stay as they are.
     const quiet = r.op === "open" || r.op === "clip";
     // While a change runs there is nothing to take back: not the one before it either, which
@@ -288,13 +397,14 @@ export default class Files extends View {
         else if (r.undo && ops.parent(r.from) === ops.parent(r.to)) notify({ title: `Renamed “${ops.base(r.from)}” back`, body: `to “${name}”` });
         else if (r.undo) notify({ title: `Moved “${name}” back`, body: `to ${where}` });
       }
-      if (!quiet) this.refresh(cx);
+      if (!quiet) this.refresh(cx, true);
       cx.notify();
     });
   }
 
   // Copies files from elsewhere on this Mac into the folder `r.to`: the ones dropped from Finder
-  // (`r.sources`), or the ones on the clipboard. Each keeps its name, and is refused if taken.
+  // (`r.sources`), the ones on the clipboard ("paste"), or the ones picked in the system's file
+  // picker ("pick"). Each keeps its name, and is refused if taken.
   bring(r, cx) {
     cx.spawn(async cx => {
       let sources = r.sources ?? [];
@@ -303,6 +413,16 @@ export default class Files extends View {
         if (got.error) return notify({ title: "Couldn't paste", body: got.error, level: "error" });
         if (!got.paths.length) return notify({ title: "Nothing to paste", body: "The clipboard holds no files: copy some in Finder first" });
         sources = got.paths;
+      }
+      if (r.op === "pick") {
+        // A request is taken while the panel draws: the picker opens once that is over.
+        await cx.sleep(0);
+        let got;
+        try { got = await pickFiles({ prompt: "Add", multiple: true }); }
+        catch (e) { return notify({ title: "Couldn't add files", body: String(e?.message ?? e), level: "error" }); }
+        // Cancelled.
+        if (!got?.length) return;
+        sources = got;
       }
       const made = [], missed = [];
       // As in act(): nothing to take back while this runs, nor after it unless it all failed.
@@ -319,7 +439,7 @@ export default class Files extends View {
       }
       else if (turn === this.turn) this.last = before;
       if (missed.length) notify({ title: missed.length === 1 ? `Couldn't copy “${missed[0].name}”` : `Couldn't copy ${missed.length} items`, body: missed[0].error, level: "error" });
-      this.refresh(cx);
+      this.refresh(cx, true);
       cx.notify();
     });
   }
@@ -470,13 +590,15 @@ export default class Files extends View {
         .when(target, el => el.bg(path === aim ? t.selected : t.hover))
         .when(!target && path === s.shown, el => el.bg(t.selected))
         .when(!target && path !== s.shown, el => el.hover(st => st.bg(t.hover)))
-        .when(Boolean(d?.moving) && !d.away && d.path === path, el => el.opacity(0.5))
+        .when(Boolean(d?.moving) && !d.out && d.path === path, el => el.opacity(0.5))
         // Herdr's file drag: the name follows the pointer, and a terminal takes it as a path.
         // The move within the list is this panel's own, on the same press.
         .drag_paths([`${this.root}/${path}`], { on: this.on ?? null })
-        .on_mouse_down("left", e => { this.drag = { path, name: entry.name, dir: entry.dir, x: e.position.x, y: e.position.y, t: Date.now() }; this.over = null; })
+        // Drawn again at once: from that draw on, the panel watches the window (follow(), ended()).
+        .on_mouse_down("left", (e, cx) => { this.drag = { path, name: entry.name, dir: entry.dir, x: e.position.x, y: e.position.y }; this.over = null; cx.notify(); })
         .on_mouse_move((e, cx) => { if (this.drag) { this.stir(e, cx); this.aim(into, cx); } })
-        // The drop is on this row, wherever the last move was seen.
+        // The drop is on this row, wherever the last move was seen. A drop from Finder never
+        // gets here: on_drop runs first, and stops the release.
         .on_mouse_up("left", (_e, cx) => { this.aim(into, cx); this.release(cx, d => { if (d.path === path) entry.dir ? this.toggle(path, cx) : this.open(path); }); })
         .on_mouse_down("right", () => this.menu({ path, dir: entry.dir }))
         .on_drop((e, cx) => this.dropped(e.paths, into, cx))
@@ -497,64 +619,67 @@ export default class Files extends View {
       .on_mouse_down("left", () => { this.drag = null; this.over = null; })
       .on_mouse_move((e, cx) => { if (this.drag) { this.stir(e, cx); this.aim("", cx); } })
       .on_mouse_up("left", (_e, cx) => { this.aim("", cx); this.release(cx); })
-      // Taken here, not left to the list around it: a drop is a release too, and the one above
-      // would see it first.
+      // Taken here, not left to the list around it: a drop from Finder is a release too, and this
+      // element's own on_drop runs before its on_mouse_up, and stops it.
       .on_drop((e, cx) => this.dropped(e.paths, "", cx))
       .on_mouse_down("right", () => this.menu());
   }
 
-  // The pointer moved in the panel with an entry pressed. Seen by the panel itself, so over the
-  // header too, where nothing is aimed at.
+  // The pointer moved, anywhere in the window, with an entry pressed: on_window_mouse_move on
+  // the panel's root, so `e.local_position` is against the panel's box (both in window pixels).
+  // Only what is drawn follows from where it is: outside the panel, or over its header, nothing
+  // is aimed at; outside, nothing is faded. The drag itself goes on, and may come back.
   follow(e, cx) {
     const d = this.drag;
-    if (!d || !this.stir(e, cx)) return;
-    const p = e.position, l = e.local_position, b = e.bounds, now = Date.now();
-    // The pointer is in window pixels: at a zoom, more of them than the panel's own.
-    const z = Number(settings()?.zoom) || 1;
-    const speed = d.seen ? Math.hypot(p.x - d.seen.x, p.y - d.seen.y) / Math.max(8, now - d.seen.t) : 0;
-    const edge = Math.min(l.x, l.y, b.width - l.x, b.height - l.y) < EDGE * z;
-    d.seen = { x: p.x, y: p.y, t: now, leaving: edge || speed > FAST };
-    if (l.y < HEAD * z) this.aim(null, cx);
-    if (d.away) { d.away = false; cx.notify(); }
-    if (!d.watched) { d.watched = true; this.watch(d, cx); }
+    if (!d) return;
+    // No button held: the release was never seen (the drag went out of the window and ended
+    // there, where Herdr hears nothing more of it). What is left of it must not be a drop.
+    if (e.pressed_button !== "left") return this.still(cx);
+    this.stir(e, cx);
+    const l = e.local_position, b = e.bounds;
+    const out = l.x < 0 || l.y < 0 || l.x >= b.width || l.y >= b.height;
+    // The header is in the panel's pixels: at a zoom, the window has more of them.
+    if (out || l.y < HEAD * (Number(settings()?.zoom) || 1)) this.aim(null, cx);
+    if (out !== Boolean(d.out)) { d.out = out; cx.notify(); }
   }
 
-  // The pointer moved with an entry pressed: far enough from the press, the drag is `moving`.
-  // Called by whatever sees the move first (a row, before the list around it hears of a hover),
-  // because a drag known to be moving is what the pointer coming in again puts an end to.
+  // The left button went up, anywhere in the window: every drag of this panel ends with it.
+  // Herdr's window observers run between GPUI's capture and bubble phases, so this comes before
+  // the handlers of the same release in the panel: a row's or the tail's on_mouse_up, which drop
+  // or click (release()), and an on_drop, which takes a drop from Finder (dropped()) and stops
+  // the release there. Ending the drag here would take it from them. So it ends once the release
+  // has been through them, a step later, unless one of them ended it, or a new press began
+  // another.
+  ended(cx) {
+    const d = this.drag;
+    if (d) cx.timer.after(0, cx => { if (this.drag === d) this.still(cx); });
+  }
+
+  // The pointer moved with an entry pressed: far enough from the press, the drag is `moving`,
+  // and the entry is faded.
   stir(e, cx) {
     const d = this.drag;
     if (!d.moving && Math.hypot(e.position.x - d.x, e.position.y - d.y) > DRAG_FROM) { d.moving = true; cx.notify(); }
-    return Boolean(d.moving);
-  }
-
-  // Notices that the drag `d` left the panel: it may end on a terminal, and until it is seen
-  // again nothing here is aimed at or faded. Only what is drawn: the drag itself goes on, and
-  // may come back.
-  watch(d, cx) {
-    cx.timer.after(TICK, cx => {
-      if (this.drag !== d) return;
-      if (!d.seen.leaving || Date.now() - d.seen.t < GONE) return this.watch(d, cx);
-      d.watched = false;
-      d.away = true;
-      this.over = null;
-      cx.notify();
-    });
   }
 
   render(cx) {
     if (this.other) return this.other.render(cx);
     if (key() !== this.context?.key) this.refresh(cx);
+    else this.refreshIfDue(cx);
     // A menu or a dialog left something to do. Taken in a task: only one copy gets it.
     if (ops.waiting()) cx.spawn(async cx => { const r = ops.take(); if (r) this.act(r, cx); });
     const t = theme();
     const list = this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored, shown: this.shown() });
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
-      .on_mouse_move((e, cx) => this.follow(e, cx))
-      // A release is not always seen (over a toast, outside the window), and a drag left behind
-      // would turn a later release into a drop. So every press that is not the one that began
-      // the drag ends it: here (a row's own press comes first, and is this very event), and
-      // anywhere else in the window.
+      // Only while an entry is pressed: every move in the window is a call into the script.
+      .when(Boolean(this.drag), el => el
+        .on_window_mouse_move((e, cx) => this.follow(e, cx))
+        .on_window_mouse_up("left", (_e, cx) => this.ended(cx)))
+      // A release is not always seen (outside the window), and a drag left behind would turn a
+      // later release into a drop. So every press that is not the one that began the drag ends
+      // it too: here (a row's own press comes first, and is this very event), and anywhere else
+      // in the window. A window can be pressed with no move seen before it (back from another
+      // Space), so this stays beside follow()'s.
       .on_mouse_down("left", (e, cx) => { const d = this.drag; if (d && (d.x !== e.position.x || d.y !== e.position.y)) this.still(cx); })
       .on_mouse_down_out((_e, cx) => this.still(cx))
       .child(h_flex().id("files-head").h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
@@ -568,14 +693,9 @@ export default class Files extends View {
           .on_click(() => run(`${SEARCH}.open`))
           .child(svg("mods/workspace-chrome/search.svg").size(15).flex_none().text_color(t.muted))))
       .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(5).border_1().border_color(this.over?.dir === "" ? t.accent : CLEAR).rounded_b(10)
-        // A release outside the list never reaches it, and must not turn the next one here
-        // into a drop. While Herdr's drag is under way no hover is reported at all, so a drag
-        // can leave and come back; once it has ended elsewhere (on a terminal), the pointer
-        // coming in is reported, and that ends what was left of it here: a drag that moved,
-        // or (it may have left too fast to be seen moving) one pressed a while ago. Going out
-        // is reported only when no such drag began: a press that never moved far.
-        .on_hover((hovered, cx) => { const d = this.drag; if (!hovered || (d && (d.moving || Date.now() - d.t > FRESH))) this.still(cx); })
-        .on_mouse_up("left", (_e, cx) => { this.drag = null; this.over = null; cx.notify(); })
+        // A release here that no row took (the padding) ends the drag at once; ended() would a
+        // step later, once it watches the window (the draw after the press).
+        .on_mouse_up("left", (_e, cx) => this.still(cx))
         // From Finder, anywhere a row didn't take it: the top folder.
         .on_drop((e, cx) => this.dropped(e.paths, "", cx))
         .children(list)

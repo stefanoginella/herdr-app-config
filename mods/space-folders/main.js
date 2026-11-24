@@ -57,6 +57,14 @@ function place(s, ps) {
   const tabs = new Set((s.tabs ?? []).map((c) => c.id));
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
+// Keep the whole leading emoji in the avatar (same rule in spaces and picker).
+// Newer pictographs such as 🖥 may be drawn as emoji without VS16. A trailing
+// selector, modifier or joiner can signal that we matched only part of a glyph.
+const EMOJI = /^(?:[#*0-9]\uFE0F?\u20E3|\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|(?=[\u{1F000}-\u{1FFFF}])\p{Extended_Pictographic}|\p{Extended_Pictographic}(?=\uFE0F)|\p{Emoji_Modifier_Base}(?=\p{Emoji_Modifier}))\uFE0F?[\p{Emoji_Modifier}\u{E0020}-\u{E007F}]*(?:\u200D\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)*)(?![\p{Grapheme_Extend}\p{Emoji_Modifier}\u200D])/u;
+function spaceAvatar(name) {
+  return EMOJI.exec(name)?.[0] ?? ([...name][0]?.toUpperCase() ?? "?");
+}
+
 const rowHeight = ({ tree }) => (tree ? 28 : 30);
 const RAIL_CELL = 32;
 // A space's name and its git tail never shrink below this, so a short one ("api")
@@ -190,7 +198,7 @@ export default class Spaces extends View {
       if (ready && this.ready[m.name] === false) for (const k of keys) if (JSON.parse(k)[0] === m.name) due.add(k);
       this.ready[m.name] = ready;
     }
-    if (window().active) {
+    if (window()?.active) {
       for (const k of keys) {
         const asks = this.git[k] || this.unsure.has(k);
         if (asks && !this.folded.has(JSON.parse(k)[0]) && now - (this.checked[k] ?? 0) > FALLBACK) due.add(k);
@@ -614,7 +622,13 @@ export default class Spaces extends View {
   // and the name both start from their text's width and give way in proportion.
   gitTail(g, tree, name, t) {
     const raw = g.branch ?? "detached";
-    const same = (a) => a.toLowerCase() === name.toLowerCase();
+    const fullName = name.toLowerCase();
+    const emoji = EMOJI.exec(name)?.[0];
+    const label = emoji ? name.slice(emoji.length).trim().toLowerCase() : fullName;
+    const same = (a) => {
+      const text = a.toLowerCase();
+      return text === fullName || text === label;
+    };
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
     const repo = tree || same(g.name) ? "" : g.name;
     const where = [repo, branch].filter(Boolean).join(" \u00b7 ");
@@ -831,7 +845,7 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).flex_none().text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(spaceAvatar(w.name))))
           .child(div().flex_initial().min_w(SIDE_MIN).truncate().text_color(t.foreground).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
       );

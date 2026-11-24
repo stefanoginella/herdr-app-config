@@ -1,6 +1,8 @@
 // Cmd-click (Ctrl-click) on a file path in a terminal: the file opens in its tab's editor
 // (`file-editor`), at the line and column the path ends with: `src/app.ts:42`, `src/app.ts:42:7`,
-// `src/app.ts(42,7)`.
+// `src/app.ts(42,7)`, or the first line of a range or an anchor: `src/app.ts:5-12`,
+// `src/app.ts#L42`, `src/app.ts#L5-L12`. Herdr works the line and column out itself
+// (`link.line`, `link.column`) for every form but `(42,7)`; this mod's own reading is what's left.
 //
 // What the editor can't show goes on ("pass") to the next link handler, then to Herdr's own
 // opener: images, PDFs, archives and other binaries by their name, folders, missing files, and a
@@ -13,16 +15,26 @@ import { panes, setShared, run, exec } from "herdr";
 
 const EDITOR = "file-editor";
 const BINARY = /\.(png|jpe?g|gif|webp|bmp|ico|icns|tiff?|heic|avif|psd|sketch|fig|pdf|zip|gz|tgz|bz2|xz|zst|7z|rar|dmg|pkg|iso|exe|dll|so|dylib|a|o|class|jar|wasm|pyc|woff2?|ttf|otf|eot|mp3|mp4|m4a|mov|avi|mkv|webm|wav|flac|ogg|sqlite3?|db)$/i;
-// Where a file ends and its place begins: `:12`, `:12:5`, `(12)`, `(12,5)`, a colon after.
+// Where a file ends and its place begins, after a period that ends the sentence is taken off, in
+// the order Herdr tries them (`without_suffix()` in its `src/links.rs`): an anchor, `#L42`,
+// `#L5-12`, `#L5-L12`; a range, `:5-12`, `:5-L12`; then `:12`, `:12:5`, `(12)`, `(12,5)`, a colon
+// after. A range or an anchor gives its first line.
+const ANCHOR = /#L(\d+)(?:-L?\d+)?$/;
+const RANGE = /:(\d+)-L?\d+$/;
 const PLACE = /(?::(\d+)(?::(\d+))?|\((\d+)(?:,\s*(\d+))?\)):?$/;
 const CHECK_FOR = 5000;
 
-// The line and column the clicked text ends with (1-based), or nulls.
+const count = (n) => (Number(n) > 0 ? Number(n) : null);
+
+// The line and column the clicked text ends with (1-based), or nulls, and the text without them.
 function place(raw) {
-  const m = PLACE.exec(raw ?? "");
-  if (!m) return { line: null, col: null, rest: raw ?? "" };
-  const line = Number(m[1] ?? m[3]), col = Number(m[2] ?? m[4]);
-  return { line: line > 0 ? line : null, col: col > 0 ? col : null, rest: (raw ?? "").slice(0, m.index) };
+  let text = raw ?? "";
+  if (text.endsWith(".")) text = text.slice(0, -1);
+  const lines = ANCHOR.exec(text) ?? RANGE.exec(text);
+  if (lines) return { line: count(lines[1]), col: null, rest: text.slice(0, lines.index) };
+  const m = PLACE.exec(text);
+  if (!m) return { line: null, col: null, rest: text };
+  return { line: count(m[1] ?? m[3]), col: count(m[2] ?? m[4]), rest: text.slice(0, m.index) };
 }
 
 // The file's path on its machine. Herdr resolves a local one (`link.path`); one on another
@@ -42,8 +54,10 @@ function where(link, source, rest) {
 
 export async function handleLink({ link, source }) {
   if (link.kind !== "file" || !source?.tab) return "pass";
-  const { line, col, rest } = place(link.raw);
-  const path = where(link, source, rest);
+  // Herdr's line and column when it found one (never for a `file:` URI), else the mod's own.
+  const own = place(link.raw);
+  const line = link.line ?? own.line, col = link.line ? link.column ?? null : own.col;
+  const path = where(link, source, own.rest);
   if (!path || BINARY.test(path)) return "pass";
   const on = source.machine ?? null;
   // Only a regular file (not a folder, not a missing one): the editor would show an error.

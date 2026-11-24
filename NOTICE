@@ -5,13 +5,13 @@ This repository includes files derived from Herdr (https://herdr.dev), which is
 licensed under the Apache License, Version 2.0:
 
 - mods/space-folders/main.js is a modified copy of Herdr's `spaces` mod
-  (version 0.1.17). It adds folders to the sidebar.
+  (version 0.1.18). It adds folders to the sidebar.
 - mods/agents-unread/main.js is a modified copy of Herdr's `agents` mod
-  (version 0.1.17). It lets an idle agent be marked unread.
+  (version 0.1.18). It lets an idle agent be marked unread.
 - mods/files-actions/main.js is a modified copy of Herdr's `files` mod
-  (version 0.1.17). It adds file type icons, a right-click menu and drag to move.
+  (version 0.1.18). It adds file type icons, a right-click menu and drag to move.
 - layouts/main-folders.json is a modified copy of Herdr's `main` layout
-  (version 0.1.17). Its Spaces block shows `space-folders` instead of `spaces`,
+  (version 0.1.18). Its Spaces block shows `space-folders` instead of `spaces`,
   its Agents block shows `agents-unread` instead of `agents`, and its Files
   block shows `files-actions` instead of `files`. Its Changes block shows
   `git-panel` instead of `changes`. It also has two blocks of its own for

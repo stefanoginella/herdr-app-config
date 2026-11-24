@@ -40,7 +40,7 @@ const PANELS = "workspace.panels";
 const FRESH = 10000;
 // How long after the last key the search runs, and the fields are put in localStorage.
 const TYPE_AFTER = 300, STASH_AFTER = 800;
-// How many rows are drawn at first, and with each "Show more".
+// How many rows are drawn at first, and with each "Show more" (or scroll to the end).
 const PAGE = 300;
 const STORE = "state";
 const HISTORY = 30;
@@ -124,6 +124,7 @@ export default class ProjectSearch extends View {
     this.turn = 0; // counts the keys, so that only the last one starts a search
     this.folded = new Set(); // the files whose matches are not shown
     this.limit = PAGE; // how many rows are drawn
+    this.grown = null; // the list's height when `limit` last grew by itself (see reach())
     this.cursor = null; // the row last opened or gone to: a match's id, or fileKey()
     this.hot = null; // the row under the pointer
     this.busy = null; // what is being written, in words
@@ -345,7 +346,7 @@ export default class ProjectSearch extends View {
     this.result = { ...found, ...of };
     const paths = new Set(found.files.map((f) => f.path));
     this.folded = new Set([...this.folded].filter((path) => paths.has(path)));
-    this.limit = PAGE;
+    this.limit = PAGE; this.grown = null;
     this.hot = null;
     if (this.cursor && !this.rows().some((r) => r.key === this.cursor)) this.cursor = null;
   }
@@ -551,10 +552,14 @@ export default class ProjectSearch extends View {
     });
   }
 
-  // The keyboard goes back to the pane: the editor's text, or the terminal.
+  // The keyboard goes back to the pane: the editor's text, or the terminal. From a field, the
+  // field gives it up (`blur()`) and Herdr hands it to the focused pane, a terminal block too.
+  // The editor wants its text to have it, which only it can do; and the list is no field.
   leave() {
     const f = focused(), pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
+    const field = this.field ? this.inputs()[this.field] : null;
     if (pane?.mod === EDITOR) run(`${EDITOR}.focus`);
+    else if (field) field.blur();
     else if (pane) run("pane.focus", { pane: pane.pane });
   }
 
@@ -736,15 +741,30 @@ export default class ProjectSearch extends View {
       .child(hot ? this.tools(t, f, m, becomes) : div().flex_none().text_size(10.5).text_color(t.dim).child(String(m.line)));
   }
 
+  // Scrolled to within a screen of the end, the next PAGE rows are drawn, as "Show more" does.
+  // The handle tells of the last layout: a page is added only once one has the rows of the page
+  // before (its height is no longer `grown`), else one wheel turn would add several.
+  reach(cx) {
+    const s = this.scroll, high = s.content_size().height, view = s.viewport_size().height;
+    if (!high || !view || high === this.grown || s.offset().y + view < high - view) return;
+    if (this.rows().length <= this.limit) return;
+    this.limit += PAGE; this.grown = high;
+    cx.notify();
+  }
+
   list(t) {
     const r = this.result, rows = this.rows();
     const s = { root: r?.root, on: r?.on ?? null, replace: this.canReplace(), mono: settings().font_family };
     const say = (text) => div().p(10).text_size(12).text_color(t.dim).child(text);
     return v_flex().id("ps-list").flex_1().min_h(0).overflow_y_scrollbar().track_scroll(this.scroll).p(5)
+      // The wheel, and the release of the scrollbar dragged, near the end: more rows.
+      .on_scroll_wheel((_e, cx) => this.reach(cx))
+      .on_mouse_up("left", (_e, cx) => this.reach(cx))
       .children(rows.slice(0, this.limit).map((row) => this.row(t, row, s)))
       .when(rows.length > this.limit, (el) => el.child(h_flex().id("ps-more").h(28).flex_none().px(10).items_center().rounded(7).cursor_pointer().text_size(12).text_color(t.accent)
         .hover((st) => st.bg(t.hover))
-        .on_click((_e, cx) => { this.limit += PAGE; cx.notify(); })
+        // A page, not two: the list's own release (reach()) is not to add one as well.
+        .on_click((_e, cx) => { cx.stop_propagation(); this.limit += PAGE; this.grown = this.scroll.content_size().height; cx.notify(); })
         .child(`Show more (${num(rows.length - this.limit)} rows not shown)`)))
       .when(!r && !this.query.value() && Boolean(this.ctx), (el) => el.child(say(this.ctx?.auto
         ? "Type to search every file of the project. What git ignores is left out."

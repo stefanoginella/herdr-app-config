@@ -1,5 +1,6 @@
 // A text editor that opens as a pane beside the terminals: the files of a tab as a strip of
-// tabs, long lines wrapped, find and replace, Markdown shortcuts and a rendered preview.
+// tabs, long lines wrapped (or not, a file at a time), find and replace, Markdown shortcuts and a
+// rendered preview, the find bar's matches lit in it too.
 //
 // One editor a tab. The Files panel (`files-actions`) and the Search panel (`project-search`)
 // split it in with props { tab } and ask for a file through shared state; the editor that
@@ -23,11 +24,11 @@
 // The editing itself is Herdr's `Editor`: undo, several cursors (Alt-click, Cmd-Alt-Up/Down),
 // indenting, bracket pairs, folding. What this mod adds is in edit.js, and reaches it as key
 // commands (keys.json, section `mod:file-editor`): save, find, replace, find-next, find-prev,
-// escape, preview, close, bold, italic, code, strike, link, bullets, numbers, tasks, comment,
+// escape, preview, wrap, close, bold, italic, code, strike, link, bullets, numbers, tasks, comment,
 // line-up, line-down, duplicate, next-same, next-change, prev-change, search-project.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextView } from "gpui-base";
-import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, run } from "herdr";
+import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, run, window as app } from "herdr";
 import * as edit from "./edit.js";
 import * as diff from "./diff.js";
 import * as remote from "./remote.js";
@@ -43,8 +44,9 @@ const SEARCH = "project-search", ASK = "project-search.ask";
 const FRESH = 10000;
 // More text than this is shown cut short, and read-only.
 const MOST = 400000;
-// How often the file shown is read again, to notice a change made elsewhere (an agent, git).
-const LOOK_EVERY = 5000;
+// How often the file shown is read again, to notice a change made elsewhere (an agent, git),
+// and how often the timer asks whether that is due: coming back to Herdr reads at the next tick.
+const LOOK_EVERY = 5000, LOOK_TICK = 1000;
 // How long after the last key the unsaved text is put in localStorage.
 const STASH_AFTER = 800;
 // How long after a key the marks of what changed are worked out again, and the least time
@@ -66,12 +68,18 @@ const AROUND = 3, MOVE_AFTER = 40;
 const GOAL_FOR = 3000;
 const STORE = "state";
 const REFOCUS = 300, REFOCUS_SOON = 60;
+// At most this many of the find bar's matches are lit in the preview: each is a call in render().
+const LIT_MOST = 300;
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", cjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html", markdown: "md", mdx: "md" };
 const MARKDOWN = /\.(md|markdown|mdx)$/i;
 
 const base = path => path.slice(path.lastIndexOf("/") + 1);
 const same = (a, b) => Boolean(a && b) && a.start === b.start && a.end === b.end;
 const idOf = (path, on) => `${on ?? ""}\n${path}`;
+// A theme color at `alpha` (two hex digits), when it is a plain #rrggbb.
+const tint = (color, alpha) => (/^#[0-9a-f]{6}$/i.test(color ?? "") ? color + alpha : color);
+// The editor's indent for a text (edit.indent()).
+const indentOf = d => edit.indent(d.text, d.name);
 
 // "cmd-shift-z" as a Mac shows it: "⇧⌘Z".
 const SIGN = { ctrl: "⌃", alt: "⌥", shift: "⇧", cmd: "⌘" };
@@ -102,7 +110,7 @@ export default class FileEditor extends View {
     this.query = InputState.new({ placeholder: "Find" });
     this.to = InputState.new({ placeholder: "Replace" });
     this.query.on("change", (_e, cx) => { this.search(true); cx.notify(); });
-    this.query.on("submit", (e, cx) => { if (e.secondary) this.goTo(); else this.step(e.shift ? -1 : 1); cx.notify(); });
+    this.query.on("submit", (e, cx) => { if (e.secondary) this.goTo(cx); else this.step(e.shift ? -1 : 1); cx.notify(); });
     this.to.on("submit", (_e, cx) => { this.replaceOne(); cx.notify(); });
     for (const [name, input] of [["query", this.query], ["to", this.to]]) {
       input.on("focus", (_e, cx) => { this.find.focused = name; cx.notify(); });
@@ -113,7 +121,20 @@ export default class FileEditor extends View {
       for (;;) { const command = await nextCommand(); this.command(command, cx); cx.notify(); }
     });
     // A file on another machine is read again when its tab is shown, not on a timer.
-    if (!checking()) cx.timer.every(LOOK_EVERY, cx => { const d = this.doc(); if (d && !d.on) { this.look(d, cx); this.head(d, cx); } });
+    if (!checking()) cx.timer.every(LOOK_TICK, cx => this.poll(cx));
+  }
+
+  // The timed look at the file shown. Not while Herdr is not the active app; the first tick
+  // with Herdr active again looks at once, since the file may have been changed in another
+  // app. Only the timer waits: a save, a request and a tab shown look by themselves.
+  // `app` is Herdr's `window()`, null in a check.
+  poll(cx) {
+    if (app()?.active === false) { this.away = true; return; }
+    const now = Date.now();
+    if (!this.away && now - (this.lookedAt ?? 0) < LOOK_EVERY) return;
+    this.away = false; this.lookedAt = now;
+    const d = this.doc();
+    if (d && !d.on) { this.look(d, cx); this.head(d, cx); }
   }
 
   // The pane is going (or the app): what was typed is kept for the next time.
@@ -137,7 +158,7 @@ export default class FileEditor extends View {
     try {
       localStorage.setItem(STORE, JSON.stringify({
         active: this.active,
-        open: this.docs.map(d => ({ path: d.path, on: d.on, preview: d.preview, ...(d.dirty && d.state ? { draft: d.text, base: d.base } : {}) })),
+        open: this.docs.map(d => ({ path: d.path, on: d.on, preview: d.preview, wrap: d.wrap, ...(d.dirty && d.state ? { draft: d.text, base: d.base } : {}) })),
       }));
     } catch (e) { console.log(`${MOD}: could not keep the open files: ${e}`); }
   }
@@ -153,7 +174,7 @@ export default class FileEditor extends View {
     let kept = null;
     try { kept = JSON.parse(localStorage.getItem(STORE) ?? "null"); } catch { kept = null; }
     for (const o of kept?.open ?? []) {
-      if (typeof o?.path === "string") this.load({ path: o.path, on: o.on ?? null, preview: Boolean(o.preview), draft: o.draft, base: o.base }, cx, false);
+      if (typeof o?.path === "string") this.load({ path: o.path, on: o.on ?? null, preview: Boolean(o.preview), wrap: o.wrap !== false, draft: o.draft, base: o.base }, cx, false);
     }
     if (this.docs.some(d => d.id === kept?.active)) this.active = kept.active;
   }
@@ -170,7 +191,7 @@ export default class FileEditor extends View {
     // Herdr has focused the pane, which takes the keyboard (and so the selection) from it.
     const reveal = d => { if (show && o.select) cx.timer.after(REFOCUS_SOON, cx => { if (this.active === d.id) this.reveal(d, o.select, cx); }); };
     if (d) {
-      if (show) { this.active = id; this.focus(); this.look(d, cx); this.head(d, cx); reveal(d); }
+      if (show) { this.active = id; this.found(); this.focus(); this.look(d, cx); this.head(d, cx); reveal(d); }
       return;
     }
     d = {
@@ -180,6 +201,8 @@ export default class FileEditor extends View {
       text: "", prev: "", // the editor's text now, and before the last change
       dirty: false, readonly: null, // or why, as the pane says it
       preview: Boolean(o.preview), error: null,
+      wrap: o.wrap !== false, // long lines wrapped (the default), or scrolled sideways
+      place: null, picked: "", // the preview's last selection: its range in the text, and what it says
       notice: null, // "changed": on disk under unsaved text (`disk` has it); "gone"; "closing": asked to close unsaved
       disk: null, saving: false, looking: false,
       head: null, oid: null, // the file as the last commit has it, and git's name for that. null: git has none
@@ -187,7 +210,7 @@ export default class FileEditor extends View {
       stale: false, marking: false, cost: 0, heading: false, headAt: 0,
     };
     this.docs.push(d);
-    if (show || !this.active) this.active = id;
+    if (show || !this.active) { this.active = id; this.found(); }
     cx.spawn(async cx => {
       try {
         const text = await readTextFile(d.path, { on: d.on });
@@ -207,14 +230,21 @@ export default class FileEditor extends View {
         // The file moved on while the unsaved text waited.
         if (draft !== null && text !== d.base) { if (text === null) { d.base = null; d.notice = "gone"; } else { d.notice = "changed"; d.disk = text; } }
         const t = theme(), ext = d.name.includes(".") ? d.name.split(".").pop().toLowerCase() : "txt";
+        const indent = indentOf(d);
         d.state = EditorState.new({
-          language: LANG[ext] ?? ext, value: shown, readonly: Boolean(d.readonly), soft_wrap: true,
-          font_family: settings().font_family, font_size: textSize(),
-          syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 },
+          language: LANG[ext] ?? ext, value: shown, readonly: Boolean(d.readonly), soft_wrap: d.wrap,
+          font_family: settings().font_family, font_size: textSize(), tab_size: indent.size, hard_tabs: indent.hard,
+          // Markdown's own as code's: headings and list marks as keywords, code as strings,
+          // quotes as comments, links as functions; bold and italic as types and constants.
+          syntax: {
+            keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6,
+            heading: t.ansi5, list: t.ansi5, code: t.ansi2, quote: t.dim, link: t.ansi4, strong: t.ansi3, emphasis: t.ansi6,
+          },
         });
         d.state.on("change", (_e, cx) => this.changed(d, cx));
         d.state.on("submit", (e, cx) => this.entered(d, e, cx));
         d.state.on("focus", (_e, cx) => { this.look(d, cx); this.head(d, cx); });
+        if (this.active === d.id) this.found();
         if (show && this.active === d.id) this.focus();
         reveal(d);
         this.head(d, cx);
@@ -297,6 +327,9 @@ export default class FileEditor extends View {
     d.base = d.text = d.prev = text;
     d.dirty = false; d.notice = null; d.disk = null;
     d.state.set_value(text);
+    const indent = indentOf(d);
+    d.state.set_tab_size(indent.size, indent.hard);
+    d.place = null;
     const at = Math.min(sel.start, text.length);
     d.state.set_selected_range({ start: at, end: at });
     if (this.find.open && d.id === this.active) this.search(false);
@@ -389,16 +422,28 @@ export default class FileEditor extends View {
   // Shows what a search found: `select` is { line (from 1), start, end (in that line) }. Its
   // text is selected, which is what shows it, and brought into sight as a change is. The line
   // is counted in the editor's text: with unsaved typing above it, it is the wrong one.
+  //
+  // A file in preview goes back to its text: the rendered page can light the match, but can't
+  // be scrolled to it, and the match may be anywhere in the file.
   reveal(d, select, cx) {
     const line = Math.floor(Number(select?.line)) - 1;
     if (!d?.state || !(line >= 0)) return;
     d.goal = { select, at: d.goal?.select === select ? d.goal.at : Date.now() };
-    // The rendered page has no selection to show.
-    if (d.preview) { d.preview = false; this.store(); }
     const text = d.text, whole = diff.range(text, { line, count: 1 });
     const within = n => Math.max(whole.start, Math.min(whole.end, whole.start + (Number(n) || 0)));
+    const range = { start: within(select.start), end: within(select.end) };
+    if (d.preview) { this.unpreview(d, range, cx); cx.notify(); return; }
+    this.bring(d, range, cx);
+  }
+
+  // `range` of the text is selected and brought into sight, a few lines around it, and the
+  // keyboard goes to the text: as a change is gone to (change()).
+  bring(d, range, cx) {
+    const text = d.text, end = text.length;
+    const sel = { start: Math.min(range.start, end), end: Math.min(range.end, end) };
+    const line = edit.position(text, sel.start).line - 1;
     const at = n => { const o = diff.range(text, { line: Math.max(0, n), count: 0 }).start; return { start: o, end: o }; };
-    this.travel(d, [at(line + AROUND), at(line - AROUND), { start: within(select.start), end: within(select.end) }], cx);
+    this.travel(d, [at(line + AROUND), at(line - AROUND), sel], cx);
   }
 
   // `then`: what a save that went through is followed by.
@@ -437,10 +482,27 @@ export default class FileEditor extends View {
     this.store();
   }
 
-  // The rendered page has no selection to show a match by, nor a way to scroll to one: finding
-  // goes back to the text, as a result of the Search panel does (reveal()).
-  unpreview(d) {
-    if (d?.preview) { d.preview = false; this.store(); }
+  // Back from the preview to the text, at `range` when there is one: selected and in sight. The
+  // editor is not drawn yet, so that waits a moment (it also has to be drawn to scroll).
+  unpreview(d, range, cx) {
+    if (!d?.preview) return;
+    d.preview = false; d.place = null;
+    this.store();
+    this.focus();
+    if (range) cx.timer.after(REFOCUS_SOON, cx => { if (this.doc() === d && !d.preview && d.state) this.bring(d, range, cx); });
+  }
+
+  // Where finding goes on from: the text's selection, or in the preview the place there (the
+  // reader's last selection, or the match the find bar is at). The preview doesn't move the
+  // text's selection: going back to the text goes to that place (command("preview")).
+  cursor(d) {
+    return d.preview && d.place ? d.place : d.state.selected_range();
+  }
+
+  // The current match `m` becomes where the reader is.
+  at(d, m) {
+    if (d.preview) d.place = { start: m.start, end: m.end };
+    else d.state.set_selected_range(m);
   }
 
   // Finds the query again in the file shown. `reveal`: go to the first match from the cursor on.
@@ -448,36 +510,42 @@ export default class FileEditor extends View {
     const f = this.find, d = this.doc();
     const r = d?.state ? edit.find(d.text, this.query.value(), f) : { matches: [] };
     f.matches = r.matches; f.error = r.error ?? null;
-    const sel = d?.state ? d.state.selected_range() : { start: 0, end: 0 };
+    const sel = d?.state ? this.cursor(d) : { start: 0, end: 0 };
     f.at = f.matches.findIndex(m => same(m, sel));
     if (reveal && f.matches.length && d) {
-      this.unpreview(d);
       const from = f.at >= 0 ? f.at : f.matches.findIndex(m => m.start >= sel.start);
       f.at = from < 0 ? 0 : from;
-      d.state.set_selected_range(f.matches[f.at]);
+      this.at(d, f.matches[f.at]);
     }
   }
 
-  // To the next match (`by` 1) or the one before (-1), from the cursor, going round.
+  // Another file is shown: the find bar's matches are of it.
+  found() {
+    if (this.find.open) this.search(false);
+  }
+
+  // To the next match (`by` 1) or the one before (-1), from the cursor, going round. In the
+  // preview the match is lit, and the page stays where it is: it can't be scrolled to it.
   step(by) {
     const f = this.find, d = this.doc(), n = f.matches.length;
     if (!d?.state || !n) return;
-    this.unpreview(d);
-    const sel = d.state.selected_range();
+    const sel = this.cursor(d);
     let at = f.matches.findIndex(m => same(m, sel));
     if (at >= 0) at = (at + by + n) % n;
     else if (by > 0) { at = f.matches.findIndex(m => m.start >= sel.start); if (at < 0) at = 0; }
     else { at = n - 1; while (at > 0 && f.matches[at].end > sel.start) at--; if (f.matches[at].end > sel.start) at = n - 1; }
     f.at = at;
-    d.state.set_selected_range(f.matches[at]);
+    this.at(d, f.matches[at]);
   }
 
-  // The keyboard goes to the text, with the current match selected: there it shows.
-  goTo() {
+  // The keyboard goes to the text, with the current match selected: there it shows. From the
+  // preview too, which can't be scrolled to it.
+  goTo(cx) {
     const f = this.find, d = this.doc();
     if (!d?.state) return;
-    this.unpreview(d);
-    if (f.at >= 0 && f.matches[f.at]) d.state.set_selected_range(f.matches[f.at]);
+    const m = f.at >= 0 ? f.matches[f.at] : null;
+    if (d.preview) return this.unpreview(d, m, cx);
+    if (m) d.state.set_selected_range(m);
     d.state.focus();
   }
 
@@ -507,12 +575,11 @@ export default class FileEditor extends View {
 
   openFind(replacing) {
     const f = this.find, d = this.doc();
-    this.unpreview(d);
     f.open = true;
-    if (replacing) f.replacing = true;
-    // What is selected, on one line, is what is looked for.
-    const sel = d?.state ? d.state.selected_range() : null;
-    const picked = sel && sel.end > sel.start ? d.text.slice(sel.start, sel.end) : "";
+    if (replacing && !d?.preview) f.replacing = true;
+    // What is selected, on one line, is what is looked for: in the preview, what its selection says.
+    const sel = d?.state && !d.preview ? d.state.selected_range() : null;
+    const picked = d?.preview ? d.picked ?? "" : sel && sel.end > sel.start ? d.text.slice(sel.start, sel.end) : "";
     if (picked && !picked.includes("\n")) this.query.set_value(picked);
     this.query.set_selected_range({ start: 0, end: this.query.value().length });
     this.query.focus();
@@ -547,7 +614,17 @@ export default class FileEditor extends View {
     }
     if (name === "preview") {
       if (!d?.markdown || !d.state) return;
-      d.preview = !d.preview;
+      // Back to the text where the reader was in the page: what they selected last there.
+      if (d.preview) return this.unpreview(d, d.place, cx);
+      d.preview = true; d.place = null; d.picked = "";
+      this.find.replacing = false;
+      this.store();
+      return this.focus();
+    }
+    if (name === "wrap") {
+      if (!d?.state) return;
+      d.wrap = !d.wrap;
+      d.state.set_soft_wrap(d.wrap);
       this.store();
       return this.focus();
     }
@@ -571,7 +648,9 @@ export default class FileEditor extends View {
     const o = shared(OPEN);
     if (o && o.tab === this.tab && o.at !== this.seen.open && typeof o.path === "string") {
       this.seen.open = o.at;
+      // Begun in the draw: it waits one step, or what it starts (a timer, a draw) is refused.
       cx.spawn(async cx => {
+        await null;
         if (shared(OPEN)?.at === o.at) setShared(OPEN, null);
         if (Date.now() - o.at < FRESH) this.load({ path: o.path, on: o.on ?? null, select: o.select ?? null }, cx);
         cx.notify();
@@ -624,6 +703,19 @@ export default class FileEditor extends View {
     setShared(SHOWN, all);
   }
 
+  // Shows the open file `o`: a tab of the strip clicked, or a mouse's back or forward button.
+  show(o, cx) {
+    this.active = o.id;
+    this.found();
+    this.focus(); this.look(o, cx); this.head(o, cx); this.store();
+  }
+
+  // The tab before (`by` -1) or after (1) the one shown, not going round.
+  cycle(by, cx) {
+    const at = this.docs.findIndex(d => d.id === this.active), o = this.docs[at + by];
+    if (at >= 0 && o) this.show(o, cx);
+  }
+
   button(t, id, label, tip, action, o = {}) {
     return h_flex().id(id).h(24).min_w(24).px(7).flex_none().items_center().justify_center().rounded(6).cursor_pointer()
       .text_size(12).text_color(o.on ? t.foreground : t.muted)
@@ -649,7 +741,7 @@ export default class FileEditor extends View {
             .when(on, el => el.bg(t.selected))
             .when(!on, el => el.hover(s => s.bg(t.hover)))
             .tooltip(o.on ? `${o.on}: ${o.path}` : o.path)
-            .on_click((_e, cx) => { this.active = o.id; if (this.find.open) this.search(false); this.focus(); this.look(o, cx); this.head(o, cx); this.store(); cx.notify(); })
+            .on_click((_e, cx) => { this.show(o, cx); cx.notify(); })
             .child(div().min_w(0).truncate().child(o.name))
             .child(h_flex().id(`fe-shut-${o.n}`).size(18).flex_none().items_center().justify_center().rounded(5)
               .text_size(o.dirty ? 9 : 13).text_color(o.dirty ? t.foreground : t.dim)
@@ -659,7 +751,8 @@ export default class FileEditor extends View {
               .child(o.dirty ? "●" : "×"));
         })))
       .when(Boolean(d?.state), el => el
-        .when(Boolean(d.markdown), el => el.child(this.button(t, "fe-preview", d.preview ? "Edit" : "Preview", hint(d.preview ? "Back to the text" : "Show it rendered", "preview"), cx => this.command("preview", cx), { on: d.preview })))
+        .when(!d.preview, el => el.child(this.button(t, "fe-wrap", "Wrap", hint(d.wrap ? "Long lines wrap: scroll them sideways instead" : "Long lines scroll sideways: wrap them instead", "wrap"), cx => this.command("wrap", cx), { on: d.wrap })))
+        .when(Boolean(d.markdown), el => el.child(this.button(t, "fe-preview", d.preview ? "Edit" : "Preview", hint(d.preview ? "Back to the text, where you selected last" : "Show it rendered", "preview"), cx => this.command("preview", cx), { on: d.preview })))
         .when(d.diff.marks.length > 0 && !d.preview, el => el.child(this.button(t, "fe-changes", `±${d.diff.marks.length}`,
           hint(`${d.diff.marks.length === 1 ? "1 change" : `${d.diff.marks.length} changes`} since the last commit: go to the next`, "next-change"), cx => this.command("next-change", cx))))
         .child(this.button(t, "fe-find", "Find", hint("Find in this file", "find"), cx => this.command("find", cx), { on: this.find.open }))
@@ -689,7 +782,7 @@ export default class FileEditor extends View {
     const can = !d.readonly && !d.preview;
     // Where the match is: the text shows a selection only while it has the keyboard, and here
     // the field has it. So the bar says the line, and shows the match in it.
-    const m = !d.preview && f.at >= 0 ? f.matches[f.at] : null;
+    const m = f.at >= 0 ? f.matches[f.at] : null;
     const at = m ? edit.position(d.text, m.start) : null;
     const lineEnd = m ? (d.text.indexOf("\n", m.end) < 0 ? d.text.length : d.text.indexOf("\n", m.end)) : 0;
     const part = m ? {
@@ -709,8 +802,8 @@ export default class FileEditor extends View {
         .child(this.button(t, "fe-find-shut", "×", hint("Close", "escape"), () => this.closeFind())))
       .when(Boolean(part), el => el.child(h_flex().id("fe-find-line").ml(26).pl(4).pr(4).h(22).gap(10).items_center().rounded(5).cursor_pointer().text_size(11.5)
         .hover(s => s.bg(t.hover))
-        .tooltip("Go to this line, with the keyboard in the text (⌘↩)")
-        .on_click((_e, cx) => { this.goTo(); cx.notify(); })
+        .tooltip(d.preview ? "Go to this line in the text, with the keyboard there (⌘↩)" : "Go to this line, with the keyboard in the text (⌘↩)")
+        .on_click((_e, cx) => { this.goTo(cx); cx.notify(); })
         .child(div().flex_none().text_color(t.accent).child(`Go to line ${at.line}`))
         .child(h_flex().flex_1().min_w(0).overflow_hidden().whitespace_nowrap().text_color(t.muted)
           .child(div().flex_none().child(part.before))
@@ -743,6 +836,26 @@ export default class FileEditor extends View {
             .on_click((_e, cx) => { this.change(0, m, cx); cx.notify(); })
             .child(div().ml(2).w(4).h_full().min_h(MARK).rounded(1).bg(color[m.kind]));
         })));
+  }
+
+  // The rendered Markdown. HTML in it is shown as text. What the reader selects is kept (`place`,
+  // in the text), for going back to the text there. While the find bar has a query its matches
+  // are lit, the one it is at in the theme's yellow: no more than LIT_MOST of them, and found
+  // by search(), never here.
+  page(t, d) {
+    let view = TextView.markdown(`fe-md-${d.n}`, d.text).raw_html(false).selectable(true)
+      .on_selection_change(s => {
+        if (!this.docs.includes(d)) return;
+        d.place = s?.range ? { start: s.range.start, end: s.range.end } : null;
+        d.picked = s?.text ?? "";
+      });
+    const f = this.find;
+    if (!f.open || f.error || !this.query.value()) return view;
+    const n = Math.min(f.matches.length, LIT_MOST);
+    for (let i = 0; i < n; i++) if (i !== f.at) view = view.highlight_range(f.matches[i].start, f.matches[i].end, t.selection);
+    const m = f.matches[f.at];
+    if (m) view = view.highlight_range(m.start, m.end, tint(t.ansi3, "66"));
+    return view;
   }
 
   // A line that asks: a file changed under unsaved text, gone, or closing with unsaved text.
@@ -797,6 +910,9 @@ export default class FileEditor extends View {
       .on_mouse_down("left", () => this.handle.focus()).child(text);
     return v_flex().id("file-editor").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13)
       .track_focus(this.handle)
+      // A mouse's side buttons go through the strip's tabs.
+      .on_mouse_down("back", (_e, cx) => { this.cycle(-1, cx); cx.notify(); })
+      .on_mouse_down("forward", (_e, cx) => { this.cycle(1, cx); cx.notify(); })
       .child(this.strip(t, d))
       .when(Boolean(d?.state && d.markdown && !d.preview && !d.readonly), el => el.child(this.tools(t)))
       .when(Boolean(d?.state && this.find.open), el => el.child(this.finder(t, d)))
@@ -806,7 +922,7 @@ export default class FileEditor extends View {
         : !d.state ? empty(d.error ?? "Loading…")
         : d.preview ? div().id(`fe-view-${d.n}`).flex_1().min_h(0).overflow_y_scrollbar().px(28).py(20)
             .on_mouse_down("left", () => this.handle.focus())
-            .child(div().w_full().max_w(820).child(TextView.markdown(`fe-md-${d.n}`, d.text).selectable(true)))
+            .child(div().w_full().max_w(820).child(this.page(t, d)))
         : h_flex().flex_1().min_h(0).items_stretch()
             .child(v_flex().id(`fe-text-${d.n}`).flex_1().min_w(0).min_h(0).on_key_down((e, cx) => this.typed(e, cx))
               .child(Editor.new(d.state).font_family(settings().font_family).text_size(textSize()).flex_1().min_h(0)))

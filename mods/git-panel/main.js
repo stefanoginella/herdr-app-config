@@ -4,7 +4,8 @@
 //
 //   refresh()   reads the repository (status, refs, stashes), and the log again only when
 //               something in it moved (`stamp`)
-//   graph()     the list of commits; cell() draws one row's lines
+//   graph()     the list of commits; cell() draws one row's lines; near its end (nearEnd())
+//               the next page of the log is read by itself (loadMore())
 //   refs()      the lists of branches, remotes, tags and stashes
 //   detail()    what is selected: the uncommitted files, a commit's, a stash's
 //   act()       runs a request (ops.js) and says what went wrong
@@ -14,7 +15,7 @@
 
 import { View, div, svg, PathBuilder } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, openOverlay, nextCommand, run, shared, setShared, layout, checking } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, openOverlay, nextCommand, run, shared, setShared, layout, checking, window as app } from "herdr";
 import Menu, { any, height } from "./menu.js";
 import Naming from "./naming.js";
 import Confirm from "./confirm.js";
@@ -184,7 +185,7 @@ export default class GitPanel extends View {
     this.status = git.parseStatus(""); this.heads = []; this.remotes = []; this.tags = []; this.stashes = []; this.remoteNames = [];
     this.stats = { staged: {}, unstaged: {} };
     this.commits = []; this.rows = []; this.width = 1; this.index = new Map(); this.pills = new Map();
-    this.limit = PAGE; this.more = false; this.stamp = null;
+    this.limit = PAGE; this.more = false; this.paged = null; this.stamp = null;
     this.sel = null; this.details = new Map(); this.empty = null;
     this.error = null; this.note = null; this.busy = null; this.stale = true; this.last = 0;
     this.turn = (this.turn ?? 0) + 1;
@@ -203,7 +204,16 @@ export default class GitPanel extends View {
     const now = Date.now();
     if (this.busy && now - this.busyAt > BUSY_MOST) { this.busy = null; cx.notify(); }
     if (this.writing && now - this.writing > BUSY_MOST * 1.5) { this.writing = null; cx.notify(); }
+    // While Herdr is not the active app nothing is read or asked of GitHub: a watch only marks
+    // the panel stale, and the first tick with Herdr active again reads at once. A request or a
+    // command still runs, and reads after it (`act()`, `refresh`): it doesn't wait for a tick.
+    // `app` is Herdr's `window()`: the name `window` is the drawing one (`paint_path`).
+    if (app()?.active === false) { this.away = true; return; }
+    if (this.away) { this.away = false; this.stale = true; }
     if (!this.shows()) return;
+    // Scrolled to the end with the scrollbar, which says nothing as it moves: the wheel does
+    // (`graph()`), and this is for the rest.
+    if (this.view === "graph" && this.nearEnd()) this.loadMore(cx);
     // A read that took long is not started again at once: in a big repository an agent at
     // work changes files all the time, and the reads would run back to back.
     if (now - this.last < this.cost * 4) return;
@@ -277,10 +287,12 @@ export default class GitPanel extends View {
     if (status.code !== 0) throw new Error(status.stderr.trim() || "git status failed");
     if (this.key() !== context) return;
     const st = git.parseStatus(status.stdout), dirty = st.staged.length + st.unstaged.length > 0;
-    const stamp = `${git.hash(refs.stdout)}:${git.hash(stashes.stdout)}:${st.oid}:${st.branch}:${dirty}:${this.limit}`;
+    // The page asked for when this read began: "Load more" may ask for the next one meanwhile.
+    const limit = this.limit;
+    const stamp = `${git.hash(refs.stdout)}:${git.hash(stashes.stdout)}:${st.oid}:${st.branch}:${dirty}:${limit}`;
     let log = null;
     if (stamp !== this.stamp || at.root !== this.root) {
-      log = await ask(git.logArgs(this.limit, Boolean(st.oid)));
+      log = await ask(git.logArgs(limit, Boolean(st.oid)));
       if (this.key() !== context) return;
     }
     this.root = at.root; this.on = on; this.common = at.common; this.state = at.state; this.error = null;
@@ -291,7 +303,7 @@ export default class GitPanel extends View {
       const r = git.parseRefs(refs.stdout, this.remoteNames);
       this.heads = r.heads; this.remotes = r.remotes; this.tags = r.tags.sort((a, b) => b.time - a.time);
       this.stashes = git.parseStashes(stashes.stdout);
-      this.history(log.code === 0 ? git.parseLog(log.stdout) : [], dirty);
+      this.history(log.code === 0 ? git.parseLog(log.stdout) : [], dirty, limit);
       this.stamp = stamp;
     }
     // What was selected may be gone: a commit rewritten, the last change committed.
@@ -332,11 +344,12 @@ export default class GitPanel extends View {
     this.stale = true;
   }
 
-  // The rows of the graph, from the commits read. What is not committed yet is a row of its
-  // own on top, hanging from HEAD.
-  history(commits, dirty) {
+  // The rows of the graph, from the commits read (`limit`: as many as were asked for). What is
+  // not committed yet is a row of its own on top, hanging from HEAD.
+  history(commits, dirty, limit) {
     const head = this.status.oid;
-    this.more = commits.length >= this.limit && this.limit < MOST;
+    this.more = commits.length >= limit && limit < MOST;
+    this.paged = limit;
     if (dirty && head) commits.unshift({ sha: WORK, parents: [head], loose: true, subject: "Uncommitted changes", time: 0, author: "" });
     const placed = lanes(commits);
     this.commits = commits; this.rows = placed.rows; this.width = Math.max(1, Math.min(placed.width, LANES));
@@ -531,6 +544,26 @@ export default class GitPanel extends View {
     this.pick({ kind: "commit", sha }, true);
   }
 
+  // Whether the graph is shown scrolled to within a screen of its end. The handle tells of the
+  // last layout: one of another list (another repository, before a page came) is not believed.
+  // A row is drawn a whole number of the screen's pixels tall, so at a zoom the list is up to a
+  // pixel a row longer than ROW says (26154 for 1000 rows at 1.3).
+  nearEnd() {
+    const s = this.scroll, high = s.content_size().height, view = s.viewport_size().height, n = this.commits.length;
+    if (!high || !view || Math.abs(high - Math.max(n * ROW, view)) > n + ROW * 2) return false;
+    return s.offset().y + view >= high - Math.max(view, ROW * 20);
+  }
+
+  // The next page of the log, once: not again until a read has brought this one (`paged`), and
+  // nothing when the log was read whole.
+  loadMore(cx) {
+    if (!this.more || this.paged !== this.limit || this.limit >= MOST) return;
+    this.limit = Math.min(MOST, this.limit + PAGE);
+    this.stale = true;
+    this.refresh(cx);
+    cx.notify();
+  }
+
   setView(view) {
     this.view = view;
     this.remember("view", view);
@@ -672,7 +705,9 @@ export default class GitPanel extends View {
     const n = this.commits.length;
     if (!n) return div().flex_1().min_h(0).p(14).text_color(t.dim).child(this.error ?? (this.loading ? "Reading the repository…" : "No commits yet"));
     return v_flex().flex_1().min_h(0)
+      // The wheel near the end reads the next page; the "Load more" row is there as well.
       .child(div().flex_1().min_h(0).relative()
+        .on_scroll_wheel((_e, cx) => { if (this.nearEnd()) this.loadMore(cx); })
         .child(v_virtual_list("git-graph", n, ROW, (i) => this.commits[i].sha, (range) => {
           const out = [];
           for (let i = range.start; i < range.end; i++) out.push(this.graphRow(i, t));
@@ -686,8 +721,8 @@ export default class GitPanel extends View {
           }))
         .child(Scrollbar.vertical("git-graph").viewport_from_layout().absolute().inset_0()))
       .when(this.more, (el) => el.child(h_flex().id("git-more").flex_none().h(26).px(12).items_center().border_t(1).border_color(t.border).text_size(11.5).text_color(t.muted).cursor_pointer()
-        .hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.limit = Math.min(MOST, this.limit + PAGE); this.stale = true; this.refresh(cx); cx.notify(); })
-        .child(`${n} commits shown · Load more`)));
+        .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.loadMore(cx))
+        .child(this.paged === this.limit ? `${n} commits shown · Load more` : `${n} commits shown · Loading more…`)));
   }
 
   // A small button with an icon: `o.label` beside it, `o.spin` while it runs.
@@ -820,7 +855,9 @@ export default class GitPanel extends View {
       click: () => this.pick({ kind: "stash", sha: s.sha }),
       menu: () => this.menu({ kind: "stash", ref: s.ref, sha: s.sha, subject: s.subject }),
     }));
-    return div().flex_1().min_h(0).relative()
+    // The mouse's back button goes back to the graph.
+    return div().id("git-refs-view").flex_1().min_h(0).relative()
+      .on_mouse_down("back", (_e, cx) => { this.setView("graph"); cx.notify(); })
       .child(v_flex().id("git-refs").absolute().inset_0().overflow_y_scroll().p(6).children(out))
       .child(Scrollbar.vertical("git-refs").absolute().inset_0());
   }
