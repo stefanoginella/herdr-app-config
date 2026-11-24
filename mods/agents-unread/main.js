@@ -408,6 +408,24 @@ export default class Agents extends View {
           cx.notify();
         })
         .child(svg(`mods/workspace-chrome/${isPinned ? "pin-off" : "pin"}.svg`).size(13));
+      // Only an idle agent can be closed from here, not one marked unread: its pane goes, and its terminal ends.
+      const closable = a.status === "idle" && Boolean(a.pane);
+      const close = div()
+        .id(`close-${a.address}`)
+        .flex_none()
+        .p(2)
+        .rounded(4)
+        .text_color(t.dim)
+        .cursor_pointer()
+        .hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .tooltip("Close")
+        .on_click((_e, cx) => {
+          cx.stop_propagation();
+          run("pane.close", { pane: a.pane });
+          this.hovered = null;
+          cx.notify();
+        })
+        .child(svg("mods/pane/close.svg").size(13));
       // Under a space header the space goes without saying; an automatic tab number says nothing.
       // Without a space header above (priority, pinned) the row names its space.
       const full = byPriority || isPinned;
@@ -464,6 +482,7 @@ export default class Agents extends View {
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
+        .when(this.hovered === a.address && closable, el => el.child(close))
         .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
         .child(mark);
     };

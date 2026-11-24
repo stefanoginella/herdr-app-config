@@ -23,7 +23,8 @@ Everything not listed here is Herdr's and is replaced on every start.
 
 - **Mod `agents-unread`** (`mods/agents-unread/`): a clone of Herdr's `agents` list (from version 0.1.18) where an idle agent can be marked unread. A marked agent is drawn as done: the done dot, and the Done section in the priority view.
   - `main.js`: the list. `settle()` drops the marks that have served; `render()` turns a marked idle agent's status into `done` before anything is drawn; `row()` wraps the status dot in the click target and opens the menu on right-click.
-  - `unread.js`: the marks and every change to them. `menu.js`: a row's right-click menu (mark as unread or read, pin or unpin). The mod opens itself for it, with `props().menu`.
+  - `unread.js`: the marks and every change to them. `menu.js`: a row's right-click menu (mark as unread or read, pin or unpin, close an idle agent). The mod opens itself for it, with `props().menu`.
+  - A hovered row shows the pin button, and for an idle agent not marked unread a close button beside it (the menu's Close follows the same rule): `pane.close` on the agent's pane, which ends its terminal.
   - State lives in shared `agents.unread`: `{ address: { left } }`. `left` means another pane has had the focus since the mark.
   - Key command: `agents-unread.toggle`, for the agent being looked at. It is not bound; it is in the command palette. `cmd-alt-1`…`cmd-alt-9` in `global` run `agent.select:N`, which follows this list's drawn order (`setAgentOrder()` in `render()`).
 

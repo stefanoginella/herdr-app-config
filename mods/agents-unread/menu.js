@@ -23,6 +23,7 @@ function rows(address) {
     ...(unread ? [{ label: "Mark as read", icon: `mods/${MOD}/read.svg`, hint, act: () => unmark(address) }]
       : a.status === "idle" ? [{ label: "Mark as unread", icon: `mods/${MOD}/unread.svg`, hint, act: () => mark(address) }] : []),
     { label: a.pinned ? "Unpin" : "Pin to the top", icon: `mods/workspace-chrome/${a.pinned ? "pin-off" : "pin"}.svg`, act: () => run("terminal.pin", { terminal: address, pinned: !a.pinned }) },
+    ...(a.status === "idle" && !unread && a.pane ? [{ label: "Close", icon: "mods/pane/close.svg", act: () => run("pane.close", { pane: a.pane }) }] : []),
   ];
 }
 
