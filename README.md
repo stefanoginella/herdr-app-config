@@ -17,7 +17,7 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 | `mods/editor-links/` | [Cmd-click a file path in a terminal to open it in the editor](#file-editor) |
 | `mods/git-panel/` | [A Git panel: the history as a graph, branches, remotes, tags, stashes, and everyday actions](#git-panel) |
 | `mods/git-diff/` | [A diff pane beside the terminals, side by side, with the changed words marked](#git-diff) |
-| `layouts/main-folders.json` | Herdr's default layout, showing the first three, the search panel and the Git panel: see [Install](#install) |
+| `layouts/main-folders.json` | Herdr's default layout, showing the first three, the search panel and the Git panel, with the panes you're not in faded and the dividers lit on hover: see [Install](#install) |
 | `keys.json`, `settings.json` | Personal key bindings and settings |
 | `AGENTS.override.md`, `CLAUDE.md` | Notes for coding agents working in this folder |
 
@@ -39,7 +39,7 @@ The real order of spaces follows the sidebar, so `space.next`, `space.prev` and 
 
 A space's menu also opens its project in VS Code, and in Obsidian when the project is inside one of its vaults. The project is the repo's top folder, else the folder the space is in. Both are for spaces on this Mac.
 
-Three commands can be bound in `keys.json`: `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
+Three commands can be bound in `keys.json`: `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`. They are also in the command palette (Cmd+Shift+P).
 
 ## Unread agents
 
@@ -50,7 +50,9 @@ Marks an idle agent as unread: it goes back under Done, with the done dot, as a 
 
 Marking the agent you are looking at keeps it marked until you leave and come back. The mark lives in the list only: the tab bar and the spaces sidebar still show the agent as idle.
 
-One command can be bound in `keys.json`: `agents-unread.toggle` marks the agent you are looking at, or clears its mark.
+One command can be bound in `keys.json`: `agents-unread.toggle` marks the agent you are looking at, or clears its mark. It is also in the command palette.
+
+**Jump to an agent:** Cmd+Alt+1 to Cmd+Alt+9 go to the first to ninth agent, in the order the list draws them.
 
 ## File actions
 
@@ -69,12 +71,15 @@ The Files panel, with more to look at and more to do. A click on a file opens it
 - **To a terminal:** drag a file or a folder onto a terminal to paste its path there, quoted and without Enter: a quick way to hand a file to an agent. Nothing is moved.
 - **Undo:** Cmd+Z takes back the last move, rename or Trash, once, and a toast says what it did. A trashed file comes back out of the Trash. It is for slips: it works for five minutes, while the panel still shows the same folder. After a duplicate, a copy or a new file or folder there is nothing to take back.
 - **From Finder:** drop files or folders from Finder onto a folder, onto a file for that file's folder, or under the list for the top folder. They are copied: the originals stay where they are.
+- **Add Files…:** right-click, Add Files…, and pick them in the system's file picker. They are copied in the same way.
 - **Search:** the lens in the header goes to the [search panel](#project-search), and right-clicking a folder offers Find in Folder.
 - **To and from the clipboard:** right-click, Copy puts a file or a folder on the clipboard, for Cmd+V in Finder; Paste copies in what was copied in Finder, or here. Dragging out to Finder is not possible: Herdr's file drag stays inside its window.
 
 Nothing is ever overwritten: a new file or folder, a rename, a move, a copy or a paste onto a name that exists is refused.
 
-Opening in an app, Finder, the clipboard and the Trash are for files on this Mac. For a folder on another machine the menu offers New File, New Folder, Rename and Duplicate, drag still moves, and undo takes back a move or a rename.
+The panel notices changes on disk as they happen, and waits while Herdr is in the background: it catches up when you come back. In a big repository it reads git less often after a slow read.
+
+Opening in an app, Finder, the clipboard, Add Files… and the Trash are for files on this Mac. For a folder on another machine the menu offers New File, New Folder, Rename and Duplicate, drag still moves, and undo takes back a move or a rename.
 
 Undo is the command `files-actions.undo`, bound in `keys.json` under `global` so that it works while the keyboard is in a terminal, which is where it is after a drag. It works while the Files panel is shown. Two things follow from binding it there: terminal programs no longer receive Cmd+Z, and a Cmd+Z pressed by habit within those five minutes takes back the last file action. Text fields, such as the rename dialog, keep their own undo.
 
@@ -82,7 +87,8 @@ Undo is the command `files-actions.undo`, bound in `keys.json` under `global` so
 
 A text editor beside the terminals. Click a file in the Files panel and it opens in a pane of the tab, split in next to the focused pane; the next file opens in the same pane, as another tab in its strip. The Files panel stays where it is, and can show Changes meanwhile.
 
-- **Wrapped lines:** long lines wrap, and go on under the line's own indentation. Nothing scrolls sideways.
+- **Wrapped lines:** long lines wrap, and go on under the line's own indentation. The Wrap button, or the command palette's "Editor: Toggle Line Wrap", turns that off for a file, and long lines then scroll sideways. The choice is kept with the file.
+- **Indentation:** Tab indents as the file does: with tabs in a Makefile or a file indented with tabs, else by the file's own step of 2, 4 or 8 spaces.
 - **Save:** Cmd+S. Nothing is saved by itself. A dot on a file's tab means unsaved text, and closing that tab asks first.
 - **Changes made elsewhere:** a file an agent or git changes is shown as it now is, when nothing is unsaved here. When something is, a save is refused and the editor asks which text to keep.
 - **Nothing typed is lost:** the open files and their unsaved text are kept as you type. Close the pane or restart Herdr, open a file in that tab again, and they are back.
@@ -92,10 +98,11 @@ A text editor beside the terminals. Click a file in the Files panel and it opens
 - **Wrap a selection:** with text selected, typing `"` `'` `` ` `` `(` `[` `{` `<` or `~` puts the selection inside the pair instead of replacing it, and keeps it selected. In Markdown `*` and `_` do too, so typing `*` twice makes bold.
 - **Same word:** Cmd+D selects the word under the cursor, then jumps to the next place it is found. It moves one selection: it does not add cursors.
 - **Markdown:** Cmd+B bold, Cmd+I italic, Cmd+E code, Cmd+Shift+X strikethrough, Cmd+K link, Cmd+Shift+8 bullets, Cmd+Shift+7 numbers, Cmd+Shift+9 tasks (again ticks them). Enter in a list goes on with it, and ends it on an empty item; in a numbered list the items under the new one are counted on. The same as buttons above the text.
-- **Preview:** Cmd+Shift+V, or the Preview button, shows a Markdown file rendered.
+- **Preview:** Cmd+Shift+V, or the Preview button, shows a Markdown file rendered, with any HTML in it shown as text. Find works there too: every match is highlighted, the current one in yellow, and "Go to line" goes to it in the text. Select something in the preview and switch back: the text opens with it selected.
 - **Changes since the last commit:** a file git has gets a thin strip on the right of its text, with a mark where lines were added (green), changed (blue) or deleted (red), unsaved typing included. The strip is the whole file from top to bottom, not a margin: in a file shorter than the pane a mark is level with its lines, until a long line wraps above them, and in a longer file it shows where in the file they are. Click a mark, or press Alt+F3 and Alt+Shift+F3, or the `±` button that counts the changes, to go to a change with its lines selected. A file git does not have yet has no marks.
 
 - **From a terminal:** Cmd-click a file path in a terminal, an agent's `src/app.ts:42:7` for one, and it opens in that tab's editor at that line and column (`editor-links`). Paths on another machine open there. Images, PDFs, archives, folders and missing files go to Herdr's usual opener instead. Herdr only sees a path as a link when it has a folder in it (`src/app.ts`, `./app.ts`, `~/x/app.ts`): a bare `app.ts:42` is not underlined and can't be clicked.
+- **Tabs:** the mouse's back and forward buttons go to the previous and the next file of the strip.
 - **The pane's name:** the pane's header says which file the editor shows, and "File Editor" when it shows none (the diff pane's says "Git Diff Viewer"). A name you give the pane yourself stays.
 - **Text size:** the text is as large as the terminals' (`font_size`), as Herdr's own file preview and diff are.
 
@@ -103,7 +110,7 @@ Undo, redo, indenting, bracket pairs and folding are Herdr's own editor. Files t
 
 A file on another machine is edited the same way. It is saved by a short shell script that Herdr runs there, sent along with every save: nothing is installed on that machine, which only needs `sh`. The file keeps its permissions, and a save is refused when the file changed there meanwhile.
 
-The keys are in `keys.json` under `mod:file-editor`, so they count only while the keyboard is in the editor. Cmd+F is also under `mod:file-editor > Input`: Herdr's editor keeps that key for itself, and the editor binds that section's keys itself, deeper than Herdr's, while the keyboard is in the text. (Since Herdr 0.1.17 a section named that way binds nothing on its own; the editor, the search panel and Go to file read theirs from `keys.json` and install them.) There, Cmd+B, Cmd+D, Cmd+Shift+D and Cmd+/ do the above instead of what they do elsewhere (the sidebar, splitting a pane, help), and Cmd+Z undoes text instead of the last file action.
+The keys are in `keys.json` under `mod:file-editor`, so they count only while the keyboard is in the editor. Cmd+F is also under `mod:file-editor > Input`: Herdr's editor keeps that key for itself, and the editor binds that section's keys itself, deeper than Herdr's, while the keyboard is in the text. (Since Herdr 0.1.17 a section named that way binds nothing on its own; the editor, the search panel and Go to file read theirs from `keys.json` and install them.) There, Cmd+B, Cmd+D, Cmd+Shift+D and Cmd+/ do the above instead of what they do elsewhere (the sidebar, splitting a pane, help), and Cmd+Z undoes text instead of the last file action. `file-editor.wrap` is not bound; it and the preview are in the command palette.
 
 ## Project search
 
@@ -114,8 +121,8 @@ Search every file of the project, and replace, in a panel that takes the place o
 - **Options:** match case (`Aa`), whole words (`ab`) and regular expression (`.*`). The syntax is ripgrep's: no lookaround, no backreferences.
 - **Filters:** the `…` button opens "files to include" and "files to exclude", comma-separated: `src`, `*.ts`, `docs/**` count at any depth, and `./src` is the folder at the project's top. Dotfiles are searched; what git ignores is not, unless "Search ignored files too" is ticked. Closed, the filters don't count.
 - **Find in Folder:** right-click a folder in the Files panel to search only there.
-- **Results:** grouped by file, foldable. Click a match to open the file in the [editor](#file-editor) with the match selected. F4 and Shift+F4 go to the next and the previous result from anywhere. At most 2,000 matches are listed, and 500 matched lines of one file: the panel says when there are more.
-- **Keyboard:** Down from a field goes to the list, where Up and Down move, Enter opens, Left and Right fold, and Cmd+Backspace dismisses. Tab goes through the fields, Alt+Up and Alt+Down bring back earlier queries, and Escape gives the keyboard back to the pane.
+- **Results:** grouped by file, foldable. Click a match to open the file in the [editor](#file-editor) with the match selected. F4 and Shift+F4 go to the next and the previous result from anywhere. The list shows more as you scroll to its end, or with "Show more". At most 2,000 matches are listed, and 500 matched lines of one file: the panel says when there are more.
+- **Keyboard:** Down from a field goes to the list, where Up and Down move, Enter opens, Left and Right fold, and Cmd+Backspace dismisses. Tab goes through the fields, Alt+Up and Alt+Down bring back earlier queries, and Escape gives the keyboard back to the pane or the terminal.
 - **Right-click a result:** open it in the editor or in VS Code at its line, reveal it in Finder, copy its path, its path in the project or its line, replace it, or dismiss it from the list.
 - **To a terminal:** drag a result onto a terminal to paste its file's path there.
 - **Replace:** the chevron left of the query opens the replace row, and every match shows what it becomes. With a regular expression `$1` is the first group; in plain text a `$` is a dollar. Replace one match or one file from its row, or all of them with the button beside the field, which asks first. Only the matches listed are replaced.
@@ -126,7 +133,7 @@ The search reads the files on disk: unsaved text in the editor is not searched. 
 
 A project on another machine is searched there, where ripgrep must be installed too, and replaced there as the editor saves a file there. VS Code and Finder are for files on this Mac.
 
-The keys are in `keys.json`: Cmd+Shift+F, F4 and Shift+F4 under `global`, Cmd+Shift+F again in the two `mod:file-editor` sections (Herdr's editor keeps that key for itself), and the panel's own under `mod:project-search` and `mod:project-search > Input`. One more command can be bound: `project-search.undo`.
+The keys are in `keys.json`: Cmd+Shift+F, F4 and Shift+F4 under `global`, Cmd+Shift+F again in the two `mod:file-editor` sections (Herdr's editor keeps that key for itself), and the panel's own under `mod:project-search` and `mod:project-search > Input`. One more command can be bound: `project-search.undo`. "Search in Project" is also in the command palette.
 
 ## Go to file
 
@@ -141,19 +148,19 @@ Go to a file of the project by typing some of its name: what Cmd+P is in VS Code
 
 The files are listed when the popup opens: a file made while it is open is not there until the next time. At most 20,000 files are listed. In a bigger project the popup asks the project's machine for the files that match, a moment after you stop typing.
 
-The keys are in `keys.json`: Cmd+O under `global`, and Up and Down under `mod:go-to-file > Input`.
+The keys are in `keys.json`: Cmd+O under `global`, and Up and Down under `mod:go-to-file > Input`. "Go to File…" is also in the command palette.
 
 ## Git panel
 
 The repository the focused pane is in, in the panel on the right, in place of Herdr's Changes: the tab bar's Changes button opens it. It follows the pane you are in, on this Mac or another machine.
 
-- **Graph:** every branch, tag and remote branch as lines of commits, newest on top, with merges drawn as curves. A filled name is the branch you are on; a name with a small cloud is in the same place as its remote branch. HEAD is a ring, a merge is hollow. Before its date, each commit has its author's initials in a circle, in a color that is always the same for a name. The first 1,000 commits are read, and "Load more" reads on.
+- **Graph:** every branch, tag and remote branch as lines of commits, newest on top, with merges drawn as curves. A filled name is the branch you are on; a name with a small cloud is in the same place as its remote branch. HEAD is a ring, a merge is hollow. Before its date, each commit has its author's initials in a circle, in a color that is always the same for a name. The first 1,000 commits are read, and the next 1,000 when you scroll to the end (or click "Load more").
 - **Uncommitted changes:** a row of its own on top of the graph, hanging from HEAD by a dashed line. Selected, the lower half of the panel lists the files, staged and not.
 - **Several repositories:** the panel shows the repository the pane's folder is in. When there are others, the name in the header becomes a list: the repositories inside that one (nested ones, submodules, up to five folders down), and the ones it is itself inside of. In a folder that is not a repository but holds some, as deep as a WordPress site's themes and plugins (`wordpress/wp-content/themes/<name>`), the first is shown and the list has the rest. The choice is remembered for that folder. Folders of installed packages (`node_modules`, `vendor`, `.venv`, `target`) and of uploaded files (`uploads`) are not looked into, nor is a home folder.
 - **Stage and commit:** the `+` and `−` on a file's row (they show while the pointer is on it) stage and unstage it; the same in the headings do it for all. Type a message and press Cmd+Enter, or the Commit button. Enter is a new line: the field grows for a body. With nothing staged, everything is committed.
 - **Have the message written:** the sparkle at the right of the message field asks `claude -p` or `codex exec` for it: a Conventional Commit heading and a body, in the style of the repository's earlier commits. It takes a few seconds, and what comes back is in the field to edit. Right-click the sparkle to choose who writes: Claude (Haiku or Sonnet) or Codex. See [below](#the-message-writer) for what is sent.
 - **A commit:** click it to read its message and see its files below. Click a file to see its diff in the [diff pane](#git-diff).
-- **Refs:** the other view lists branches, each remote's branches, tags and stashes. A branch shows how far it is ahead and behind its upstream. Click one to see its commit below; double-click a branch to switch to it; right-click, Show in Graph, to go to it there.
+- **Refs:** the other view lists branches, each remote's branches, tags and stashes. A branch shows how far it is ahead and behind its upstream. Click one to see its commit below; double-click a branch to switch to it; right-click, Show in Graph, to go to it there. The mouse's back button goes back to the graph.
 - **Fetch, pull, push:** the three buttons in the header, with how many commits wait in each direction. Pull is fast-forward only. Push is never forced, and a branch with no upstream is pushed to `origin` and starts tracking it.
 - **Right-click** a commit, a branch, a tag, a stash or a file for the rest: new branch or tag here, switch, fast-forward, push, delete a branch or a tag, apply or drop a stash, open the file in the [editor](#file-editor), copy an ID, a name or a path.
 - **Stashes:** "Stash all" in the changes list puts everything uncommitted away, untracked files too. A stash shows its files like a commit, with Apply and Pop.
@@ -164,9 +171,9 @@ What the panel never does: rebase, merge, cherry-pick, reset, force push or dele
 
 Before anything is changed the panel checks that what it showed is still true: that HEAD is on the same branch, that the branch or the stash clicked is still the same commit. If an agent moved something in between, nothing is done and the panel says why.
 
-The panel reads the repository only while it is on screen: when a file changes on this Mac, and every few seconds on another machine.
+The panel reads the repository only while it is on screen: when a file changes on this Mac, and every few seconds on another machine. While Herdr is in the background it reads nothing, and asks GitHub nothing, until you come back.
 
-Five commands can be bound in `keys.json`: `git-panel.fetch`, `git-panel.pull`, `git-panel.push`, `git-panel.refresh` and `git-panel.write` (the message writer). They reach the panel while it is shown.
+Five commands can be bound in `keys.json`: `git-panel.fetch`, `git-panel.pull`, `git-panel.push`, `git-panel.refresh` and `git-panel.write` (the message writer). They reach the panel while it is shown, and are in the command palette as "Git: Fetch" and so on.
 
 ### The message writer
 
@@ -181,11 +188,11 @@ A pane beside the terminals for reading a change, opened by clicking a file in t
 - **Side by side** when the pane is wide and the longest line fits in half of it, else one column with the old and the new line numbers. `S`, or the button in the header, switches.
 - **The words that changed** inside a changed line are colored stronger than the line.
 - **Unchanged lines** are left out, three around each change, with a row that says how many were skipped. Click that row, press `W`, or use the header's button for the whole file.
-- **Files:** listed on the left, in two groups for uncommitted changes (staged, not staged). `J` and `K`, or the arrows, go to the next and the previous one.
+- **Files:** listed on the left, in two groups for uncommitted changes (staged, not staged). `J` and `K`, the arrows, or the mouse's forward and back buttons go to the next and the previous one.
 - **Viewed:** `V`, or the Viewed button, ticks the file and goes to the next one not viewed. The header counts them. A tick on an uncommitted file goes away when the file changes again.
 - **To the editor:** `O`, or the pencil, opens the file as it is now in the [editor](#file-editor), at the first changed line for an uncommitted file.
 
-Uncommitted changes are read again as files change. The pane only reads: it changes nothing in the repository. The keys count while the pane has the keyboard. A diff is cut at 6,000 lines, and it is not syntax-colored.
+Uncommitted changes are read again as files change, less often after a slow read, and not while Herdr is in the background. The pane only reads: it changes nothing in the repository. The keys count while the pane has the keyboard. A diff is cut at 6,000 lines, and it is not syntax-colored.
 
 Six commands can be bound in `keys.json`: `git-diff.next`, `git-diff.prev`, `git-diff.viewed`, `git-diff.mode`, `git-diff.whole` and `git-diff.edit`.
 
@@ -210,7 +217,7 @@ herdr-app do layout.switch '{"name":"main-folders"}'
 
 Your own layout stays as it was: `layout.switch` goes back to it, and deleting the copied files removes all of this.
 
-For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `global` section of your `keys.json`. For the editor's keys, copy the two `mod:file-editor` sections of this repository's `keys.json` into yours. For the search panel, copy the two `mod:project-search` sections, and `cmd-shift-f`, `f4` and `shift-f4` from `global`. For going to a file, copy the `mod:go-to-file > Input` section and `cmd-o` from `global`.
+For undo in the Files panel, also add `"cmd-z": "files-actions.undo"` to the `global` section of your `keys.json`. For the editor's keys, copy the two `mod:file-editor` sections of this repository's `keys.json` into yours. For the search panel, copy the two `mod:project-search` sections, and `cmd-shift-f`, `f4` and `shift-f4` from `global`. For going to a file, copy the `mod:go-to-file > Input` section and `cmd-o` from `global`. For jumping to an agent, copy `cmd-alt-1` to `cmd-alt-9` from `global`.
 
 `git-panel` needs `git-diff`, which is what a click on a file opens, and both use `file-editor` for "open in the editor". Copy each mod's folder whole, `mod.json` included: a mod folder Herdr first sees without one is docked into the shown layout by itself.
 
