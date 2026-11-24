@@ -39,9 +39,12 @@ const PANELS = "workspace.panels";
 // An ask older than this was left by a window that closed before it was taken.
 const FRESH = 10000;
 // How long after the last key the search runs, and the fields are put in localStorage.
-const TYPE_AFTER = 300, STASH_AFTER = 800;
+const TYPE_AFTER = 150, STASH_AFTER = 800;
 // How many rows are drawn at first, and with each "Show more" (or scroll to the end).
-const PAGE = 300;
+// Each row is built by the script engine in every draw (every key, every row the pointer
+// crosses), and a draw is stopped at 50 ms. Under `herdr-app check`, which runs scripts slower
+// than the app, 300 rows took 20 to 25 ms and 100 took 8.
+const PAGE = 100;
 const STORE = "state";
 const HISTORY = 30;
 // The most text a replace keeps to be taken back, before and after together.
@@ -121,6 +124,7 @@ export default class ProjectSearch extends View {
     this.error = null; // or why there is none: { text, pattern }
     this.running = null; // the search under way, as `want` says it
     this.next = false; // another one is wanted when it ends
+    this.search = null; // the search under way: { id: its token, on, stopped }
     this.turn = 0; // counts the keys, so that only the last one starts a search
     this.folded = new Set(); // the files whose matches are not shown
     this.limit = PAGE; // how many rows are drawn
@@ -139,6 +143,7 @@ export default class ProjectSearch extends View {
   // The panel is going (or the app): the fields are kept for the next time.
   async close() {
     if (!this.other && !this.keysOnly) this.keep();
+    if (this.search && !this.search.stopped) await ops.stop(this.search.id, this.search.on);
   }
 
   // The hidden copy's whole job: the panel is shown, and asked to take the keyboard unless
@@ -309,31 +314,51 @@ export default class ProjectSearch extends View {
     cx.timer.after(TYPE_AFTER, (cx) => { if (turn === this.turn) this.go(cx); });
   }
 
-  // Searches now. One search at a time: asked again while one runs, the next one starts when
-  // it ends, with the fields as they are then.
+  // Searches now. One search at a time: asked again while one runs, that one is stopped, and
+  // the next one starts when it ends, with the fields as they are then.
   go(cx) {
     this.turn++;
     const c = this.ctx, o = this.options();
     if (!c || !o.query) {
       this.result = null; this.error = null; this.next = false; this.cursor = null;
+      this.halt(cx);
       cx.notify();
       return;
     }
     const want = this.want();
-    if (this.running) { this.next = this.running !== want; return; }
+    if (this.running) {
+      this.next = this.running !== want;
+      if (this.next) this.halt(cx);
+      return;
+    }
     this.running = want;
+    const run = (this.search = { id: ops.token(), on: c.on, stopped: false });
     cx.notify();
     cx.spawn(async (cx) => {
-      // Whatever happens, the search is over: nothing may leave it "running".
-      const found = await ops.find(c.root, c.on, o).catch((e) => ({ error: String(e?.message ?? e) }));
-      this.running = null;
-      const again = this.next;
+      // Whatever happens, the search is over: nothing may leave it "running". An answer that
+      // another search, another project or a cleared field has overtaken is not read, nor one
+      // that was stopped: it is cut short.
+      const stale = () => run.stopped || this.next || this.ctx !== c || !this.query.value();
+      const found = await ops.find(c.root, c.on, o, stale, run.id).catch((e) => ({ error: String(e?.message ?? e) }));
+      this.running = null; this.search = null;
+      // Stopped, then asked for as it was (typed and taken back): it is run again.
+      const again = this.next || (run.stopped && this.ctx === c && Boolean(this.query.value()));
       this.next = false;
       if (again) return this.go(cx);
       // Cleared, or another project, meanwhile.
-      if (this.ctx === c && this.query.value()) this.take(found, { want, o, root: c.root, on: c.on, repo: c.repo });
+      if (!found.stale && this.ctx === c && this.query.value()) this.take(found, { want, o, root: c.root, on: c.on, repo: c.repo });
       cx.notify();
     });
+  }
+
+  // Stops the search under way, once: Herdr can't cancel an exec, so ripgrep is ended on its
+  // machine (ops.stop()), and the exec then comes back at once. In a task that waits a step:
+  // go() may run in a draw.
+  halt(cx) {
+    const run = this.search;
+    if (!run || run.stopped) return;
+    run.stopped = true;
+    this.after(cx, () => ops.stop(run.id, run.on));
   }
 
   take(found, of) {
@@ -727,17 +752,17 @@ export default class ProjectSearch extends View {
         .child(hot ? this.tools(t, f, null, s.replace && f.matches.some((o) => o.start >= 0 && typeof o.to === "string"))
           : div().flex_none().h(17).min_w(17).px(5).rounded(9).bg(t.raised).text_size(10.5).text_color(t.muted).text_center().child(num(f.matches.length)));
     }
-    const becomes = s.replace && m.start >= 0 && typeof m.to === "string";
+    const becomes = s.replace && m.start >= 0 && typeof m.to === "string", p = search.pieces(m);
     return base(h_flex().id(`ps-m-${m.id}`).h(24).pl(24).pr(5).gap(6).rounded(6))
       .on_click((_e, cx) => { this.open(f, m); cx.notify(); })
       .child(h_flex().flex_1().min_w(0).overflow_hidden().whitespace_nowrap().font_family(s.mono).text_size(12).text_color(t.muted)
-        .child(div().flex_none().child(m.before))
+        .child(div().flex_none().child(p.before))
         .child(div().flex_none().px(1).rounded(3).text_color(t.foreground)
           .when(becomes, (el) => el.bg(tint(t.ansi1, "40")).line_through())
           .when(!becomes, (el) => el.bg(t.selection))
-          .child(m.shown))
+          .child(p.shown))
         .when(becomes && m.to !== "", (el) => el.child(div().flex_none().px(1).rounded(3).bg(tint(t.ansi2, "40")).text_color(t.foreground).child(clip(m.to.replace(/[\t\r\n]/g, " "), 120))))
-        .child(div().flex_1().min_w(0).truncate().child(m.after)))
+        .child(div().flex_1().min_w(0).truncate().child(p.after)))
       .child(hot ? this.tools(t, f, m, becomes) : div().flex_none().text_size(10.5).text_color(t.dim).child(String(m.line)));
   }
 

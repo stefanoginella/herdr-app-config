@@ -17,8 +17,8 @@ import * as remote from "./remote.js";
 const KEY = "project-search.request";
 // A request older than this was left by a window that closed before taking it.
 const FRESH = 10000;
-// How long a search may take, and the most it may say: lines, then bytes.
-const TIMEOUT = 20000, LINES = search.MOST * 3 + 10, BYTES = 3000000;
+// How long a search may take, and the most it may say, in bytes.
+const TIMEOUT = 20000, BYTES = 3000000;
 
 export const base = (path) => path.slice(path.lastIndexOf("/") + 1);
 export const parent = (path) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
@@ -40,20 +40,44 @@ export function take() {
 // VS Code and Finder are this Mac's: a file on another machine has nowhere to open.
 export const canOpen = (on) => !on && window()?.platform === "macos";
 
-// ripgrep, cut short: what it says is taken up to $1 lines and $2 bytes, and it stops there.
-// 127: there is no ripgrep. The rest of the arguments are ripgrep's own (search.js): a query or
-// a filter is never part of this text.
-const FIND = 'command -v rg >/dev/null 2>&1 || exit 127; n=$1; c=$2; shift 2; rg "$@" | head -n "$n" | head -c "$c"';
+// ripgrep, cut short. Only what search.parse() reads is kept (KEEP): the match records, at
+// most $1 of them, and the summary, which ends a whole answer. The other records were most of
+// an answer, and moving them into the mod took time. Then at most $2 bytes. Taking no more
+// ends ripgrep: it has nowhere to write. 127: there is no ripgrep.
+// While it runs, its shell's number is in a file named after $3, the search's token, for
+// stop(). The awk program is $4. The rest of the arguments are ripgrep's own (search.js): a
+// query or a filter is never part of this text.
+const PID_FILE = 'f="${TMPDIR:-/tmp}/herdr-project-search.$t"';
+const FIND = `command -v rg >/dev/null 2>&1 || exit 127; n=$1; c=$2; t=$3; p=$4; shift 4; ${PID_FILE}; echo $$ > "$f"; rg "$@" | LC_ALL=C awk -v n="$n" "$p" | head -c "$c"; s=$?; rm -f "$f"; exit $s`;
+const KEEP = 'index($0, "{\\"type\\":\\"match\\"") == 1 { if (++k > n) exit; print; next } index($0, "{\\"data\\":") == 1 { print }';
+// Ends the search whose token is $1: ripgrep and the rest of its pipeline, its shell's
+// children. A search already over has no file, and nothing happens.
+const STOP = `t=$1; ${PID_FILE}; [ -f "$f" ] || exit 0; p=$(cat "$f"); rm -f "$f"; [ -n "$p" ] && pkill -TERM -P "$p"; exit 0`;
 
-// Searches the folder `root` on the machine `on` for `o` (search.js). Resolves with what
-// search.parse() gives, or with { error }.
-export async function find(root, on, o) {
+// A token naming one search, for stop(): letters and digits only.
+export const token = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+
+// Stops the search `id` (its token) on the machine `on`, if it is still running. Herdr can't
+// cancel an exec, and a search of a big project can take seconds, which the next one would
+// wait for. Never rejects. Without pkill there, the search runs to its end, as before.
+export async function stop(id, on) {
+  await exec("sh", ["-c", STOP, "project-search", id], { on, timeout: 5000 }).catch(() => null);
+}
+
+// Searches the folder `root` on the machine `on` for `o` (search.js). `id`: the search's token
+// (token()), for stop(). Resolves with what search.parse() gives, or with { error }. When
+// `stale()` says the answer is no longer wanted once ripgrep is done, it is not read (reading
+// is most of a search's time): { stale: true }.
+export async function find(root, on, o, stale, id) {
   let done;
-  try { done = await exec("sh", ["-c", FIND, "project-search", String(LINES), String(BYTES), ...search.args(o)], { cwd: root, on, timeout: TIMEOUT }); }
+  try { done = await exec("sh", ["-c", FIND, "project-search", String(search.MOST), String(BYTES), id, KEEP, ...search.args(o)], { cwd: root, on, timeout: TIMEOUT }); }
   catch (e) {
-    const said = String(e?.message ?? e);
-    return { error: /tim(ed|e) ?out/i.test(said) ? "The search took too long: narrow it with a filter" : said };
+    const said = String(e?.message ?? e), late = /tim(ed|e) ?out/i.test(said);
+    // Herdr ends only the shell: ripgrep would go on.
+    if (late) await stop(id, on);
+    return { error: late ? "The search took too long: narrow it with a filter" : said };
   }
+  if (stale?.()) return { stale: true };
   if (done.code === 127) return { error: `ripgrep (rg) is not installed on ${on ?? "this computer"}`, missing: true };
   let found;
   try { found = search.parse(done.stdout, search.plain(o)); }

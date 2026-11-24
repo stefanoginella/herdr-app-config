@@ -69,12 +69,18 @@ export function units(text, bytes) {
 }
 
 const ASCII = /^[\x00-\x7f]*$/;
+// How a match record and the summary begin, and how the summary ends, as ripgrep writes them.
+const MATCH = '{"type":"match"', SUMMARY = '{"data":', SUMMARY_END = '"type":"summary"}';
 const flat = (s) => s.replace(/[\t\r\n]/g, " ");
 
 // ripgrep's answer as { files: [{ path, matches }], count, capped }. `path` is under the folder
 // searched. A match is { id, line (from 1), start, end (in its line, UTF-16; -1: not measured),
-// hit: its text, to: what replaces it or null, full: its whole line or null, before, shown,
-// after: the part of the line to draw }. `capped`: there are more matches than these.
+// hit: its text, to: what replaces it or null, full: its whole line or null, and what
+// pieces() needs }. `capped`: there are more matches than these.
+//
+// Herdr's script engine is slow, and this runs for every search: a record is decoded only when
+// it is a match, and what a row shows of its line is worked out when the row is drawn
+// (pieces()). The summary, ripgrep's last record, says the answer is whole.
 export function parse(out, fallback = null, most = MOST) {
   const files = new Map();
   let count = 0, capped = false, whole = false;
@@ -82,11 +88,15 @@ export function parse(out, fallback = null, most = MOST) {
     const nl = out.indexOf("\n", at);
     // A line cut short: the output was.
     if (nl < 0) break;
+    if (!out.startsWith(MATCH, at)) {
+      if (out.startsWith(SUMMARY, at) && out.slice(nl - SUMMARY_END.length, nl) === SUMMARY_END) whole = true;
+      at = nl + 1;
+      continue;
+    }
     const record = out.slice(at, nl);
     at = nl + 1;
     let r;
     try { r = JSON.parse(record); } catch { continue; }
-    if (r?.type === "summary") { whole = true; continue; }
     if (r?.type !== "match") continue;
     const d = r.data ?? {}, text = d.lines?.text, raw = d.path?.text;
     // A line or a path that is not UTF-8 comes as bytes: not text to show or to replace.
@@ -106,14 +116,11 @@ export function parse(out, fallback = null, most = MOST) {
       if (count >= most) { capped = true; break; }
       const start = measured ? measured[i * 2] : -1, end = measured ? measured[i * 2 + 1] : -1;
       const hit = subs[i].match?.text ?? "";
-      const from = start < 0 ? 0 : Math.max(lead, start - BEFORE);
       file.matches.push({
         id: `${path}\n${d.line_number}:${subs[i].start}`, line: d.line_number, start, end, hit,
         to: typeof subs[i].replacement?.text === "string" ? subs[i].replacement.text : fallback,
         full: body.length <= KEEP ? body : null,
-        before: start < 0 ? "" : flat((from > lead ? "…" : "") + body.slice(from, start)),
-        shown: flat(hit.slice(0, AFTER)),
-        after: start < 0 ? "" : flat(body.slice(end, end + AFTER)).trimEnd(),
+        body, lead,
       });
       count++;
     }
@@ -122,6 +129,17 @@ export function parse(out, fallback = null, most = MOST) {
   if (!whole) capped = true;
   const list = [...files.values()].filter((f) => f.matches.length).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { files: list, count, capped: capped && count > 0 };
+}
+
+// What a row shows of a match's line: { before, shown, after }, worked out once.
+export function pieces(m) {
+  if (m.pieces) return m.pieces;
+  const { body, lead, start, end, hit } = m, from = start < 0 ? 0 : Math.max(lead, start - BEFORE);
+  return (m.pieces = {
+    before: start < 0 ? "" : flat((from > lead ? "…" : "") + body.slice(from, start)),
+    shown: flat(hit.slice(0, AFTER)),
+    after: start < 0 ? "" : flat(body.slice(end, end + AFTER)).trimEnd(),
+  });
 }
 
 // What ripgrep said went wrong, in one line: its last, which for a pattern is the reason.
