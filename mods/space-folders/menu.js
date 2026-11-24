@@ -1,6 +1,7 @@
 // The sidebar's right-click menus, opened as a popup with props { menu, target, keys }:
-//   "space":  Herdr's own space items, opening its project in an editor, and moving it between
-//             folders. target { id, git, nested, kids, open: { folder, vault } | null }
+//   "space":  Herdr's own space items, opening its project in an editor, starting and stopping its
+//             containers, and moving it between folders. target { id, git, nested, kids,
+//             open: { folder, vault } | null, stacks: [stack + { acting }], on, local }
 //   "folder": new space here, rename, remove. target { id }
 //   "root":   new folder, new space, on target { machine? } (else the shown space's machine).
 // Folders are per machine: a space moves only among its own machine's folders.
@@ -11,10 +12,12 @@ import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, keys, spaces } from "herdr";
 import * as model from "./model.js";
 import * as opening from "./open.js";
+import * as stacks from "./stacks.js";
 
 const MOD = "space-folders";
 // Herdr's icons, and this mod's one own.
-const icon = (name) => (name === "open" ? `mods/${MOD}/open.svg` : `mods/workspace-chrome/${name}.svg`);
+const OWN = new Set(["open", "play", "stop", "globe"]);
+const icon = (name) => (OWN.has(name) ? `mods/${MOD}/${name}.svg` : `mods/workspace-chrome/${name}.svg`);
 const ROW = 31;
 // More folders than this to move to, and their list scrolls.
 const MANY = 7;
@@ -55,6 +58,16 @@ function rows(p) {
       ...(tg.git === "linked" ? [{ label: "Remove worktree", icon: "git-branch", act: worktree("remove", small) }] : []),
       // The project in an editor on this Mac; Obsidian only when it is in one of its vaults.
       ...(tg.open ? [{ ...openIn("vscode"), rule: true }, ...(tg.open.vault ? [openIn("obsidian")] : [])] : []),
+      // Its containers, one at a time; a DDEV site that runs opens in the browser (this Mac's only).
+      ...(tg.stacks ?? []).flatMap((s, i) => {
+        const up = s.state !== "stopped";
+        const name = `${stacks.kindName(s.kind)} ${s.name}`;
+        const act = (op) => () => stacks.request({ op, on: tg.on ?? null, stacks: [s], url: s.url });
+        return [
+          { label: `${up ? "Stop" : "Start"} ${name}`, icon: up ? "stop" : "play", rule: i === 0, hint: s.acting ?? "", act: s.acting ? () => {} : act(up ? "stop" : "start") },
+          ...(up && s.url && tg.local ? [{ label: "Open site", icon: "globe", hint: s.url.replace(/^https?:\/\//, ""), act: act("site") }] : []),
+        ];
+      }),
       // A worktree space drawn under its repo's goes where that one goes.
       ...(tg.nested ? [] : [
         { section: "Move to", rule: true },

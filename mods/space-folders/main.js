@@ -11,12 +11,17 @@
 // Keys can run `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
 // A space's menu also opens its project (the repo's top folder, else where it is) in VS Code,
 // and in Obsidian when that is in one of its vaults (open.js).
+// A space whose project has DDEV projects or Docker Compose stacks shows their state at the row's
+// end, a button that starts or stops them (stacks.js); its menu does it one stack at a time. The
+// avatar carries how many agent sessions the space has, in the color of the most urgent one (an idle
+// one marked unread in agents-unread counts as done).
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, ScrollHandle } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, props, home, nextCommand, notify } from "herdr";
+import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, props, home, nextCommand, notify } from "herdr";
 import * as model from "./model.js";
 import * as opening from "./open.js";
+import * as stacks from "./stacks.js";
 import Menu, { naming } from "./menu.js";
 import Naming from "./naming.js";
 
@@ -80,6 +85,10 @@ const FALLBACK = 60000;
 // run out of the app's open files (256 when started from the Dock on macOS) or
 // past a machine core's 16 running execs, and those spaces wait for FALLBACK.
 const AT_ONCE = 6;
+// Containers: each machine's `ddev list` and `docker compose ls` this often, a project folder's
+// stack files this often, both only while Herdr is in front (stacks.js).
+const STACK_POLL = 15000;
+const STACK_FIND = 300000;
 
 // Both runs, finished: a place isn't done while one of its runs still holds a slot.
 async function both(a, b) {
@@ -92,6 +101,13 @@ async function both(a, b) {
 // What a stored color name looks like on an avatar (the same in every mod
 // that draws space avatars): one strong color per hue, light and dark alike.
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
+
+// A mark set on another, with a 1 px ring in the row's color around it (the selected row's color is
+// translucent: it goes over the sidebar's, so the ring hides what is under it).
+function cutout(el, selected, t, radius) {
+  const ring = div().rounded(radius).p(1).child(el);
+  return div().rounded(radius).bg(t.chrome).child(selected ? ring.bg(t.selected) : ring);
+}
 
 // A space speaks up only when something in it needs you.
 export function glyph(status) {
@@ -150,6 +166,16 @@ export default class Spaces extends View {
     this.vaults = []; // Obsidian's vaults: a project in one can be opened there
     this.refreshVaults(cx);
     cx.timer.every(60000, cx => this.refreshVaults(cx));
+    this.stackLists = {}; // machine ("" here) -> { ddev, compose }: what its programs say is there
+    this.listAt = {}; // machine -> when they were last asked
+    this.listing = new Set(); // machines being asked now
+    this.stackFiles = {}; // where() of a project folder -> { at, found }
+    this.finding = new Set(); // those being looked in now
+    this.stackMap = {}; // space -> its stacks, as last drawn
+    this.acting = {}; // stack id -> "starting" | "stopping", while that runs
+    this.hot = null; // the space whose stack button the pointer is on
+    this.pollStacks(cx, true);
+    cx.timer.every(2000, (cx) => this.pollStacks(cx));
     // Refresh only when the refs could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
   }
@@ -211,6 +237,75 @@ export default class Spaces extends View {
   sameRepo(key, keys) {
     const repo = this.git[key]?.repo;
     return [key, ...(repo ? [...keys].filter((k) => this.git[k]?.repo === repo) : [])];
+  }
+
+  // A space's project folder: its repo's top, else where it is.
+  projectFolder(w, ps) {
+    return this.git[where(w, ps)]?.top ?? place(w, ps);
+  }
+
+  // Asks each shown machine what runs there, and looks in project folders not looked in lately.
+  // Only while Herdr is in front, unless `force` (at start, after a start or a stop).
+  pollStacks(cx, force = false) {
+    if (!force && !window()?.active) return;
+    const now = Date.now(), ps = panes(), on = new Set();
+    for (const s of spaces()) {
+      const m = s.machine ?? null;
+      if (!this.shown.has(s.id) || this.folded.has(m)) continue;
+      on.add(m);
+      const folder = this.projectFolder(s, ps);
+      if (!folder || stacks.tooWide(folder, m ? "/home" : home())) continue;
+      const k = JSON.stringify([m, folder]);
+      if (this.finding.has(k) || now - (this.stackFiles[k]?.at ?? 0) < STACK_FIND) continue;
+      this.finding.add(k);
+      cx.spawn(async (cx) => {
+        const found = await stacks.found(folder, m);
+        // Couldn't look (a machine away): keep what was found, and look again next time.
+        if (found) this.stackFiles[k] = { at: Date.now(), found };
+        this.finding.delete(k);
+        cx.notify();
+      });
+    }
+    for (const m of on) {
+      const k = m ?? "";
+      if (this.listing.has(k) || (!force && now - (this.listAt[k] ?? 0) < STACK_POLL)) continue;
+      this.listing.add(k);
+      this.listAt[k] = now;
+      cx.spawn(async (cx) => {
+        this.stackLists[k] = await stacks.lists(m);
+        this.listAt[k] = Date.now();
+        this.listing.delete(k);
+        cx.notify();
+      });
+    }
+  }
+
+  // A space's stacks, from what its machine and its folder said.
+  stacksOf(w, folder) {
+    const m = w.machine ?? null;
+    if (!folder) return [];
+    const files = this.stackFiles[JSON.stringify([m, folder])]?.found;
+    return stacks.stacksFor(folder, m ? "/home" : home(), this.stackLists[m ?? ""], files);
+  }
+
+  // Starts or stops stacks on a machine, one after another, and asks again what runs when done.
+  runStacks(op, list, on, cx) {
+    const todo = list.filter((s) => !this.acting[s.id]);
+    if (!todo.length) return;
+    for (const s of todo) this.acting[s.id] = op === "start" ? "starting" : "stopping";
+    cx.notify();
+    cx.spawn(async (cx) => {
+      for (const s of todo) {
+        const done = await stacks.act(op, s, on);
+        delete this.acting[s.id];
+        if (done.error) notify({ title: `Couldn't ${op} ${stacks.kindName(s.kind)} ${s.name}`, body: done.error, level: "error" });
+        this.listAt[on ?? ""] = 0;
+        // Brought up for the first time: its compose stack has a name now.
+        if (s.kind === "compose" && !s.project) for (const k of Object.keys(this.stackFiles)) if (JSON.parse(k)[0] === on) this.stackFiles[k].at = 0;
+        this.pollStacks(cx, true);
+        cx.notify();
+      }
+    });
   }
 
   refreshVaults(cx) {
@@ -403,6 +498,8 @@ export default class Spaces extends View {
     const keys = {};
     for (const r of list) keys[r.w.id] = this.projectKey(r.w, ps);
     this.keys = keys;
+    this.stackMap = {};
+    for (const r of list) this.stackMap[r.w.id] = this.stacksOf(r.w, r.g?.top ?? place(r.w, ps));
 
     const m = model.load();
     // New spaces, once their git is known (or isn't coming): next to their repo's space, else where
@@ -803,6 +900,12 @@ export default class Spaces extends View {
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
+    const own = this.stackMap[w.id] ?? [];
+    const mine = agents().filter((a) => a.space === w.id);
+    const sessions = mine.length;
+    // An idle agent marked unread in the agents list (agents-unread) counts as done here too.
+    const unread = shared("agents.unread") ?? {};
+    const urgent = ["blocked", "done", "working"].find((st) => mine.some((a) => (a.status === "idle" && unread[a.address] ? "done" : a.status) === st)) ?? "idle";
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
@@ -839,16 +942,79 @@ export default class Spaces extends View {
         this.aim(next, cx);
       })
       .on_mouse_up("left", (_e, cx) => this.release(cx, (d) => { if (d.row === w.id) run("space.select", { id: w.id }); }))
-      .on_mouse_down("right", () => this.menu("space", { id: w.id, git: g ? (g.linked ? "linked" : "main") : null, nested: Boolean(tree), kids: tree ? [] : at.kids, open: this.project(w, g) }))
+      .on_mouse_down("right", () => this.menu("space", { id: w.id, git: g ? (g.linked ? "linked" : "main") : null, nested: Boolean(tree), kids: tree ? [] : at.kids, open: this.project(w, g), stacks: own.map((s) => ({ ...s, acting: this.acting[s.id] ?? null })), on: w.machine ?? null, local: !w.machine }))
       .child(
         h_flex()
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).flex_none().text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(spaceAvatar(w.name))))
+          .when(!tree, el => el.child(div().relative().size(18).flex_none()
+            .child(h_flex().size_full().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(spaceAvatar(w.name)))
+            .when(sessions > 0, el => el.child(this.sessionBadge(sessions, urgent, on, t)))))
+          .when(Boolean(tree) && sessions > 0, el => el.child(this.sessionBadge(sessions, urgent, on, t, true)))
           .child(div().flex_initial().min_w(SIDE_MIN).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
+          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .when(own.length > 0, el => el.child(this.stackButton(w, own, t))),
       );
+  }
+
+  // How many agent sessions a space has, on its avatar's corner (`inline`: beside a worktree row's
+  // branch icon). The color is the space's most urgent agent's; idle is quiet.
+  // Top right, where a count goes. Its ring is cut out of the row's own color.
+  sessionBadge(n, status, selected, t, inline = false) {
+    const loud = status === "blocked" || status === "done" || status === "working";
+    // On the avatar's corner only, clear of its letter and of the name 9 px to the right.
+    const badge = h_flex().h(11).min_w(11).px(n > 9 ? 2 : 0).rounded(6)
+      .when(loud, (el) => el.bg(tone(t, status)))
+      .when(!loud, (el) => el.border_1().border_color(t.dim))
+      .items_center().justify_center()
+      .text_size(8.5).font_semibold().text_color(loud ? t.chrome : t.foreground)
+      .child(String(n));
+    return div().when(!inline, (el) => el.absolute().top(-5).right(-6)).when(inline, (el) => el.ml(-6))
+      .flex_none().child(cutout(badge, selected, t, 7));
+  }
+
+  // The row's stacks button. The glyph says what they are (a browser window for a DDEV site, the whale
+  // for Docker), the dot how they are: green running, amber in part, none stopped (the machine
+  // header's dot means live the same way). A spinner while one starts or stops; on hover, what a
+  // click does (start, or stop what runs).
+  stackButton(w, own, t) {
+    const state = stacks.overall(own, this.acting);
+    const up = own.filter((s) => s.state !== "stopped");
+    const op = up.length ? "stop" : "start";
+    const hot = this.hot === w.id && state !== "busy";
+    const dot = { running: t.ansi2, partial: t.ansi3 }[state];
+    const glyph = own.every((s) => s.kind === "ddev") ? `mods/${MOD}/site.svg` : "icons/docker.svg";
+    const says = own.map((s) => `${stacks.kindName(s.kind)} ${s.name}: ${this.acting[s.id] ?? (s.state === "partial" ? "partly running" : s.state)}`).join(", ");
+    const icon = state === "busy" ? svg("mods/workspace-chrome/spinner.svg").size(13).text_color(t.working).spin(900)
+      : hot ? svg(`mods/${MOD}/${op === "stop" ? "stop" : "play"}.svg`).size(12)
+      : div().relative().size(14)
+        .child(svg(glyph).size(14).text_color(dot ? t.muted : t.dim))
+        .when(Boolean(dot), (el) => el.child(div().absolute().bottom(-3).right(-2)
+          .child(cutout(div().size(6).rounded(3).bg(dot), w.active, t, 4))));
+    return h_flex()
+      .id(`stack-${w.id}`)
+      .size(20)
+      .ml(-4)
+      .mr(-4)
+      .flex_none()
+      .rounded(5)
+      .items_center()
+      .justify_center()
+      .text_color(t.foreground)
+      .when(hot, (el) => el.bg(t.raised))
+      .tooltip(state === "busy" ? says : `${says}. Click to ${op}.`)
+      .on_hover((hovered, cx) => {
+        const next = hovered ? w.id : this.hot === w.id ? null : this.hot;
+        if (next !== this.hot) { this.hot = next; cx.notify(); }
+      })
+      // Its own press: the row's would begin a drag. The row's release then finds no drag, and does nothing.
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        if (state !== "busy") this.runStacks(op, op === "stop" ? up : own, w.machine ?? null, cx);
+      })
+      .child(icon);
   }
 
   compact({ w, i }, t) {
@@ -874,6 +1040,14 @@ export default class Spaces extends View {
       const r = opening.take();
       const done = r ? await opening.perform(r) : {};
       if (done.error) notify({ title: `Couldn't open it in ${opening.appName(r.app)}`, body: done.error, level: "error" });
+    });
+    // The menu left a start or a stop, or a site to open.
+    if (stacks.waiting()) cx.spawn(async (cx) => {
+      await null;
+      const r = stacks.take();
+      if (!r) return;
+      if (r.op === "site") { if (r.url) exec("open", [r.url]).catch(() => {}); return; }
+      this.runStacks(r.op, r.stacks, r.on ?? null, cx);
     });
     const t = theme();
     const collapsed = narrow();
