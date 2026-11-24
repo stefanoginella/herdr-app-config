@@ -68,13 +68,19 @@ export function readDdev(stdout) {
   return null;
 }
 
-// `docker compose ls --all --format json`, without DDEV's own stacks (they are its projects).
+// `docker compose ls --all --format json`, without DDEV's own stacks (they are its projects). A stack
+// with a compose file in a `.devcontainer` folder is a dev container's (`dev`: the project folder that
+// holds it), made by VS Code or the devcontainer CLI.
 export function readCompose(stdout) {
   let list;
   try { list = JSON.parse(stdout || "[]"); } catch { return null; }
   if (!Array.isArray(list)) return null;
   return list.filter((c) => typeof c?.Name === "string" && !c.Name.startsWith("ddev-") && !String(c.ConfigFiles ?? "").includes("/.ddev/"))
-    .map((c) => ({ name: c.Name, files: String(c.ConfigFiles ?? "").split(",").filter(Boolean), status: String(c.Status ?? "") }));
+    .map((c) => {
+      const files = String(c.ConfigFiles ?? "").split(",").filter(Boolean);
+      const inDev = files.find((f) => f.includes("/.devcontainer/"));
+      return { name: c.Name, files, status: String(c.Status ?? ""), dev: inDev ? inDev.slice(0, inDev.indexOf("/.devcontainer/")) || "/" : null };
+    });
 }
 
 // "running" | "partial" (some of it, or unwell) | "stopped" | "busy" (on its way).
@@ -91,8 +97,10 @@ export function composeState(status) {
   return status.split(",").every((s) => s.trim().startsWith("running")) ? "running" : "partial";
 }
 
-// A folder's stacks: [{ id, kind: "ddev" | "compose", name, dir, state, url?, project? }]. `lists`: one
-// machine's { ddev, compose } (null where it couldn't be asked); `found`: readFound() for the folder.
+// A folder's stacks: [{ id, kind: "ddev" | "compose", name, dir, state, url?, project?, dev? }]. `lists`:
+// one machine's { ddev, compose } (null where it couldn't be asked); `found`: readFound() for the folder.
+// A dev container's stack (`dev: true`) is named after its project folder, and is never the stack of a
+// compose file found on disk: its first file may be the project's own `../docker-compose.yml`.
 export function stacksFor(folder, home, lists, found) {
   const f = folder.replace(/\/+$/, "");
   if (tooWide(f, home)) return [];
@@ -106,11 +114,11 @@ export function stacksFor(folder, home, lists, found) {
     if (!out.some((s) => s.kind === "ddev" && s.dir === dir)) out.push({ id: `ddev:${dir}`, kind: "ddev", name: base(dir), dir, state: "stopped", url: null });
   }
   for (const c of lists?.compose ?? []) {
-    const dir = c.files[0] ? parent(c.files[0]) : null;
-    if (dir && under(dir, f) && levels(dir, f) <= DEPTH) out.push({ id: `compose:${c.name}`, kind: "compose", name: c.name, dir, state: composeState(c.status), project: c.name });
+    const dir = c.dev ?? (c.files[0] ? parent(c.files[0]) : null);
+    if (dir && under(dir, f) && levels(dir, f) <= DEPTH) out.push({ id: `compose:${c.name}`, kind: "compose", name: c.dev ? base(c.dev) : c.name, dir, state: composeState(c.status), project: c.name, dev: Boolean(c.dev) });
   }
   for (const dir of found?.compose ?? []) {
-    if (!out.some((s) => s.kind === "compose" && s.dir === dir)) out.push({ id: `compose:${dir}`, kind: "compose", name: base(dir), dir, state: "stopped", project: null });
+    if (!out.some((s) => s.kind === "compose" && !s.dev && s.dir === dir)) out.push({ id: `compose:${dir}`, kind: "compose", name: base(dir), dir, state: "stopped", project: null });
   }
   return out.length > MANY ? [] : out;
 }
@@ -124,7 +132,8 @@ export function overall(stacks, acting) {
   return "stopped";
 }
 
-export const kindName = (kind) => (kind === "ddev" ? "DDEV" : "Docker");
+// What a stack is called in a tooltip, the menu and a toast: "Docker web", "Dev container app".
+export const title = (s) => `${s.dev ? "Dev container" : s.kind === "ddev" ? "DDEV" : "Docker"} ${s.name}`;
 
 // ---- what touches the app ----
 

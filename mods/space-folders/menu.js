@@ -61,7 +61,7 @@ function rows(p) {
       // Its containers, one at a time; a DDEV site that runs opens in the browser (this Mac's only).
       ...(tg.stacks ?? []).flatMap((s, i) => {
         const up = s.state !== "stopped";
-        const name = `${stacks.kindName(s.kind)} ${s.name}`;
+        const name = stacks.title(s);
         const act = (op) => () => stacks.request({ op, on: tg.on ?? null, stacks: [s], url: s.url });
         return [
           { label: `${up ? "Stop" : "Start"} ${name}`, icon: up ? "stop" : "play", rule: i === 0, hint: s.acting ?? "", act: s.acting ? () => {} : act(up ? "stop" : "start") },

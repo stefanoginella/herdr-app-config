@@ -173,7 +173,7 @@ export default class Spaces extends View {
     this.finding = new Set(); // those being looked in now
     this.stackMap = {}; // space -> its stacks, as last drawn
     this.acting = {}; // stack id -> "starting" | "stopping", while that runs
-    this.hot = null; // the space whose stack button the pointer is on
+    this.hot = null; // "<space>:<stack|dev>": the stack button the pointer is on
     this.pollStacks(cx, true);
     cx.timer.every(2000, (cx) => this.pollStacks(cx));
     // Refresh only when the refs could have changed (see `due`).
@@ -298,7 +298,7 @@ export default class Spaces extends View {
       for (const s of todo) {
         const done = await stacks.act(op, s, on);
         delete this.acting[s.id];
-        if (done.error) notify({ title: `Couldn't ${op} ${stacks.kindName(s.kind)} ${s.name}`, body: done.error, level: "error" });
+        if (done.error) notify({ title: `Couldn't ${op} ${stacks.title(s)}`, body: done.error, level: "error" });
         this.listAt[on ?? ""] = 0;
         // Brought up for the first time: its compose stack has a name now.
         if (s.kind === "compose" && !s.project) for (const k of Object.keys(this.stackFiles)) if (JSON.parse(k)[0] === on) this.stackFiles[k].at = 0;
@@ -954,7 +954,9 @@ export default class Spaces extends View {
           .when(Boolean(tree) && sessions > 0, el => el.child(this.sessionBadge(sessions, urgent, on, t, true)))
           .child(div().flex_initial().min_w(SIDE_MIN).truncate().text_color(t.foreground).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
-          .when(own.length > 0, el => el.child(this.stackButton(w, own, t))),
+          // A dev container's stacks have a button of their own, after the project's.
+          .when(own.some((s) => !s.dev), el => el.child(this.stackButton(w, own.filter((s) => !s.dev), t, "stack")))
+          .when(own.some((s) => s.dev), el => el.child(this.stackButton(w, own.filter((s) => s.dev), t, "dev"))),
       );
   }
 
@@ -975,17 +977,18 @@ export default class Spaces extends View {
   }
 
   // The row's stacks button. The glyph says what they are (a browser window for a DDEV site, the whale
-  // for Docker), the dot how they are: green running, amber in part, none stopped (the machine
-  // header's dot means live the same way). A spinner while one starts or stops; on hover, what a
-  // click does (start, or stop what runs).
-  stackButton(w, own, t) {
+  // for Docker, a square of code for a dev container), the dot how they are: green running, amber in
+  // part, none stopped (the machine header's dot means live the same way). A spinner while one starts
+  // or stops; on hover, what a click does (start, or stop what runs). `key`: "stack" or "dev".
+  stackButton(w, own, t, key) {
     const state = stacks.overall(own, this.acting);
     const up = own.filter((s) => s.state !== "stopped");
     const op = up.length ? "stop" : "start";
-    const hot = this.hot === w.id && state !== "busy";
+    const me = `${w.id}:${key}`;
+    const hot = this.hot === me && state !== "busy";
     const dot = { running: t.ansi2, partial: t.ansi3 }[state];
-    const glyph = own.every((s) => s.kind === "ddev") ? `mods/${MOD}/site.svg` : "icons/docker.svg";
-    const says = own.map((s) => `${stacks.kindName(s.kind)} ${s.name}: ${this.acting[s.id] ?? (s.state === "partial" ? "partly running" : s.state)}`).join(", ");
+    const glyph = key === "dev" ? `mods/${MOD}/devcontainer.svg` : own.every((s) => s.kind === "ddev") ? `mods/${MOD}/site.svg` : "icons/docker.svg";
+    const says = own.map((s) => `${stacks.title(s)}: ${this.acting[s.id] ?? (s.state === "partial" ? "partly running" : s.state)}`).join(", ");
     const icon = state === "busy" ? svg("mods/workspace-chrome/spinner.svg").size(13).text_color(t.working).spin(900)
       : hot ? svg(`mods/${MOD}/${op === "stop" ? "stop" : "play"}.svg`).size(12)
       : div().relative().size(14)
@@ -993,7 +996,7 @@ export default class Spaces extends View {
         .when(Boolean(dot), (el) => el.child(div().absolute().bottom(-3).right(-2)
           .child(cutout(div().size(6).rounded(3).bg(dot), w.active, t, 4))));
     return h_flex()
-      .id(`stack-${w.id}`)
+      .id(`${key}-${w.id}`)
       .size(20)
       .ml(-4)
       .mr(-4)
@@ -1005,7 +1008,7 @@ export default class Spaces extends View {
       .when(hot, (el) => el.bg(t.raised))
       .tooltip(state === "busy" ? says : `${says}. Click to ${op}.`)
       .on_hover((hovered, cx) => {
-        const next = hovered ? w.id : this.hot === w.id ? null : this.hot;
+        const next = hovered ? me : this.hot === me ? null : this.hot;
         if (next !== this.hot) { this.hot = next; cx.notify(); }
       })
       // Its own press: the row's would begin a drag. The row's release then finds no drag, and does nothing.
