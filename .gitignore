@@ -21,6 +21,11 @@
 !/CLAUDE.md
 !/AGENTS.override.md
 
+# Skills for coding agents (settings files in .claude stay ignored)
+!/.claude/
+/.claude/*
+!/.claude/skills/
+
 # Your layouts (main, terminals and win98 are Herdr's)
 !/layouts/
 /layouts/*

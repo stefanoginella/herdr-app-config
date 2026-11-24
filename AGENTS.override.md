@@ -259,33 +259,7 @@ Everything not listed here is Herdr's and is replaced on every start.
 - An overlay opened for a test is closed with `herdr-app do overlay.close` (the top dialog or popup), or `--id o<n>` for a window: the ids count up from `o1`. `project-search` can be tried in a window on a scratch folder: `openOverlay({ mod: "project-search", kind: "window", props: { root } })`, then an ask with `focus: false`.
 - Keys in a mod's text fields. A field (and the editor's text) binds Up, Down, Tab, Cmd+F and more, and passes nothing on, so a binding has to sit as deep as the field to win. Up to Herdr 0.1.16 a `keys.json` section called `mod:<x> > Input` did that, because Herdr pasted the name into a key-context expression. Since 0.1.17 (`src/keys.rs`, `tab()`) a section's name is one literal mod name: such a section is still valid and listed by `keys()`, binds nothing, and writes no `keys.error`. So `go-to-file`, `project-search` and `file-editor` install that section's keys themselves with `cx.bind_keys`, under the context `mod == <x> > Input` and with the same actions (`fieldkeys.js`). Herdr runs every script action at the window root (`run_action`), as it runs one from `keys.json`, so the command reaches `nextCommand()` unchanged. Herdr drops all bindings whenever `keys.json` changes and puts back only its own: the mods bind again when `keys()` changes, from `render()` through a task (binding is refused in `render()`).
 - When a question is about how Herdr delivers an event or a key, read its source at the installed version's tag instead of guessing: the GPUI fork is under `vendor/gpui-pre`, the script bridge under `vendor/gpui-kit/crates/shell`.
-- These clones do not receive Herdr's updates, so check them after Herdr updates. Each clone was made from the version named under "What is custom". When `herdr-app --version` is newer, see what Herdr changed in each original since then, port what matters into the clone, and update the version named here, in `README.md` and in `NOTICE`. Herdr's source is public at `github.com/herdrdev/herdr-app`, tagged per version (`v0.1.17`), with the shipped files under `defaults/`. The installed original is already the new version, so only the old one is fetched:
-
-  ```sh
-  diff <(gh api "repos/herdrdev/herdr-app/contents/defaults/mods/agents/main.js?ref=v0.1.17" -H "Accept: application/vnd.github.raw") mods/agents/main.js
-  ```
-
-  The originals: `defaults/mods/spaces/main.js` for `space-folders`, `defaults/mods/agents/main.js` for `agents-unread`, `defaults/mods/files/main.js` for `files-actions`, `defaults/layouts/main.json` for `main-folders`.
-
-- The diffs show only what changed in the cloned files, so read Herdr's changelog too: every entry after the version named under "What is custom", up to the installed one.
-
-  ```sh
-  gh api "repos/herdrdev/herdr-app/contents/CHANGELOG.md" -H "Accept: application/vnd.github.raw"
-  ```
-
-  Hold each entry against every custom mod, `file-editor`, `project-search`, `go-to-file`, `git-panel` and `git-diff` included (they have no original to diff), and sort it into one of four:
-  - **Replaces a mod:** Herdr now does what one of them does (folders of spaces, unread agents, a text editor pane, a search in every file, going to a file by its name (in the picker or anywhere else), the Files panel's menu, icons, drag or undo, a commit graph, branches and stashes, a diff viewer, pull requests or workflow runs). Tell the owner what switching would gain and lose. The owner decides: a mod stays until they say otherwise.
-  - **Lifts a limit:** it gives a mod what this file says a mod can't have (more than one selection, a scroll position, a mark beside a line of the editor, word of a file drag leaving the panel, a place for the keyboard in a mod pane, a `writeTextFile` on another machine, a command that reaches a copy that is not on screen, handlers on the rows of a virtual list, an import from another mod's folder, a text element with runs of several colors, a syntax highlighter for any text, git's status as a function of `herdr`, a `props()` that is the copy's own after an `await`, a script engine fast enough to look at every path of a project at each key, a fuzzy finder of its own). Use it, then delete the workaround and its note here.
-  - **Moves what a workaround stands on:** how a mod pane gets the keyboard, key sections and their order, Cmd+F and the menu bar, file drags, `exec`, `writeTextFile`, which copies a command reaches, the tab bar's `workspace.panels`, the tab bar's Changes button and the `changes` block's id, what `on_size_change` reports at a zoom, the time a script may run, what `mod.open` does and what a popup gets from it, Cmd+O or Cmd+P in Herdr's own keys. Try again the behavior under the matching "Behavior to preserve" heading.
-  - **Nothing for this setup.**
-
-  Report every entry of the first three kinds to the owner, also when it needs no change.
-
-- The changelog doesn't say everything: 0.1.17 changed how a `keys.json` section name is read without a word there, and broke every `> Input` section. So also list the source files changed between the two tags and read the diffs of those a workaround stands on: `src/keys.rs`, `src/mods.rs`, `src/mod_files.rs`, the key contexts and focus code in `src/window.rs`, and `vendor/gpui-kit/crates/shell/src/` (`policy.rs`, the engine and its scheduler).
-
-  ```sh
-  gh api "repos/herdrdev/herdr-app/compare/v0.1.17...v<new>" --jq '.files[] | "\(.status) \(.filename)"'
-  ```
+- After Herdr updates (`herdr-app --version` newer than the version named under "What is custom"), follow `.claude/skills/herdr-update/SKILL.md`. It holds the whole check: the clones against their originals, the changelog and the source, sorted against this setup, with a report for the owner. What each check found, and what is still open, is logged in `checks.md` beside it. The clones get no update from Herdr, so this is how they keep up.
 
 - The icons in `mods/files-actions/icons/` are a release of Material Icon Theme (MIT), named in `icons/map.js` and in `NOTICE`. To update them, follow the header of `icons/build.py`, then update the version in `NOTICE`.
 
