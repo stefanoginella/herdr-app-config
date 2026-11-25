@@ -1,4 +1,4 @@
-# Git diff
+# Git Diff
 
 A pane beside the terminals for reading a change, opened by clicking a file in the [Git panel](git-panel.md): of what is not committed, of a commit, of a stash, or of a branch comparison. One a tab; the next file clicked shows in the same pane.
 

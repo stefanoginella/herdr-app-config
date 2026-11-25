@@ -13,7 +13,7 @@ Marks an idle agent as unread: it goes back under Done, with the done dot, as a 
 
 Marking the agent you are looking at keeps it marked until you leave and come back. The mark lives in the list only: the tab bar and the spaces sidebar still show the agent as idle.
 
-One command can be bound in `keys.json`: `agent-inbox.toggle` marks the agent you are looking at, or clears its mark. It is also in the command palette.
+One command can be bound in `keys.json`: `mark-agents-unread.toggle` marks the agent you are looking at, or clears its mark. It is also in the command palette.
 
 **Jump to an agent:** Cmd+Alt+1 to Cmd+Alt+9 go to the first to ninth agent, in the order the list draws them.
 

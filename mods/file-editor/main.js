@@ -2,7 +2,7 @@
 // tabs, long lines wrapped (or not, a file at a time), find and replace, Markdown shortcuts and a
 // rendered preview, the find bar's matches lit in it too.
 //
-// One editor a tab. The Files panel (`files-actions`) and the Search panel (`project-search`)
+// One editor a tab. The Files panel (`file-explorer`) and the Search panel (`project-search`)
 // split it in with props { tab } and ask for a file through shared state; the editor that
 // belongs to that tab takes the request:
 //   file-editor.open   { tab, path, on, at, select? }   path is absolute; on: the machine, null

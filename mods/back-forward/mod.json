@@ -1,8 +1,0 @@
-{
-  "place": "none",
-  "title": "Back and forward",
-  "palette": [
-    { "title": "Go Back", "command": "back-forward.back", "group": "Navigation" },
-    { "title": "Go Forward", "command": "back-forward.forward", "group": "Navigation" }
-  ]
-}

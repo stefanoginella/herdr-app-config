@@ -1,4 +1,4 @@
-# Space folders
+# Space Folders
 
 Groups spaces into named folders in the sidebar. Folders are one level deep, and a space doesn't need one: it can stay at the root.
 

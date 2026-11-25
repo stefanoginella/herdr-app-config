@@ -1,12 +1,12 @@
-# `back-forward`
+# `back-and-forward`
 
-Two status-bar buttons step through the places visited in this window. This is an adaptation of PostHog’s community mod at revision `8b0be111696030a626c47f90dceb77a579d33768`. The upstream MIT notice is in `mods/back-forward/LICENSE`. [Upstream source](https://github.com/PostHog/herdr/tree/8b0be111696030a626c47f90dceb77a579d33768/back-forward)
+Two status-bar buttons step through the places visited in this window. This is an adaptation of PostHog’s community mod at revision `8b0be111696030a626c47f90dceb77a579d33768`. The upstream MIT notice is in `mods/back-and-forward/LICENSE`. [Upstream source](https://github.com/PostHog/herdr/tree/8b0be111696030a626c47f90dceb77a579d33768/back-forward)
 
 ## Implementation
 
 - `main.js` keeps the history and paints the two arrows. `follow()` records the focused space, tab and pane on render. `nextIndex()` finds a visit in the requested direction. `go()` selects the destination space, then the tab, then its pane if it still belongs to that tab.
 - All state is in the view instance. It holds at most 100 visits. Reloading the mod or switching layouts starts fresh. Destinations use Herdr’s full IDs, including the machine prefix.
-- `mod.json` declares the two unbound palette commands, `back-forward.back` and `back-forward.forward`. Both and the buttons use `go()`. The chevrons come from Herdr’s shipped `workspace-chrome` assets. The layout supplies a 76 px block.
+- `mod.json` declares the two unbound palette commands, `back-and-forward.back` and `back-and-forward.forward`. Both and the buttons use `go()`. The chevrons come from Herdr’s shipped `workspace-chrome` assets. The layout supplies a 76 px block.
 
 ## Behavior to preserve
 

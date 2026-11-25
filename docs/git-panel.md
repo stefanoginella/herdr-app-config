@@ -31,13 +31,13 @@ Before anything is changed the panel checks that what it showed is still true: t
 
 The panel reads the repository only while it is on screen: when a file changes on this Mac, and every few seconds on another machine. While Herdr is in the background it reads nothing, and asks GitHub nothing, until you come back.
 
-Five commands can be bound in `keys.json`: `git-graph.fetch`, `git-graph.pull`, `git-graph.push`, `git-graph.refresh` and `git-graph.write` (the message writer). They reach the panel while it is shown, and are in the command palette as "Git: Fetch" and so on.
+Five commands can be bound in `keys.json`: `git-panel.fetch`, `git-panel.pull`, `git-panel.push`, `git-panel.refresh` and `git-panel.write` (the message writer). They reach the panel while it is shown, and are in the command palette as "Git: Fetch" and so on.
 
 ## The message writer
 
 The program runs on this Mac, with your own login to it, in your home folder, with no tools and no session kept. It is sent, as its prompt: the diff of what is about to be committed (what is staged, else everything, cut at 60,000 characters), the text of new files (a few thousand characters), the branch's name and the last twelve commit messages. So whatever is in that diff goes to Anthropic or OpenAI: look before you ask when a change holds something secret. For a repository on another machine git is read there, and the program still runs here.
 
-Who can write, and with which model, is the list at the top of `mods/git-graph/write.js`: a model's name is the program's own (`claude --model`, `codex exec --model`), and Codex's change over time.
+Who can write, and with which model, is the list at the top of `mods/git-panel/write.js`: a model's name is the program's own (`claude --model`, `codex exec --model`), and Codex's change over time.
 
 ---
 

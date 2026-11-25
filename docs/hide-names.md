@@ -1,4 +1,4 @@
-# Hide names
+# Hide Names
 
 For a screenshot or a screen share: Cmd+Shift+H (or "Hide Names / Show Names" in the command palette) gives every space, folder, tab, branch and machine around the content a plausible made-up name, in the sidebar, the agents list, the tab bar, the pane headers, the status bar and the Usage dialog. The same real name always gets the same made-up one. What the panes and the right panel show stays real: that is the content you chose to show. Press it again to show the names; the app also shows them again when it starts.
 
@@ -15,7 +15,7 @@ What stays as it is:
 
 Only what is drawn changes: a rename dialog still holds the real name, and copying a machine's login command copies the real one.
 
-The key is in `keys.json` under `global`: `cmd-shift-h` runs `status-names.toggle`. The Usage dialog's Hide names button and its `h` key switch the same mode.
+The key is in `keys.json` under `global`: `cmd-shift-h` runs `hide-names.toggle`. The Usage dialog's Hide names button and its `h` key switch the same mode.
 
 ---
 

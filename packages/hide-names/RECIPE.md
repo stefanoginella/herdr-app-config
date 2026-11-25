@@ -14,7 +14,7 @@ Cmd+Shift+H or the palette's Hide Names / Show Names toggles the window. Draw ea
 
 ## Built from
 
-Install `tabs-names`, `pane-names` and `status-names` from the package's `mods/` folder and merge its key. In a personal layout set the tab bar's mod to `tabs-names`, the active tab's pane header to `pane-names`, and the status block to `status-names`. Turn `names.hidden` on or off through the shown status mod. Each mod computes aliases from the input and its kind. **Space Folders**, **Mark Agents Unread** and **Agent Usage** also read the flag.
+Install `tabs-names`, `pane-names` and `hide-names` from the package's `mods/` folder and merge its key. In a personal layout set the tab bar's mod to `tabs-names`, the active tab's pane header to `pane-names`, and the status block to `hide-names`. Turn `names.hidden` on or off through the shown status mod. Each mod computes aliases from the input and its kind. **Space Folders**, **Mark Agents Unread** and **Agent Usage** also read the flag.
 
 ## Watch out
 

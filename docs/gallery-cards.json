@@ -13,13 +13,13 @@
       {"crop": [876, 341, 722, 367], "at": [811, 478], "width": 449}
     ]
   },
-  "agent-inbox": {
+  "mark-agents-unread": {
     "caption": "Put idle agents back under Done so you can revisit them.",
     "shots": [
       {"crop": [876, 123, 722, 863], "at": [659, 81], "width": 537}
     ]
   },
-  "git-graph": {
+  "git-panel": {
     "caption": "Browse history and refs, stage changes, and review branches.",
     "shots": [
       {"crop": [121, 71, 686, 915], "at": [591, 100], "width": 515},
@@ -52,7 +52,7 @@
       {"crop": [265, 126, 1149, 797], "at": [579, 157], "width": 691}
     ]
   },
-  "file-actions": {
+  "file-explorer": {
     "caption": "Browse files with icons and Git status. Move, rename, or search.",
     "shots": [
       {"crop": [1021, 71, 490, 904], "at": [794, 85], "width": 422},

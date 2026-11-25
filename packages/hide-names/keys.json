@@ -1,5 +1,5 @@
 {
   "global": {
-    "cmd-shift-h": "status-names.toggle"
+    "cmd-shift-h": "hide-names.toggle"
   }
 }

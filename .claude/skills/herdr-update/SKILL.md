@@ -54,20 +54,20 @@ The clones, copied from a shipped file (`grep -l cloned_from mods/*/mod.json lay
 | Clone | `<original>` | Installed copy |
 |---|---|---|
 | `space-folders` | `defaults/mods/spaces/main.js` | `mods/spaces/main.js` |
-| `agent-inbox` | `defaults/mods/agents/main.js` | `mods/agents/main.js` |
-| `files-actions` | `defaults/mods/files/main.js` | `mods/files/main.js` |
+| `mark-agents-unread` | `defaults/mods/agents/main.js` | `mods/agents/main.js` |
+| `file-explorer` | `defaults/mods/files/main.js` | `mods/files/main.js` |
 | `tabs-names` | `defaults/mods/tabs/main.js` | `mods/tabs/main.js` |
 | `pane-names` | `defaults/mods/pane/main.js` | `mods/pane/main.js` |
-| `status-names` | `defaults/mods/workspace-status/main.js` | `mods/workspace-status/main.js` |
+| `hide-names` | `defaults/mods/workspace-status/main.js` | `mods/workspace-status/main.js` |
 | `main-folders` | `defaults/layouts/main.json` | `layouts/main.json` |
 
 The shipped mods that other custom mods stand in for. Nothing was copied from them, but they show what Herdr added that the custom mod lacks:
 
 | Stand-in | `<original>` | Installed copy |
 |---|---|---|
-| `git-graph`, `git-diff` | `defaults/mods/changes/main.js` | `mods/changes/main.js` |
+| `git-panel`, `git-diff` | `defaults/mods/changes/main.js` | `mods/changes/main.js` |
 | `go-to-file` | `defaults/mods/picker/main.js` | `mods/picker/main.js` |
-| `file-editor` | the `files-actions` diff, read again for the preview | |
+| `file-editor` | the `file-explorer` diff, read again for the preview | |
 
 Done when: every hunk is either a change to port (what it does, where it lands in the clone) or set aside with a reason.
 

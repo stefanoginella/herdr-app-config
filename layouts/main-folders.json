@@ -53,7 +53,7 @@
               "id": "agents",
               "type": "block",
               "content": {
-                "mod": "agent-inbox"
+                "mod": "mark-agents-unread"
               },
               "size": {
                 "weight": 1
@@ -145,14 +145,14 @@
                       "id": "files",
                       "type": "block",
                       "content": {
-                        "mod": "files-actions"
+                        "mod": "file-explorer"
                       }
                     },
                     {
                       "id": "changes",
                       "type": "block",
                       "content": {
-                        "mod": "git-graph"
+                        "mod": "git-panel"
                       }
                     },
                     {
@@ -195,7 +195,7 @@
               "id": "status",
               "type": "block",
               "content": {
-                "mod": "status-names"
+                "mod": "hide-names"
               },
               "size": {
                 "weight": 1
@@ -205,7 +205,7 @@
               "id": "back-forward",
               "type": "block",
               "content": {
-                "mod": "back-forward"
+                "mod": "back-and-forward"
               },
               "size": {
                 "px": 76

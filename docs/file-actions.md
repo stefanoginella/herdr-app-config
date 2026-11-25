@@ -29,7 +29,7 @@ The panel notices changes on disk as they happen, and waits while Herdr is in th
 
 Opening in an app, Finder, the clipboard, Add Files… and the Trash are for files on this Mac. For a folder on another machine the menu offers New File, New Folder, Rename and Duplicate, drag still moves, and undo takes back a move or a rename.
 
-Undo is the command `files-actions.undo`, bound in `keys.json` under `global` so that it works while the keyboard is in a terminal, which is where it is after a drag. It works while the Files panel is shown. Two things follow from binding it there: terminal programs no longer receive Cmd+Z, and a Cmd+Z pressed by habit within those five minutes takes back the last file action. Text fields, such as the rename dialog, keep their own undo.
+Undo is the command `file-explorer.undo`, bound in `keys.json` under `global` so that it works while the keyboard is in a terminal, which is where it is after a drag. It works while the Files panel is shown. Two things follow from binding it there: terminal programs no longer receive Cmd+Z, and a Cmd+Z pressed by habit within those five minutes takes back the last file action. Text fields, such as the rename dialog, keep their own undo.
 
 ---
 

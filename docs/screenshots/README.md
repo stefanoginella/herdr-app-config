@@ -75,7 +75,7 @@ A change to a zoom, to a panel's width or to how a pane is split moves the boxes
 - **The diff pane's side by side switch is a switch.** In a sandbox where the `diff` step already ran, it switches back.
 - **An overlay's `at` is in window pixels**, not in the app's own.
 - **The usage data is made relative to now:** "Burning now" is the last hour, so shoot within a few minutes of `gen-usage.mjs`. The home is given to it as `/var/tmp/...`, not `/private/var/tmp/...`: the dialog files the second under "Other folders".
-- **The demo repository's uncommitted change is written against `mods/git-graph/git.js` as it is now.** When that file's `ago()`, `initials()` or `MONTHS` change, `build.sh` stops and says which: write the demo change again.
+- **The demo repository's uncommitted change is written against `mods/git-panel/git.js` as it is now.** When that file's `ago()`, `initials()` or `MONTHS` change, `build.sh` stops and says which: write the demo change again.
 - **A mod first seen without a `mod.json` is docked into the layout:** `stage/` has one, and goes in whole.
 
 ---

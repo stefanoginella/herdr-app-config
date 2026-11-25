@@ -1,6 +1,6 @@
-# `agent-inbox`
+# `mark-agents-unread`
 
-Notes for agents on the mod in `mods/agent-inbox/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `mods/mark-agents-unread/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 The gallery calls this mod Mark Agents Unread, and the sidebar heading is Agents. It is a clone of Herdr's `agents` list (from version 0.1.18) where an idle agent can be marked unread. A marked agent is drawn with the done dot and appears in the Done section in the priority view.
 
@@ -11,7 +11,7 @@ The gallery calls this mod Mark Agents Unread, and the sidebar heading is Agents
 - `unread.js`: the marks and every change to them. `menu.js`: a row's right-click menu (mark as unread or read, pin or unpin, close an idle agent). The mod opens itself for it, with `props().menu`.
 - A hovered row shows the pin button, and for an idle agent not marked unread a close button beside it (the menu's Close follows the same rule): `pane.close` on the agent's pane, which ends its terminal.
 - State lives in shared `agents.unread`: `{ address: { left } }`. `left` means another pane has had the focus since the mark.
-- Key command: `agent-inbox.toggle`, for the agent being looked at. It is not bound; it is in the command palette. `cmd-alt-1`…`cmd-alt-9` in `global` run `agent.select:N`, which follows this list's drawn order (`setAgentOrder()` in `render()`).
+- Key command: `mark-agents-unread.toggle`, for the agent being looked at. It is not bound; it is in the command palette. `cmd-alt-1`…`cmd-alt-9` in `global` run `agent.select:N`, which follows this list's drawn order (`setAgentOrder()` in `render()`).
 
 ## Behavior to preserve
 

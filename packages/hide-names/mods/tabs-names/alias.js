@@ -3,7 +3,7 @@
 // and the real string as displayed: no map, no state, nothing written, so the same real name gets
 // the same fake one in every mod. The same file is in every mod that uses it (a mod imports only
 // from its own folder): keep the copies the same. It touches nothing of the app and runs under
-// `node` (alias.test.mjs in status-names).
+// `node` (alias.test.mjs in hide-names).
 
 const PROJECTS = [
   "acorn", "alder", "amber", "anchor", "arbor", "aspen", "atlas", "aurora", "badger", "basalt",

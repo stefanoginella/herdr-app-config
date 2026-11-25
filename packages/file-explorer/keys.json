@@ -1,0 +1,5 @@
+{
+  "global": {
+    "cmd-z": "file-explorer.undo"
+  }
+}

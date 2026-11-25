@@ -1,6 +1,6 @@
-# `git-graph`
+# `git-panel`
 
-Notes for agents on the mod in `mods/git-graph/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `mods/git-panel/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 The Git Panel replaces Herdr's `changes` view. Its gallery title and panel heading both read Git Panel. It shows commit history as a graph, branches, remotes, tags, stashes and uncommitted changes, with actions for day-to-day Git work.
 
@@ -19,7 +19,7 @@ The Git Panel replaces Herdr's `changes` view. Its gallery title and panel headi
 ## Behavior to preserve
 
 - It never rebases, merges, cherry-picks, resets, forces a push or deletes an unmerged branch (`branch -d`, never `-D`). A pull is `--ff-only`. Those limits are the owner's choice: more is for a terminal.
-- A menu or a dialog never runs a program itself: it leaves a request (`ops.request()`), as in `files-actions`. A request is taken only by the copy that shows its repository (`ops.take(mine)`), so a test window and the panel don't take each other's.
+- A menu or a dialog never runs a program itself: it leaves a request (`ops.request()`), as in `file-explorer`. A request is taken only by the copy that shows its repository (`ops.take(mine)`), so a test window and the panel don't take each other's.
 - Before a write, `ops.refused()` checks that nothing is under way (a rebase, a merge: then only `fetch` runs) and that what the request `expect`s is still true: the branch HEAD is on, and the commit a branch, a tag or a stash leads to. A stash is named by its place in the list (`stash@{1}`), which moves when another is made: without the check a drop could take the wrong one. Every new write gets its `expect`.
 - Discard is `git stash push -- <path>`: the changes go to a stash, never away. Keep it that way, or ask the owner. It takes what is staged of the file too, and the dialog says so (`both`). Not `--keep-index`, which looks kinder: that stash can't be applied again over the staged part without a conflict.
 - Every git command that is given a path runs with `--literal-pathspecs` (`write()` in `ops.js`, `READ` in `git-diff`): without it a file called `x*` or `foo[1].txt` is a pattern, and staging or discarding it takes other files with it.
@@ -57,6 +57,6 @@ The Git Panel replaces Herdr's `changes` view. Its gallery title and panel headi
 - **Go to Open Checkout** uses `git.js`’s ref field `checkedOut` to show the branch menu action. On selection, `checkout.js` checks the live terminal folders on the repository’s machine in a single call. Each must be inside a worktree with the same common Git directory and exact local branch. Independent clones, nested repos and detached checkouts stay distinct. Multiple spaces get one row each, and choosing a space repeats the check. The action focuses a matching tab and pane and leaves Git untouched.
 - Tested with scratch Git worktrees, symlinks, a nested repository and a separate clone. A simulated Herdr layout covered same-name spaces on different machines, a pane moving during lookup, selecting among several spaces and direct navigation. The branch menu and remote navigation have not been exercised by hand.
 
-- `git-graph` and `git-diff` can be tried on a scratch repository in windows: `openOverlay({ mod: "git-graph", kind: "window", key, width: 380, height: 760, props: { root } })`, and `openOverlay({ mod: "git-diff", kind: "window", key, props: { tab: "probe" } })` with a `git-diff.open` for that `tab`. A request with the scratch `root` in `git-panel.request` is run by that window. How such a window is closed is under Working here in `AGENTS.override.md`.
+- `git-panel` and `git-diff` can be tried on a scratch repository in windows: `openOverlay({ mod: "git-panel", kind: "window", key, width: 380, height: 760, props: { root } })`, and `openOverlay({ mod: "git-diff", kind: "window", key, props: { tab: "probe" } })` with a `git-diff.open` for that `tab`. A request with the scratch `root` in `git-panel.request` is run by that window. How such a window is closed is under Working here in `AGENTS.override.md`.
 - `write.js` can be tried under `node` with a stub of `herdr` (`exec`, `home`): a real call costs a little of the owner's usage, so make few.
 - `exec` gives a program nothing to read on its input, which `codex exec` needs: with an input left open it waits for it. A test under `node` must close the child's input, or it hangs.

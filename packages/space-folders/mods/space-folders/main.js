@@ -14,7 +14,7 @@
 // A space whose project has DDEV projects or Docker Compose stacks shows their state at the row's
 // end, a button that starts or stops them (stacks.js); its menu does it one stack at a time. The
 // avatar carries how many agent sessions the space has, in the color of the most urgent one (an idle
-// one marked unread in agent-inbox counts as done).
+// one marked unread in mark-agents-unread counts as done).
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, ScrollHandle } from "gpui-base";
@@ -958,7 +958,7 @@ export default class Spaces extends View {
     const own = this.stackMap[w.id] ?? [];
     const mine = agents().filter((a) => a.space === w.id);
     const sessions = mine.length;
-    // An idle agent marked unread in the agents list (agent-inbox) counts as done here too.
+    // An idle agent marked unread in the agents list (mark-agents-unread) counts as done here too.
     const unread = shared("agents.unread") ?? {};
     const urgent = ["blocked", "done", "working"].find((st) => mine.some((a) => (a.status === "idle" && unread[a.address] ? "done" : a.status) === st)) ?? "idle";
     const label = names.space(w.name); // hide names

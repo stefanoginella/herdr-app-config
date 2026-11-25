@@ -6,7 +6,7 @@
 \033[38;5;208m●\033[0m I'll look at how the Git panel makes the
   initials.
 
-\033[38;5;208m●\033[0m \033[1mRead\033[0m(mods/git-graph/git.js)
+\033[38;5;208m●\033[0m \033[1mRead\033[0m(mods/git-panel/git.js)
   \033[2m⎿  Read 212 lines\033[0m
 
 \033[38;5;208m●\033[0m `initials()` takes the first letter of the
@@ -15,13 +15,13 @@
   explicit, use `toLocaleUpperCase()`, and add a
   test.
 
-\033[38;5;208m●\033[0m \033[1mUpdate\033[0m(mods/git-graph/git.js)
+\033[38;5;208m●\033[0m \033[1mUpdate\033[0m(mods/git-panel/git.js)
   \033[2m⎿  Updated with \033[0m\033[32m3 additions\033[0m\033[2m and \033[0m\033[31m2 removals\033[0m
 
-\033[38;5;208m●\033[0m \033[1mWrite\033[0m(mods/git-graph/initials.test.mjs)
+\033[38;5;208m●\033[0m \033[1mWrite\033[0m(mods/git-panel/initials.test.mjs)
   \033[2m⎿  Wrote 6 lines\033[0m
 
-\033[38;5;208m●\033[0m \033[1mBash\033[0m(node --test mods/git-graph/)
+\033[38;5;208m●\033[0m \033[1mBash\033[0m(node --test mods/git-panel/)
   \033[2m⎿  Running…\033[0m
 
 \033[38;5;208m✢\033[0m \033[38;5;208mRunning the tests…\033[0m \033[2m(41s · ↓ 2.3k tokens)\033[0m

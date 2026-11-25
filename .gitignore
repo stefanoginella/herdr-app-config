@@ -51,19 +51,19 @@ __pycache__/
 !/mods/
 /mods/*
 !/mods/space-folders/
-!/mods/agent-inbox/
-!/mods/files-actions/
+!/mods/mark-agents-unread/
+!/mods/file-explorer/
 !/mods/file-editor/
 !/mods/project-search/
-!/mods/git-graph/
+!/mods/git-panel/
 !/mods/git-diff/
 !/mods/go-to-file/
 !/mods/editor-links/
 !/mods/agent-usage/
 !/mods/tabs-names/
 !/mods/pane-names/
-!/mods/status-names/
-!/mods/back-forward/
+!/mods/hide-names/
+!/mods/back-and-forward/
 !/mods/quick-actions/
 
 # Your themes and assets, once there are some

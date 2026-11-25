@@ -1,4 +1,4 @@
-# File editor
+# File Editor
 
 A text editor beside the terminals. Click a file in the Files panel and it opens in a pane of the tab, split in next to the focused pane; the next file opens in the same pane, as another tab in its strip. The Files panel stays where it is, and can show Changes meanwhile.
 

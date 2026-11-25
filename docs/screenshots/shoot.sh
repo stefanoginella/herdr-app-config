@@ -16,7 +16,7 @@ s_diff() {
   h pane.focus "{\"terminal\":\"$TERM1\"}"
   local pane; pane=$(herdr-app do pane.split "{\"direction\":\"right\",\"mod\":\"git-diff\",\"props\":{\"tab\":\"$T1\"}}" | py -c 'import json, sys; print(json.load(sys.stdin).get("pane", ""))')
   nap 1.5; h pane.zoom "{\"pane\":\"$pane\"}"; draw 3
-  req "[{\"shared\":[\"git-diff.open\",{\"tab\":\"$T1\",\"root\":\"$R\",\"on\":null,\"source\":{\"kind\":\"work\"},\"path\":\"mods/git-graph/lanes.js\",\"group\":\"staged\",\"at\":\"now\"}]}]" 6
+  req "[{\"shared\":[\"git-diff.open\",{\"tab\":\"$T1\",\"root\":\"$R\",\"on\":null,\"source\":{\"kind\":\"work\"},\"path\":\"mods/git-panel/lanes.js\",\"group\":\"staged\",\"at\":\"now\"}]}]" 6
   # The pane chooses side by side only when the lines fit, and these don't: its switch does it. It is
   # a switch, and the pane remembers it: in a sandbox where this step ran before, take this line out.
   h git-diff.mode
@@ -36,19 +36,19 @@ s_editor() {
 }
 
 # The Files panel with a file's menu. The panel unfolds a folder when something is made in it: a
-# folder in mods, then the test file in mods/git-graph, which is put back as it was.
+# folder in mods, then the test file in mods/git-panel, which is put back as it was.
 s_files() {
   zoom 1.45; h layout.hide '{"id":"sidebar"}'; h layout.show '{"id":"panel"}'
   h layout.select '{"stack":"panel-body","child":"files"}'; h layout.resize '{"id":"panel","px":340}'; nap 1; draw 3
-  local f=mods/git-graph/initials.test.mjs
+  local f=mods/git-panel/initials.test.mjs
   cp "$R/$f" "$DEMO/initials.test.mjs"
-  req "[{\"shared\":[\"files-actions.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"mods/zz-tmp\",\"dir\":true,\"at\":\"now\"}]}]" 6
+  req "[{\"shared\":[\"file-explorer.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"mods/zz-tmp\",\"dir\":true,\"at\":\"now\"}]}]" 6
   rm -f "${R:?}/${f:?}"; nap 2; draw 3
-  req "[{\"shared\":[\"files-actions.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"$f\",\"dir\":false,\"at\":\"now\"}]}]" 6
+  req "[{\"shared\":[\"file-explorer.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"$f\",\"dir\":false,\"at\":\"now\"}]}]" 6
   rmdir "${R:?}/mods/zz-tmp"; cp "$DEMO/initials.test.mjs" "$R/$f"; nap 2; draw 3
-  open_file "$R/mods/git-graph/git.js" 131
+  open_file "$R/mods/git-panel/git.js" 131
   # `at` is in window pixels: left of the file's row, as the menu opens when there is no room below.
-  req "[{\"overlay\":{\"mod\":\"files-actions\",\"kind\":\"popup\",\"width\":236,\"height\":620,\"at\":{\"x\":1330,\"y\":215},\"props\":{\"menu\":{\"root\":\"$R\",\"on\":null,\"path\":\"mods/git-graph/git.js\",\"dir\":false,\"project\":\"$R\",\"repo\":\"$R\",\"vault\":null,\"projectVault\":null}}}}]" 5
+  req "[{\"overlay\":{\"mod\":\"file-explorer\",\"kind\":\"popup\",\"width\":236,\"height\":620,\"at\":{\"x\":1330,\"y\":215},\"props\":{\"menu\":{\"root\":\"$R\",\"on\":null,\"path\":\"mods/git-panel/git.js\",\"dir\":false,\"project\":\"$R\",\"repo\":\"$R\",\"vault\":null,\"projectVault\":null}}}}]" 5
   shot file-actions
   h overlay.close; nap 0.8
 }
@@ -57,7 +57,7 @@ s_files() {
 # the focus, the panel never finds its project.
 s_search() {
   zoom 1.45; h layout.hide '{"id":"sidebar"}'; h layout.show '{"id":"panel"}'; h layout.resize '{"id":"panel","px":340}'
-  open_file "$R/mods/git-graph/git.js" 131
+  open_file "$R/mods/git-panel/git.js" 131
   h pane.focus "{\"terminal\":\"$TERM1\"}"; draw 2
   req "[{\"shared\":[\"project-search.ask\",{\"query\":\"initials\",\"to\":\"monogram\",\"focus\":false,\"at\":\"now\"}]},{\"run\":[\"project-search.open\",{}]}]" 8
   nap 2; draw 4
@@ -78,7 +78,7 @@ s_git() {
   h layout.select '{"stack":"panel-body","child":"changes"}'; h layout.resize '{"id":"panel","px":430}'
   nap 2; draw 6; nap 3; draw 4
   shot git-graph
-  req "[{\"overlay\":{\"mod\":\"git-graph\",\"kind\":\"window\",\"key\":\"refs\",\"width\":430,\"height\":794,\"at\":{\"x\":120,\"y\":70},\"props\":{\"root\":\"$R\",\"view\":\"refs\"}}}]" 6
+  req "[{\"overlay\":{\"mod\":\"git-panel\",\"kind\":\"window\",\"key\":\"refs\",\"width\":430,\"height\":794,\"at\":{\"x\":120,\"y\":70},\"props\":{\"root\":\"$R\",\"view\":\"refs\"}}}]" 6
   # The pull request and the releases are read from `gh` a moment after the window opens.
   nap 6; draw 6; nap 6; draw 4
   shot git-refs
@@ -95,7 +95,7 @@ s_sidebar() {
   h layout.show '{"id":"agents"}'; h layout.hide '{"id":"spaces"}'; nap 1.5; draw 4; shot side-agents-before
   # The mark is made while looking at the agent, and counts once you have left.
   h agent.focus "{\"terminal\":\"$(terminal_of nimbus-web 'theme header')\"}"; nap 1.5; draw 2
-  h agent-inbox.toggle; nap 1; draw 2
+  h mark-agents-unread.toggle; nap 1; draw 2
   h space.select "{\"id\":\"$S1\"}"; h tab.select '{"index":1}'; nap 2; draw 4; shot side-agents-after
   h layout.show '{"id":"spaces"}'
 }
@@ -105,10 +105,10 @@ s_window() {
   zoom 1.3; h layout.show '{"id":"sidebar"}'; h layout.resize '{"id":"sidebar","px":290}'; h layout.show '{"id":"panel"}'
   h layout.select '{"stack":"panel-body","child":"changes"}'; h layout.resize '{"id":"panel","px":430}'
   h pane.focus "{\"terminal\":\"$TERM1\"}"; draw 3
-  open_file "$R/mods/git-graph/git.js" 145; nap 3; draw 4
+  open_file "$R/mods/git-panel/git.js" 145; nap 3; draw 4
   shot hero
-  h status-names.toggle; nap 1.5; draw 4; shot hidden
-  h status-names.toggle; nap 1; draw 3
+  h hide-names.toggle; nap 1.5; draw 4; shot hidden
+  h hide-names.toggle; nap 1; draw 3
 }
 
 # Usage, with figures made just now ("Burning now" is the last hour): the whole dialog, then the
@@ -135,7 +135,7 @@ s_review() {
 
 s_ci() {
   zoom 1.8
-  req "[{\"overlay\":{\"mod\":\"git-graph\",\"kind\":\"window\",\"key\":\"failed-job-demo\",\"width\":780,\"height\":460,\"props\":{\"failure\":{\"root\":\"$R\",\"on\":null,\"repo\":\"github.com/example/herdr-app\",\"run\":{\"name\":\"Test suite\",\"id\":4,\"url\":\"https://github.com/example/herdr-app/actions/runs/4\",\"state\":\"fail\"}}}}}]" 7
+  req "[{\"overlay\":{\"mod\":\"git-panel\",\"kind\":\"window\",\"key\":\"failed-job-demo\",\"width\":780,\"height\":460,\"props\":{\"failure\":{\"root\":\"$R\",\"on\":null,\"repo\":\"github.com/example/herdr-app\",\"run\":{\"name\":\"Test suite\",\"id\":4,\"url\":\"https://github.com/example/herdr-app/actions/runs/4\",\"state\":\"fail\"}}}}}]" 7
   shot failed-ci
   h overlay.close --id "$(py -c 'import json, sys; print(json.load(open(sys.argv[1]))["stage.last"])' "$A/shared.json")"
 }
@@ -144,8 +144,8 @@ s_tools() {
   zoom 3
   h space.select "{\"id\":\"$S1\"}"; draw 2
   h space.select "{\"id\":\"$S3\"}"; draw 3
-  h back-forward.back; draw 3; shot navigation
-  h back-forward.forward; draw 3
+  h back-and-forward.back; draw 3; shot navigation
+  h back-and-forward.forward; draw 3
   zoom 1.8
   h mod.open '{"name":"quick-actions"}'; draw 6; shot quick-actions
   h overlay.close

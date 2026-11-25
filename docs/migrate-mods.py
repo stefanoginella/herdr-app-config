@@ -1,4 +1,4 @@
-"""Migrate the three renamed Power Tools mods in an existing Herdr home."""
+"""Migrate renamed Power Tools mods in an existing Herdr home."""
 
 import argparse
 import hashlib
@@ -12,8 +12,21 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NAMES = {"usage": "agent-usage", "agents-unread": "agent-inbox", "git-panel": "git-graph"}
-OLD_TIP = "9715f94a609aa049fceee033706dabce17053494"
+NAMES = {
+    "usage": "agent-usage",
+    "agent-inbox": "mark-agents-unread",
+    "agents-unread": "mark-agents-unread",
+    "git-graph": "git-panel",
+    "files-actions": "file-explorer",
+    "back-forward": "back-and-forward",
+    "status-names": "hide-names",
+}
+PACKAGE_SLUGS = {
+    "agent-inbox": "agent-inbox",
+    "git-graph": "git-graph",
+    "files-actions": "file-actions",
+    "status-names": "hide-names",
+}
 
 
 def git(*args):
@@ -124,15 +137,19 @@ def migrate(home, apply):
 
     for old, new in NAMES.items():
         src, dst = Path("mods", old), Path("mods", new)
+        data = Path("data", old)
         old_key, new_key = "mod:" + old, "mod:" + new
         rec = packages.get(old_key)
-        if not ((home / src).exists() or (home / dst).is_dir() or rec):
+        if not ((home / src).exists() or (home / dst).is_dir() or (home / data).is_dir() or rec):
             continue
         expected = tree(head, new)
         if not expected:
             raise ValueError("Run this from a checkout containing the committed renames.")
         if rec:
-            if rec.get("pin") or rec.get("branch") or rec.get("renamed") or rec.get("path") != src.as_posix():
+            package = PACKAGE_SLUGS.get(old)
+            tracked_path = rec.get("path")
+            standalone = package and tracked_path == f"packages/{package}/{src}"
+            if rec.get("pin") or rec.get("branch") or rec.get("renamed") or not (standalone or tracked_path == src.as_posix()):
                 raise ValueError(f"Review the pinned, branch-specific or renamed herdr-pkg record for {old} before migrating.")
             if not source or rec["source"] not in {previous, source} or new_key in packages:
                 raise ValueError(f"Conflicting herdr-pkg source or destination for {old}.")
@@ -140,7 +157,7 @@ def migrate(home, apply):
         if (home / src).is_dir():
             legacy_code = local_files(home / src)
             if legacy_code:
-                history = git("log", "--format=%H", OLD_TIP, "--", src.as_posix()).decode().splitlines()
+                history = git("log", "--format=%H", head, "--", src.as_posix()).decode().splitlines()
                 if not any(legacy_code == tree(commit, old) for commit in history):
                     raise ValueError(f"{src} contains local edits. Back it up and port them before replacing it.")
             archive.append(src)
@@ -153,24 +170,27 @@ def migrate(home, apply):
                 sha = expected[rel]
                 writes[dst / rel] = git("cat-file", "blob", sha)
         names[old] = new
-        data = Path("data", old)
         if (home / data).is_dir():
             for path in (home / data).rglob("*"):
                 if path.is_file():
                     target = Path("data", new) / path.relative_to(home / data)
-                    if not (home / target).exists():
-                        writes[target] = path.read_bytes()
-                    elif (home / target).read_bytes() != path.read_bytes():
-                        if rec or legacy_code:
+                    content = path.read_bytes()
+                    if target in writes or (home / target).exists():
+                        existing = writes[target] if target in writes else (home / target).read_bytes()
+                        if existing == content:
+                            continue
+                        if target in writes or rec or legacy_code:
                             raise ValueError(f"Both {data} and data/{new} have different settings for the same view. Reconcile the two copies first.")
                         # A Git pull may already have switched the live app to the new ID.
                         # It owns the current preference. Archive the previous copy intact.
                         print(f"Keeping the active {new} preference and backing up its earlier {old} copy.")
+                    else:
+                        writes[target] = content
             archive.append(data)
         if rec:
             packages.pop(old_key)
-            packages[new_key] = dict(rec, name=new, path=dst.as_posix(),
-                                     files=expected, modified=[], commit=head)
+            updated_path = f"packages/{new}/{dst}" if standalone else dst.as_posix()
+            packages[new_key] = dict(rec, name=new, path=updated_path, files=expected, modified=[], commit=head)
             packages[new_key].pop("conflict", None)
 
     for path in (home / "layouts").glob("*.json"):

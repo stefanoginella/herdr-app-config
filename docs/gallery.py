@@ -13,16 +13,16 @@ ROOT = Path(__file__).resolve().parents[1]
 FEATURES = {
     "agent-usage": ["agent-usage"],
     "space-folders": ["space-folders"],
-    "agent-inbox": ["agent-inbox"],
-    "git-graph": ["git-graph"],
+    "mark-agents-unread": ["mark-agents-unread"],
+    "git-panel": ["git-panel"],
     "git-diff": ["git-diff"],
     "file-editor": ["file-editor", "editor-links"],
     "project-search": ["project-search"],
     "go-to-file": ["go-to-file"],
-    "file-actions": ["files-actions"],
-    "hide-names": ["tabs-names", "pane-names", "status-names"],
+    "file-explorer": ["file-explorer"],
+    "hide-names": ["tabs-names", "pane-names", "hide-names"],
 }
-PICTURES = {"agent-usage": "usage", "agent-inbox": "unread-agents", "git-graph": "git-panel"}
+PICTURES = {"agent-usage": "usage", "mark-agents-unread": "unread-agents", "file-explorer": "file-actions"}
 
 
 def wrap_text(text, face, width):
@@ -98,7 +98,7 @@ def feature_keys(feature, mods, keys):
                 if command == "mod.open":
                     belongs = args.get("name") in mods
                 if command.startswith("agent.select:") or command == "agent.select":
-                    belongs = feature == "agent-inbox"
+                    belongs = feature == "mark-agents-unread"
             else:
                 belongs = section.split(" > ")[0] in sections
             if belongs:

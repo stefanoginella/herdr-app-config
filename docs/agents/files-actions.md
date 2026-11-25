@@ -1,6 +1,6 @@
-# `files-actions`
+# `file-explorer`
 
-Notes for agents on the mod in `mods/files-actions/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `mods/file-explorer/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 The gallery calls this mod File Explorer, and the panel heading is Files.
 
@@ -12,8 +12,8 @@ A clone of Herdr's `files` panel (from version 0.1.18), without its preview (a c
 - `ops.js`: every file operation, and the request channel. Its header lists the requests. `MOVE`, `COPY` and `MAKE` are the three shell scripts every change to a file goes through; the clipboard is reached through `osascript`. A `pick` request is turned into copies by the panel, which opens the picker when it takes it: the menu's copy is gone by then.
 - `menu.js`: the right-click menu. "Add Files…" (folders on this Mac only, like Copy and Paste) leaves a `pick` request for the folder clicked, the folder of the file clicked, or the folder shown. `naming.js`: the dialog that asks for a name, for a rename or a new file or folder. `confirm.js`: the Trash question. The mod opens itself for these, with `props().menu`, `props().naming` or `props().confirm`.
 - `icons.js`: which icon a name gets. `icons/`: Material Icon Theme's SVGs and `map.js`, both written by `icons/build.py` from a release of that package (see its header). Never edit them by hand.
-- State: a request waits in shared `files-actions.request` only until the panel takes it. What undo takes back is in the panel's memory only. Nothing else is kept.
-- Key command: `files-actions.undo`, bound to `cmd-z` in the `global` section of `keys.json`.
+- State: a request waits in shared `file-explorer.request` only until the panel takes it. What undo takes back is in the panel's memory only. Nothing else is kept.
+- Key command: `file-explorer.undo`, bound to `cmd-z` in the `global` section of `keys.json`.
 - The header's lens runs `project-search.open`; a folder's "Find in Folder…" (menu.js) leaves `project-search.ask` first.
 
 ## Behavior to preserve
@@ -31,7 +31,7 @@ A clone of Herdr's `files` panel (from version 0.1.18), without its preview (a c
   - A window move with the left button not held ends a drag whose release was never seen (it went out of the window and ended there).
   - Every press that didn't begin the drag ends it too, in the panel (`on_mouse_down` on the root) or anywhere else in the window (`on_mouse_down_out`): a window can be pressed with no move seen first. Keep all of them.
 - Every element with a left mouse-up handler also has its own `on_drop`: a drop from Finder is a mouse-up too, and only the element's own drop handler runs before it, and stops it.
-- The git scan is Herdr's from 0.1.18 (`repoStatus()`): one scan of a repository at a time for every copy, reused for longer after a slow one (`watchAt`: five times what it took, at most a minute; `pollAt`: at least 10 s), and none while the window isn't active. The panel polls with `refreshIfDue()`, never with `refresh()` on a timer, and a folder watch only marks the context dirty (`dirtyAt`). Its scans are kept under this mod's own key, `files-actions.repoStatus.v1`, never Herdr's `herdr.repoStatus.v2`: this scan lists what git ignores too (`--ignored=matching`), and sharing one key with Herdr's Files and Changes would mix the two kinds of answer.
+- The git scan is Herdr's from 0.1.18 (`repoStatus()`): one scan of a repository at a time for every copy, reused for longer after a slow one (`watchAt`: five times what it took, at most a minute; `pollAt`: at least 10 s), and none while the window isn't active. The panel polls with `refreshIfDue()`, never with `refresh()` on a timer, and a folder watch only marks the context dirty (`dirtyAt`). Its scans are kept under this mod's own key, `file-explorer.repoStatus.v1`, never Herdr's `herdr.repoStatus.v2`: this scan lists what git ignores too (`--ignored=matching`), and sharing one key with Herdr's Files and Changes would mix the two kinds of answer.
 - A refresh after this panel changed a file (`act()`, `bring()`) is `refresh(cx, true)`: urgent, and allowed while the window isn't active, so what the change did shows at once. One asked for while a load runs is not dropped: `again` runs one more load, forced if any of the asks was.
 - The folder watch belongs to the context (`context.watch`) and is cancelled when another folder is shown: at most 64 folders can have a watch waiting. A watch that answers `[]` (cancelled) changes nothing. The folder watch is `watchRoot()`. A method defined twice in a class is silently replaced by the second: until 0.1.18's port the folder watch never ran for that reason, since the drag had a `watch()` too.
 - `follow()` only decides what is drawn: outside the panel (from the window moves' real position) nothing is aimed at or faded, and over the header nothing is aimed at. The drag itself goes on, and may come back. It must never be what protects a file.
@@ -42,4 +42,4 @@ A clone of Herdr's `files` panel (from version 0.1.18), without its preview (a c
 
 ## The icons
 
-- The icons in `mods/files-actions/icons/` are a release of Material Icon Theme (MIT), named in `icons/map.js` and in `NOTICE`. To update them, follow the header of `icons/build.py`, then update the version in `NOTICE`.
+- The icons in `mods/file-explorer/icons/` are a release of Material Icon Theme (MIT), named in `icons/map.js` and in `NOTICE`. To update them, follow the header of `icons/build.py`, then update the version in `NOTICE`.

@@ -12,8 +12,8 @@ import * as ops from "./ops.js";
 const MOD = "project-search";
 const ROW = 31;
 const ICON = {
-  open: "mods/workspace-chrome/file-text.svg", app: "mods/files-actions/open.svg", reveal: "mods/workspace-chrome/folder.svg",
-  copy: "mods/files-actions/copy.svg", replace: `mods/${MOD}/replace.svg`, dismiss: "mods/workspace-chrome/x.svg",
+  open: "mods/workspace-chrome/file-text.svg", app: "mods/file-explorer/open.svg", reveal: "mods/workspace-chrome/folder.svg",
+  copy: "mods/file-explorer/copy.svg", replace: `mods/${MOD}/replace.svg`, dismiss: "mods/workspace-chrome/x.svg",
 };
 
 // Rows: { label, icon, act(cx), rule? (a line above) } and { section } (a heading, not a choice).

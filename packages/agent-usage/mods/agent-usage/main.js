@@ -576,7 +576,7 @@ export default class Usage extends View {
 
   key(e, cx) {
     // Escape clears the project filter first, then closes the dialog: the dialog's own keyboard
-    // handle keeps the key from Herdr, as in files-actions' naming.js and confirm.js.
+    // handle keeps the key from Herdr, as in file-explorer' naming.js and confirm.js.
     if (e.key === "escape") {
       cx.stop_propagation();
       if (this.filter) { this.toggle(null, cx); return; }

@@ -1,4 +1,4 @@
-# Project search
+# Project Search
 
 Search every file of the project, and replace, in a panel that takes the place of Files and Changes: what Cmd+Shift+F is in VS Code. The searching is [ripgrep](https://github.com/BurntSushi/ripgrep)'s, which must be installed (`brew install ripgrep`).
 
