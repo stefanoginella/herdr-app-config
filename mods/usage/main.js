@@ -22,18 +22,19 @@
 //   projects(), middle() (bars, biggest sessions), models() and machines(): the model groups
 //               and a machine with containers fold (folds); the Machines heading does not
 //   year()      the calendar, its records and the earlier weeks, across the whole width
-//   name(), sessionName(), machineName(): every name drawn, hidden when `hide` is on
+//   name(), machineName(): every name drawn, made up while shared `names.hidden` is on (alias.js)
 //
 // render() only reads what those made: nothing is added up while drawing, and every shape is
 // made in a task (build()).
 
 import { View, div, svg, image, PathBuilder, Background } from "gpui-kit";
 import { v_flex, h_flex, ScrollHandle } from "gpui-base";
-import { exec, readTextFile, writeTextFile, home, appHome, checking, machines, spaces, panes, agents, theme, settings, shared, run, props, nextCommand, closeOverlay, window as app } from "herdr";
+import { exec, readTextFile, writeTextFile, home, appHome, checking, machines, spaces, panes, agents, theme, settings, shared, setShared, run, props, nextCommand, closeOverlay, window as app } from "herdr";
 import { prepare, weekView, rangeView, yearView, burning, tokens, weekSpan, RANGES, WEEKDAYS, MONTHS, SCRATCH_KEY, YEAR_WEEKS, COLORS, TOP, shiftDay } from "./reduce.js";
 import { HOUR_MS, localMidnight, nextLocalMidnight, usableStart, WEEK_MS, formatRate, evenAt } from "./pace.js";
 import { judge, limitBlock, paceWords, levelColor, dayWord, clock, dur, dryAt, byDanger, shortWhen as whenShort } from "./limits.js";
 import Glance, { agentIcon } from "./glance.js";
+import * as alias from "./alias.js";
 
 const HERE = () => `${appHome()}/mods/usage`;
 const SNAPSHOT = () => `${home()}/.local/state/herdr-usage/view.json`;
@@ -131,8 +132,6 @@ function share(f) {
 const PLANS = { prolite: "Pro Lite", pro: "Pro", plus: "Plus", team: "Team", business: "Business", enterprise: "Enterprise", edu: "Edu", free: "Free" };
 const plan = (p) => (p ? PLANS[p] ?? p[0].toUpperCase() + p.slice(1) : null);
 const AGENTS = { claude: "Claude", codex: "Codex" };
-// "A".."Z", then "AA".."AZ", ...
-function letters(i) { let s = ""; i++; while (i > 0) { const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); } return s; }
 // About how wide a text is, px, in the UI font at `size`.
 const textW = (s, size) => s.length * size * 0.56;
 // A color with its alpha multiplied: "#rrggbb" or "#rrggbbaa".
@@ -213,7 +212,6 @@ export default class Usage extends View {
     this.range = "week";
     this.filter = null;
     this.focus = null;      // the weekly limit the chart shows: "claude", "codex", or null (the one most in danger)
-    this.hide = false;      // names hidden, for a screenshot; in memory only
     this.snap = null;       // what is shown: see collect()
     this.data = null;       // the rows of the last collection, for filters; never drawn
     this.cache = new Map(); // `${range}|${filter}` → rangeView, for this.data
@@ -259,7 +257,7 @@ export default class Usage extends View {
         if (c === "refresh") await this.collect(cx);
         // Not bound: a range, the names or a limit chosen from a shell, for a look at them.
         else if (RANGES.some((r) => r.id === c)) this.range = c;
-        else if (c === "names") this.hide = !this.hide;
+        else if (c === "names") this.flipNames();
         else if (c === "claude" || c === "codex") this.focus = c;
         cx.notify();
       }
@@ -371,10 +369,6 @@ export default class Usage extends View {
       for (const b of Object.values(burn ?? {})) for (const x of b.rows) used.add(x.p);
       const projects = {};
       for (const k of used) if (data.projects[k]) projects[k] = data.projects[k];
-      // Hidden names: a letter a project, by all-time tokens, so the same in every range.
-      const alias = {};
-      let n = 0;
-      for (const k of [...ranges.all.projects.map((p) => p.key), ...used]) if (k !== SCRATCH_KEY && !(k in alias) && projects[k]) alias[k] = letters(n++);
       // `took`: how long this collection's steps took, and the slowest draw since the dialog
       // opened, in ms. Only read by people.
       const took = { run: tRun - t0, parse: tParse - tRun, reduce: tReduce - tParse, rows: data.rows.length, render: this.drawMost };
@@ -382,7 +376,7 @@ export default class Usage extends View {
       const snap = {
         v: SNAPSHOT_V, at: now, tz: data.tz, weeks, claims,
         codex: lx ? { at: lx.at, plan: lx.plan ?? null, primary: lx.primary ?? null, secondary: lx.secondary ?? null } : null,
-        ranges, year, projects, alias, machines: status,
+        ranges, year, projects, machines: status,
         blocked: data.blocked, docker: data.docker, hasTop: data.top.length > 0, recent: burn, took, folds: this.folds,
       };
       this.data = data;
@@ -531,16 +525,19 @@ export default class Usage extends View {
 
   // ---------------------------------------------------------------- names
 
+  // Hide names: the whole window's mode, shared `names.hidden`, read while drawing; set only from a
+  // click, a key or a command. A made-up name is a function of the real one (alias.js), so a
+  // project has the same one here as its space has in the sidebar.
+  hidden() { return shared("names.hidden") === true; }
+  flipNames() { setShared("names.hidden", !this.hidden()); }
   name(key) {
     if (key === SCRATCH_KEY) return "Other folders";
-    if (this.hide) return `Project ${this.snap?.alias?.[key] ?? "?"}`;
-    return this.snap?.projects?.[key]?.name ?? "";
+    const real = this.snap?.projects?.[key]?.name ?? "";
+    return this.hidden() ? alias.project(real) : real;
   }
   machineName(m) {
     if (m === "" || m === null) return "This Mac";
-    if (!this.hide) return m;
-    const i = (this.snap?.machines ?? []).findIndex((x) => x.name === m);
-    return `Machine ${i >= 0 ? i + 1 : "?"}`;
+    return this.hidden() ? alias.machine(m) : m;
   }
 
   choose(id, cx) { this.range = id; this.hoverBar = null; cx.notify(); }
@@ -589,7 +586,7 @@ export default class Usage extends View {
     const i = ["1", "2", "3", "4"].indexOf(e.key);
     if (i >= 0) { this.choose(RANGES[i].id, cx); cx.stop_propagation(); return; }
     if (e.key === "r") { cx.stop_propagation(); cx.spawn(async (cx) => this.collect(cx)); }
-    if (e.key === "h") { cx.stop_propagation(); this.hide = !this.hide; cx.notify(); }
+    if (e.key === "h") { cx.stop_propagation(); this.flipNames(); }
   }
 
   zoom() { return Number(settings()?.zoom) || 1; }
@@ -655,11 +652,12 @@ export default class Usage extends View {
         .child(div().child(`${working} ${working === 1 ? "agent" : "agents"} working${burst ? `, ${formatRate(burst.perHour)}% an hour` : ""}`)));
     }
     el.child(div().flex_1());
-    el.child(div().id("usage-names").px(7).py(3).rounded(4).cursor_pointer().text_size(LABEL).text_color(this.hide ? t.foreground : t.muted)
-      .when(this.hide, (d) => d.bg(t.selected))
+    const hidden = this.hidden();
+    el.child(div().id("usage-names").px(7).py(3).rounded(4).cursor_pointer().text_size(LABEL).text_color(hidden ? t.foreground : t.muted)
+      .when(hidden, (d) => d.bg(t.selected))
       .hover((st) => st.bg(t.hover).text_color(t.foreground))
-      .on_click((_e, cx) => { this.hide = !this.hide; cx.notify(); })
-      .child(this.hide ? "Show names" : "Hide names"));
+      .on_click(() => this.flipNames())
+      .child(hidden ? "Show names" : "Hide names"));
     el.child(div().text_size(LABEL).text_color(t.muted).child(s ? `updated ${ago(s.at, now)}` : this.busy ? "reading…" : ""))
       .child(h_flex().id("usage-refresh").gap(5).items_center().px(5).py(3).ml(-8).rounded(4).cursor_pointer().text_color(t.muted)
         .hover((st) => st.bg(t.hover).text_color(t.foreground))
@@ -1319,7 +1317,7 @@ export default class Usage extends View {
     const shown = this.open ? rv.projects : rv.projects.slice(0, LIST_FIRST);
     // The word that tells two same-named projects apart, only when both are rows here.
     const count = new Map();
-    if (!this.hide) for (const p of shown) { const n = projects[p.key]?.name; if (n) count.set(n, (count.get(n) ?? 0) + 1); }
+    if (!this.hidden()) for (const p of shown) { const n = projects[p.key]?.name; if (n) count.set(n, (count.get(n) ?? 0) + 1); }
     shown.forEach((p, i) => {
       const pr = projects[p.key] ?? { name: p.key, dim: "" };
       const linked = this.links.has(p.key);
@@ -1384,7 +1382,7 @@ export default class Usage extends View {
         const day = d === today ? "today" : d === yesterday ? "yesterday" : now - s.last < 6 * 86_400_000 ? short(s.last) : date(s.last);
         const bits = [this.name(s.p), day];
         if (s.sub > 0.5) bits.push("mostly subagents");
-        const title = this.hide ? `Session ${i + 1}` : s.title ?? (s.agent === "codex" ? "Codex session" : "Untitled session");
+        const title = s.title ? (this.hidden() ? alias.title(s.title) : s.title) : s.agent === "codex" ? "Codex session" : "Untitled session";
         el.child(v_flex().flex_none().h(SESSION_H).when(i > 0, (d) => d.mt(SESSION_GAP))
           .child(h_flex().gap(8).items_center().text_size(BODY).line_height(1.3)
             .child(div().flex_1().min_w(0).truncate().child(title))
@@ -1561,7 +1559,7 @@ export default class Usage extends View {
         return;
       }
       if (this.folds[`machine:${m.m || "here"}`]) return;
-      const name = [div().min_w(0).truncate().child(this.hide ? "container" : m.box), ...(this.hide ? [] : [div().flex_none().text_size(LABEL).text_color(t.dim).child("container")])];
+      const name = [div().min_w(0).truncate().child(this.hidden() ? alias.project(m.box) : m.box), div().flex_none().text_size(LABEL).text_color(t.dim).child("container")];
       // One indent further than a model row: a machine has no icon, so its name is at CHILD.
       el.child(this.barRow(t, { name, indent: 2 * CHILD, bar: m.T / topM, T: m.T, part: m.share }));
     });

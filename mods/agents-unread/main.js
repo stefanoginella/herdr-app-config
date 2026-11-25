@@ -1,11 +1,14 @@
 // Agents in grouped or priority views; parents take their most urgent sub-agent's place.
 // An idle agent can be marked unread (unread.js): it is drawn as done until it's opened again.
+// While shared `names.hidden` is on, every name drawn is a made-up one (alias.js); the order and
+// every comparison still use the real ones.
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, machines, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, nextCommand } from "herdr";
 import Menu from "./menu.js";
 import { KEY as UNREAD, marks, toggle } from "./unread.js";
+import * as alias from "./alias.js";
 
 const MOD = "agents-unread";
 // How long a marked agent must be missing, its machine's layout readable, before its mark goes.
@@ -266,7 +269,7 @@ export default class Agents extends View {
         .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
         .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
       .when(Boolean(pic), el => el.child(div().mr(8).child(pic)))
-      .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(k.name || k.template || k.program?.name || k.address))
+      .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(this.hidden && (k.name || k.template) ? alias.label(k.name || k.template, k.program?.name) : k.name || k.template || k.program?.name || k.address))
       .child(this.status(t, { status: st }, compact));
   }
 
@@ -287,6 +290,8 @@ export default class Agents extends View {
     if (props()?.sortMenu) return this.sortMenu(t);
     const collapsed = narrow();
     const sort = sortOf();
+    // Hide names: read here, used by subRow() too.
+    const hidden = this.hidden = shared("names.hidden") === true;
     const now = Date.now();
     const raw = agents();
     const unread = this.settle(raw, now);
@@ -452,6 +457,9 @@ export default class Agents extends View {
           .child(dot)
         : dot;
       const name = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
+      // Hide names: what the row says, made up.
+      const shownName = !hidden ? name : full && a.space_name ? alias.project(name) : alias.label(name, a.program?.name);
+      const shownMore = hidden && more ? alias.label(more, a.program?.name) : more;
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
@@ -477,9 +485,9 @@ export default class Agents extends View {
             cx.notify();
           })).child(pic)))
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
-          .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
-        .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
+          .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(shownName))
+          .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${shownMore}`))))
+        .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(hidden ? alias.machine(machine) : machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
         .when(this.hovered === a.address && closable, el => el.child(close))
@@ -494,7 +502,7 @@ export default class Agents extends View {
       const r = rankOf(a) || RANK.idle;
       const id = byPriority ? `sec-${r}` : `sp-${a.space}`;
       if (groups.at(-1)?.id === id) groups.at(-1).members.push(a);
-      else groups.push({ id, label: byPriority ? SECTION[r] : a.space_name || "", status: byPriority ? SECTION_STATUS[r] : null, members: [a] });
+      else groups.push({ id, label: byPriority ? SECTION[r] : hidden ? alias.project(a.space_name || "") : a.space_name || "", status: byPriority ? SECTION_STATUS[r] : null, members: [a] });
     }
 
     // A group's header; it folds the group. Folded, it says how many and the most urgent state.

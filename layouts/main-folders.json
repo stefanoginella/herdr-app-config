@@ -92,7 +92,7 @@
           "id": "tabs",
           "type": "block",
           "content": {
-            "mod": "tabs"
+            "mod": "tabs-names"
           },
           "size": {
             "px": 42
@@ -111,7 +111,7 @@
                 "pane": {
                   "header": {
                     "content": {
-                      "mod": "pane"
+                      "mod": "pane-names"
                     },
                     "reveal": "always",
                     "height": 30,
@@ -187,7 +187,7 @@
           "id": "status",
           "type": "block",
           "content": {
-            "mod": "workspace-status"
+            "mod": "status-names"
           },
           "size": {
             "px": 28

@@ -13,6 +13,7 @@ import { run, props, closeOverlay, openOverlay, theme, keys, spaces } from "herd
 import * as model from "./model.js";
 import * as opening from "./open.js";
 import * as stacks from "./stacks.js";
+import * as names from "./names.js";
 
 const MOD = "space-folders";
 // Herdr's icons, and this mod's one own.
@@ -44,6 +45,8 @@ function rows(p) {
   const m = model.load();
   const worktree = (action, size) => () => openOverlay({ mod: "worktree", kind: "dialog", ...size, props: { space: tg.id, action } });
   const small = { width: 440, height: 260 };
+  // Hide names: what the rows say; their acts use the real ones.
+  const fake = names.hidden() ? names.folderNames(model.folders(m)) : null;
   if (p.menu === "space") {
     const at = model.folderOf(m, tg.id);
     const opts = { kids: tg.kids ?? [], keys: p.keys ?? {} };
@@ -61,17 +64,17 @@ function rows(p) {
       // Its containers, one at a time; a DDEV site that runs opens in the browser (this Mac's only).
       ...(tg.stacks ?? []).flatMap((s, i) => {
         const up = s.state !== "stopped";
-        const name = stacks.title(s);
+        const name = names.stack(s);
         const act = (op) => () => stacks.request({ op, on: tg.on ?? null, stacks: [s], url: s.url });
         return [
           { label: `${up ? "Stop" : "Start"} ${name}`, icon: up ? "stop" : "play", rule: i === 0, hint: s.acting ?? "", act: s.acting ? () => {} : act(up ? "stop" : "start") },
-          ...(up && s.url && tg.local ? [{ label: "Open site", icon: "globe", hint: s.url.replace(/^https?:\/\//, ""), act: act("site") }] : []),
+          ...(up && s.url && tg.local ? [{ label: "Open site", icon: "globe", hint: names.hidden() ? "" : s.url.replace(/^https?:\/\//, ""), act: act("site") }] : []),
         ];
       }),
       // A worktree space drawn under its repo's goes where that one goes.
       ...(tg.nested ? [] : [
         { section: "Move to", rule: true },
-        ...model.foldersOn(m, model.machineOf(tg.id)).filter((f) => f.id !== at?.id).map((f) => ({ label: f.name, icon: "folder", many: true, act: move({ folder: f.id }) })),
+        ...model.foldersOn(m, model.machineOf(tg.id)).filter((f) => f.id !== at?.id).map((f) => ({ label: fake?.get(f.id) ?? f.name, icon: "folder", many: true, act: move({ folder: f.id }) })),
         ...(at ? [{ label: "Out of folder", icon: "minus", act: move({ folder: null, after: at.id }) }] : []),
         { label: "New folder…", icon: "folder-plus", act: () => naming({ title: "New folder", around: tg.id, ...opts }) },
       ]),
@@ -89,7 +92,7 @@ function rows(p) {
   }
   const on = tg.machine !== undefined ? tg.machine : spaces().find((s) => s.active)?.machine ?? null;
   return [
-    { label: "New folder", icon: "folder-plus", hint: on ?? "", act: () => naming({ title: on ? `New folder on ${on}` : "New folder", on }) },
+    { label: "New folder", icon: "folder-plus", hint: names.machine(on) ?? "", act: () => naming({ title: on ? `New folder on ${names.machine(on)}` : "New folder", on }) },
     { label: "New space", icon: "plus", hint: shortcut("space.new"), act: () => run("space.new", { machine: on ?? "" }) },
   ];
 }

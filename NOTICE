@@ -10,12 +10,18 @@ licensed under the Apache License, Version 2.0:
   (version 0.1.18). It lets an idle agent be marked unread.
 - mods/files-actions/main.js is a modified copy of Herdr's `files` mod
   (version 0.1.18). It adds file type icons, a right-click menu and drag to move.
+- mods/tabs-names/main.js, mods/pane-names/main.js and mods/status-names/main.js
+  are modified copies of Herdr's `tabs`, `pane` and `workspace-status` mods
+  (version 0.1.18). They draw made-up names while names are hidden; the
+  pane-names and tabs-names icons are unmodified copies of those mods' icons.
 - layouts/main-folders.json is a modified copy of Herdr's `main` layout
   (version 0.1.18). Its Spaces block shows `space-folders` instead of `spaces`,
   its Agents block shows `agents-unread` instead of `agents`, and its Files
   block shows `files-actions` instead of `files`. Its Changes block shows
   `git-panel` instead of `changes`. It also has two blocks of its own for
-  `project-search`: the Search panel, and one that only takes a key.
+  `project-search`: the Search panel, and one that only takes a key. Its tab
+  bar, pane headers and status bar show `tabs-names`, `pane-names` and
+  `status-names`.
 
 This repository also includes the icons of Material Icon Theme
 (https://github.com/material-extensions/vscode-material-icon-theme, version

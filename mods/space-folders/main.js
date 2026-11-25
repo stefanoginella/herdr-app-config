@@ -24,6 +24,7 @@ import * as opening from "./open.js";
 import * as stacks from "./stacks.js";
 import Menu, { naming } from "./menu.js";
 import Naming from "./naming.js";
+import * as names from "./names.js";
 
 const MOD = "space-folders";
 const machineOf = model.machineOf;
@@ -299,7 +300,7 @@ export default class Spaces extends View {
       for (const s of todo) {
         const done = await stacks.act(op, s, on);
         delete this.acting[s.id];
-        if (done.error) notify({ title: `Couldn't ${op} ${stacks.title(s)}`, body: done.error, level: "error" });
+        if (done.error) notify({ title: `Couldn't ${op} ${names.stack(s)}`, body: done.error, level: "error" });
         this.listAt[on ?? ""] = 0;
         // Brought up for the first time: its compose stack has a name now.
         if (s.kind === "compose" && !s.project) for (const k of Object.keys(this.stackFiles)) if (JSON.parse(k)[0] === on) this.stackFiles[k].at = 0;
@@ -634,6 +635,8 @@ export default class Spaces extends View {
   // The rows, under a header per machine once one isn't this computer.
   grouped(t, collapsed) {
     const top = this.arrange();
+    // Hide names: the folders' made-up names, distinct among them (names.js).
+    this.fakeFolders = names.hidden() ? names.folderNames(top.filter((e) => e.f).map((e) => e.f)) : null;
     // Where the active space's row lands among the children this returns: the list scrolls by its direct
     // children, and machine headers, login notes and loading rows count too.
     this.activeAt = -1;
@@ -659,11 +662,14 @@ export default class Spaces extends View {
       const connected = !m || machine?.state === "connected";
       const rebuilt = this.rebuilt(machine) || !!repair;
       const login = machine?.state === "needs_login" ? `hc machine login ${m}` : null;
+      // Hide names: what is drawn of the machine (the Copy button still copies the real command).
+      const shownM = names.machine(m);
+      const shownLogin = login && `hc machine login ${shownM}`;
       const folded = this.folded.has(m);
       const icon = svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none();
       const badge = div().absolute().right(-3).bottom(-2).size(6).rounded(3).border_1().border_color(t.chrome).bg(connected ? t.ansi2 : t.dim);
       const head = h_flex().id(`machine-${m ?? "local"}`).on_mouse_down("right", () => this.menu("root", { machine: m })).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
-        .when(collapsed, el => el.mt(4).w(RAIL_CELL).justify_center().rounded(6).tooltip(login ? `${m} needs a login: run ${login}. Click for Copy.` : m ? `${m} · ${connected ? "connected" : (machine?.state ?? "asleep").replace(/_/g, " ")}` : "This computer"))
+        .when(collapsed, el => el.mt(4).w(RAIL_CELL).justify_center().rounded(6).tooltip(login ? `${shownM} needs a login: run ${shownLogin}. Click for Copy.` : m ? `${shownM} · ${connected ? "connected" : (machine?.state ?? "asleep").replace(/_/g, " ")}` : "This computer"))
         .cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => {
           if (collapsed && login) { run("app.settings", { section: "machines" }); return; }
@@ -676,7 +682,7 @@ export default class Spaces extends View {
           .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "machine-add", kind: "dialog", width: 560 }); }).child("⚠")))
         .when(!collapsed, el => el.child(icon))
         .when(collapsed, el => el.child(div().relative().flex_none().child(icon).when(Boolean(m), el => el.child(badge))))
-        .when(!collapsed, el => el.child(div().flex_1().truncate().child(m ?? "This computer"))
+        .when(!collapsed, el => el.child(div().flex_1().truncate().child(shownM ?? "This computer"))
           .when(!connected && !rebuilt && !login, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
           .when(rebuilt, el => el.child(h_flex().flex_none().gap(3).items_center()
             .child(div().max_w(140).truncate().child(repair?.error || "rebuilt ·"))
@@ -692,7 +698,7 @@ export default class Spaces extends View {
       const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().rounded(7)
         .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
         .on_click(() => run("space.new", { machine: m ?? "" }))
-        .when(collapsed, el => el.w(RAIL_CELL).rounded(6).justify_center().tooltip(`New space on ${m ?? "this computer"}`)
+        .when(collapsed, el => el.w(RAIL_CELL).rounded(6).justify_center().tooltip(`New space on ${shownM ?? "this computer"}`)
           .child(h_flex().size(18).rounded(5).border_1().border_color(t.dim).items_center().justify_center()
             .child(svg("mods/workspace-chrome/plus.svg").size(10))))
         .when(!collapsed, el => el.child(svg("mods/workspace-chrome/plus.svg").size(12)).child("New space there"));
@@ -701,7 +707,7 @@ export default class Spaces extends View {
       const guidance = !collapsed && login ? [v_flex().px(8).pb(6).gap(3).flex_none()
         .child(div().text_size(11).text_color(t.blocked).child("needs a login: run"))
         .child(h_flex().gap(5).items_center()
-          .child(div().flex_1().min_w(0).truncate().tooltip(login).text_size(11).text_color(t.muted).child(login))
+          .child(div().flex_1().min_w(0).truncate().tooltip(shownLogin).text_size(11).text_color(t.muted).child(shownLogin))
           .child(div().id(`machine-login-copy-${m}`).flex_none().px(5).py(2).rounded(4)
             .text_size(11).text_color(t.foreground).bg(t.raised).cursor_pointer().hover(s => s.bg(t.hover))
             .on_click((_e, cx) => { cx.stop_propagation(); cx.write_to_clipboard(login); this.copiedLogin = login; cx.notify(); })
@@ -729,7 +735,8 @@ export default class Spaces extends View {
     };
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
     const repo = tree || same(g.name) ? "" : g.name;
-    const where = [repo, branch].filter(Boolean).join(" \u00b7 ");
+    // Hide names: decided on the real names, drawn made up.
+    const where = [repo && names.repo(repo), branch && names.branch(branch)].filter(Boolean).join(" \u00b7 ");
     return h_flex()
       .flex_auto()
       .min_w(where ? SIDE_MIN : 0)
@@ -815,6 +822,7 @@ export default class Spaces extends View {
     const active = f.folded && inside.some((w) => w.active);
     const toggle = () => this.change((m) => model.setFolded(m, f.id, !f.folded));
     const open = () => this.menu("folder", { id: f.id });
+    const label = this.fakeFolders?.get(f.id) ?? f.name; // hide names
     if (collapsed)
       return railCell(h_flex()
         .id(`folder-${f.id}`)
@@ -824,7 +832,7 @@ export default class Spaces extends View {
         .rounded(6)
         .justify_center()
         .items_center()
-        .tooltip(f.folded && inside.length ? `${f.name} · ${inside.length}` : f.name)
+        .tooltip(f.folded && inside.length ? `${label} · ${inside.length}` : label)
         .when(active, (el) => el.bg(t.selected))
         .when(!active, (el) => el.hover((s) => s.bg(t.hover)))
         .on_click(toggle)
@@ -870,7 +878,7 @@ export default class Spaces extends View {
       })
       .child(h_flex().size(18).flex_none().items_center().justify_center()
         .child(svg("mods/workspace-chrome/folder.svg").size(14).flex_none().text_color(active ? t.muted : t.dim)))
-      .child(div().flex_1().min_w(0).truncate().font_medium().child(f.name))
+      .child(div().flex_1().min_w(0).truncate().font_medium().child(label))
       .when(Boolean(urgent), (el) => el.child(div().flex_none().text_color(tone(t, urgent)).child(glyph(urgent))))
       .when(f.folded && inside.length > 0, (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(String(inside.length))))
       .when(this.hotFolder === f.id && !d, (el) => el.child(h_flex()
@@ -883,7 +891,7 @@ export default class Spaces extends View {
         .justify_center()
         .text_color(t.dim)
         .hover((s) => s.bg(t.hover).text_color(t.foreground))
-        .tooltip(f.on ? `New space in ${f.name}, on ${f.on}` : `New space in ${f.name}`)
+        .tooltip(f.on ? `New space in ${label}, on ${names.machine(f.on)}` : `New space in ${label}`)
         // Its own press: the row's would begin a drag, and the release would fold the folder.
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { cx.stop_propagation(); this.newSpaceIn(f, cx); })
@@ -953,6 +961,7 @@ export default class Spaces extends View {
     // An idle agent marked unread in the agents list (agents-unread) counts as done here too.
     const unread = shared("agents.unread") ?? {};
     const urgent = ["blocked", "done", "working"].find((st) => mine.some((a) => (a.status === "idle" && unread[a.address] ? "done" : a.status) === st)) ?? "idle";
+    const label = names.space(w.name); // hide names
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
@@ -996,10 +1005,10 @@ export default class Spaces extends View {
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).flex_none().text_color(t.dim)))
           .when(!tree, el => el.child(div().relative().size(18).flex_none()
-            .child(h_flex().size_full().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(spaceAvatar(w.name)))
+            .child(h_flex().size_full().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(spaceAvatar(label)))
             .when(sessions > 0, el => el.child(this.sessionBadge(sessions, urgent, on, t)))))
           .when(Boolean(tree) && sessions > 0, el => el.child(this.sessionBadge(sessions, urgent, on, t, true)))
-          .child(div().flex_initial().min_w(SIDE_MIN).truncate().text_color(t.foreground).child(w.name))
+          .child(div().flex_initial().min_w(SIDE_MIN).truncate().text_color(t.foreground).child(label))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
           // A dev container's stacks have a button of their own, after the project's.
           .when(own.some((s) => !s.dev), el => el.child(this.stackButton(w, own.filter((s) => !s.dev), t, "stack")))
@@ -1035,7 +1044,7 @@ export default class Spaces extends View {
     const hot = this.hot === me && state !== "busy";
     const dot = { running: t.ansi2, partial: t.ansi3 }[state];
     const glyph = key === "dev" ? `mods/${MOD}/devcontainer.svg` : own.every((s) => s.kind === "ddev") ? `mods/${MOD}/site.svg` : "icons/docker.svg";
-    const says = own.map((s) => `${stacks.title(s)}: ${this.acting[s.id] ?? (s.state === "partial" ? "partly running" : s.state)}`).join(", ");
+    const says = own.map((s) => `${names.stack(s)}: ${this.acting[s.id] ?? (s.state === "partial" ? "partly running" : s.state)}`).join(", ");
     const icon = state === "busy" ? svg("mods/workspace-chrome/spinner.svg").size(13).text_color(t.working).spin(900)
       : hot ? svg(`mods/${MOD}/${op === "stop" ? "stop" : "play"}.svg`).size(12)
       : div().relative().size(14)

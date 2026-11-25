@@ -44,6 +44,9 @@
 !/mods/go-to-file/
 !/mods/editor-links/
 !/mods/usage/
+!/mods/tabs-names/
+!/mods/pane-names/
+!/mods/status-names/
 
 # Your themes and assets, once there are some
 !/themes/
