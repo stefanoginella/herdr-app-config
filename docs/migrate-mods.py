@@ -130,15 +130,16 @@ def migrate(home, apply):
                 raise ValueError(f"Review the pinned, branch-specific or renamed herdr-pkg record for {old} before migrating.")
             if rec["source"].split("/")[-1] not in {"herdr-app-config", "herdr-powertools"} or new_key in packages:
                 raise ValueError(f"Conflicting herdr-pkg source or destination for {old}.")
+        legacy_code = {}
         if (home / src).is_dir():
-            ours = local_files(home / src)
-            if ours:
+            legacy_code = local_files(home / src)
+            if legacy_code:
                 history = git("log", "--format=%H", OLD_TIP, "--", src.as_posix()).decode().splitlines()
-                if not any(ours == tree(commit, old) for commit in history):
+                if not any(legacy_code == tree(commit, old) for commit in history):
                     raise ValueError(f"{src} contains local edits. Back it up and port them before replacing it.")
             archive.append(src)
         if (home / dst).is_dir():
-            if (rec or (home / src).is_dir()) and home != ROOT and local_files(home / dst) != expected:
+            if (rec or legacy_code) and home != ROOT and local_files(home / dst) != expected:
                 raise ValueError(f"{dst} already exists with different files.")
         else:
             # Herdr can see the directory as soon as its first file lands.
@@ -154,7 +155,11 @@ def migrate(home, apply):
                     if not (home / target).exists():
                         writes[target] = path.read_bytes()
                     elif (home / target).read_bytes() != path.read_bytes():
-                        raise ValueError(f"Both {data} and data/{new} have different settings for the same view. Reconcile the two copies first.")
+                        if rec or legacy_code:
+                            raise ValueError(f"Both {data} and data/{new} have different settings for the same view. Reconcile the two copies first.")
+                        # A Git pull may already have switched the live app to the new ID.
+                        # It owns the current preference. Archive the previous copy intact.
+                        print(f"Keeping the active {new} preference and backing up its earlier {old} copy.")
             archive.append(data)
         if rec:
             packages.pop(old_key)
