@@ -12,7 +12,13 @@ Put the graph above a resizable detail area in the right panel. Draw branch lane
 
 Follow the focused pane's repository, with a chooser for repositories inside it or enclosing it. Page history in groups of 1,000. Click to inspect, double-click a branch to switch, and right-click for actions on that exact reference or file. Stage with +, unstage with −, and commit with Cmd+Enter. With nothing staged, the commit includes all changes. Discard saves a recoverable stash. The message writer fills an editable field.
 
+Open a failed commit run or PR check on request. For GitHub Actions, show the failed jobs, step names and a bounded log with Copy log. Offer the original URL when GitHub cannot supply the log or the provider hosts its own check.
+
+Offer **Review branch…** on a branch in Refs and on the current repository. Let the reader filter local and remote base refs and open a committed branch comparison in the tab’s Git Diff pane.
+
 ## Built from
+
+Offer **Go to Open Checkout** in the menu for a checked-out branch. Focus the terminal using that checkout, offering a choice if several spaces have one open. Check the repository and branch on the space’s machine before navigating.
 
 Install `mods/git-graph/` and point the existing `changes` block at `git-graph` so the tab bar opens it. Install the **Git Diff** package for file diffs and **File Editor** for Open in Editor. Read and change Git through Herdr's `exec` on the project's machine. Keep graph layout separate from Git parsing. Optional `gh` reads GitHub status. On request, a local Claude or Codex CLI receives the diff, new-file excerpts and recent commit messages to draft a message.
 

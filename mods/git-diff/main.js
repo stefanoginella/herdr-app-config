@@ -2,7 +2,7 @@
 // One a tab (props { tab }). What it shows is asked for through shared `git-diff.open`:
 //   { tab, root, on, source, path, group, at }
 // `source` is { kind: "work" } (what is not committed), { kind: "commit", sha, parent, title,
-// sub } or { kind: "stash", sha, title, sub }. `path` is the file to show first, and `group`
+// sub }, { kind: "branch", branch, base } (two full refs) or { kind: "stash", sha, title, sub }. `path` is the file to show first, and `group`
 // which list it is in when there are two: "staged" or "unstaged", "untracked" in a stash.
 //
 //   take()      a request: reads the lists of files (lists(), read()) and shows one (open())
@@ -18,8 +18,10 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, run, shared, setShared, nextCommand, checking, window as app } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, openOverlay, run, shared, setShared, nextCommand, checking, window as app } from "herdr";
 import * as diff from "./diff.js";
+import * as review from "./review.js";
+import ReviewNotes from "./notes.js";
 
 const MOD = "git-diff";
 // The pane's name: a mod pane's own title is its folder's name.
@@ -68,7 +70,13 @@ const sourceKey = (s) => (s.kind === "work" ? "work" : s.sha);
 
 export default class GitDiff extends View {
   init(_props, cx) {
-    this.tab = props()?.tab ?? null;
+    const p = props() ?? {};
+    if (p.reviewNotes) {
+      this.notes = new ReviewNotes();
+      this.notes.init(p, (args) => this.gitOf(p.reviewNotes, args), cx);
+      return;
+    }
+    this.tab = p.tab ?? null;
     this.pending = {};
     this.handle = cx.focus_handle();
     this.scroll = VirtualListScrollHandle.new();
@@ -116,8 +124,10 @@ export default class GitDiff extends View {
 
   // A request from the Git panel, or the one kept from last time.
   take(o, cx) {
-    const same = this.req && this.req.root === o.root && (this.req.on ?? null) === (o.on ?? null) && sourceKey(this.req.source) === sourceKey(o.source);
+    const same = o.source.kind !== "branch" && this.req && this.req.root === o.root && (this.req.on ?? null) === (o.on ?? null) && sourceKey(this.req.source) === sourceKey(o.source);
     this.req = { root: o.root, on: o.on ?? null, source: o.source };
+    this.scope = o.scope ?? "auto"; this.range = null; this.error = null;
+    this.reviewKey = o.source.kind === "branch" ? review.storeKey(this.req) : null;
     this.want = { path: o.path ?? null, group: o.group ?? null };
     this.remember("last", JSON.stringify({ ...this.req, path: o.path ?? null, group: o.group ?? null }));
     if (!same) { this.groups = []; this.cur = null; this.doc = null; this.whole = false; this.loaded = false; }
@@ -181,7 +191,7 @@ export default class GitDiff extends View {
       // do), `--name-status` also names files that were only touched.
       return { id, label, files: diff.parseNameStatus(names.stdout).filter((f) => counts[f.path] || f.mark === "U").map((f) => ({ ...f, mark: f.mark === "U" ? "!" : f.mark, ...(counts[f.path] ?? {}) })) };
     };
-    let groups, from = null;
+    let groups, from = null, range = null;
     if (s.kind === "work") {
       const [staged, unstaged, fresh] = await Promise.all([
         files("Staged", "staged", ["--cached"]), files("Not staged", "unstaged", []),
@@ -190,6 +200,19 @@ export default class GitDiff extends View {
       for (const path of fresh.stdout.split("\0").filter(Boolean)) unstaged.files.push({ path, mark: "U" });
       if (!staged.files.length) unstaged.label = "Changes";
       groups = [staged, unstaged];
+    } else if (s.kind === "branch") {
+      const git = (args) => this.gitOf(req, args);
+      range = await review.range(git, s, shared(review.storeKey(req))?.checkpoint ?? null, this.scope);
+      from = range.from;
+      const args = [from, range.tip, "--"];
+      const [raw, stats, full] = await Promise.all([
+        git([...DIFF, "--raw", "--no-abbrev", "-z", ...args]), git([...DIFF, "--numstat", "-z", ...args]),
+        range.incremental ? git([...DIFF, "--raw", "--no-abbrev", "-z", range.fork, range.tip, "--"]) : null,
+      ]);
+      if (raw.code || stats.code || full?.code) throw new Error(raw.stderr.trim() || stats.stderr.trim() || full?.stderr.trim() || "Could not compare the branch.");
+      const fullFiles = full ? review.rawFiles(full.stdout) : null;
+      const counts = diff.parseNumstat(stats.stdout);
+      groups = [{ id: "files", label: "Files", files: [...review.rawFiles(raw.stdout)].map(([path, info]) => ({ path, ...info, full: fullFiles?.get(path), ...counts[path] })) }];
     } else {
       from = s.kind === "stash" ? `${s.sha}^1` : s.parent;
       // A first commit is compared with nothing: git's empty tree.
@@ -205,7 +228,7 @@ export default class GitDiff extends View {
       }
     }
     if (this.req !== req) return;
-    this.from = from;
+    this.from = from; this.range = range;
     groups = groups.filter((g) => g.files.length);
     this.groups = groups; this.error = null; this.loaded = true;
     this.prune();
@@ -246,11 +269,11 @@ export default class GitDiff extends View {
         raw = r.stdout;
         parsed = r.code !== 0 ? { note: "This file can't be read" } : raw.includes("\0") ? { binary: true, hunks: [] } : diff.added(raw);
       } else {
-        const range = s.kind === "work" ? (cur.group === "staged" ? ["--cached"] : []) : [from, s.sha];
+        const range = s.kind === "work" ? (cur.group === "staged" ? ["--cached"] : []) : [from, this.range?.tip ?? s.sha];
         const r = await this.gitOf(req, [...DIFF, context, ...range, "--", f.path]);
         if (r.code !== 0) throw new Error(r.stderr.trim() || "git diff failed");
         raw = r.stdout;
-        parsed = diff.parse(raw);
+        parsed = diff.parse(raw, s.kind === "branch");
         if (parsed.conflict) parsed = { note: "This file is in conflict: open it in the editor to resolve it" };
       }
     } catch (e) {
@@ -277,6 +300,7 @@ export default class GitDiff extends View {
       const id = `${row.text}\0${row.pair}`;
       if (!doc.marks.has(id)) doc.marks.set(id, diff.pieces(row.text, diff.words(row.text, row.pair)));
     }
+    if (s.kind === "branch") doc.anchors = review.anchors({ hunks });
     this.doc = doc;
     if (fresh) this.scroll.scroll_to_item(0, "top");
   }
@@ -303,6 +327,7 @@ export default class GitDiff extends View {
   // A commit never changes; an uncommitted file is still as it was viewed while it adds and
   // removes as many lines (open() looks closer, at the text, when the file is shown).
   isViewed(f) {
+    if (this.range) return this.reviewState?.viewed?.[this.reviewFileKey(f)] === f.signature;
     const v = this.viewed[this.key(f)];
     if (!v) return false;
     return this.req.source.kind !== "work" || (v.a === (f.add ?? 0) && v.d === (f.del ?? 0));
@@ -328,14 +353,74 @@ export default class GitDiff extends View {
   mark(cx) {
     const f = this.file();
     if (!f || !this.doc) return;
+    if (this.range) {
+      const state = shared(this.reviewKey) ?? {}, viewed = { ...state.viewed }, key = this.reviewFileKey(f);
+      const had = viewed[key] === f.signature;
+      if (had) delete viewed[key]; else viewed[key] = f.signature;
+      if (this.range.incremental) {
+        const fullKey = JSON.stringify(["full", f.path]);
+        if (!had) review.markSince(viewed, f, fullKey);
+        else if (viewed[fullKey] === f.full?.signature) delete viewed[fullKey];
+      }
+      this.updateReview({ ...state, viewed });
+      if (!had) this.nextUnread(f, cx);
+      return;
+    }
     const k = this.key(f);
     if (this.isViewed(f)) { delete this.viewed[k]; this.keep(); return; }
     this.viewed[k] = this.req.source.kind === "work" ? { a: f.add ?? 0, d: f.del ?? 0, h: this.doc.sum } : 1;
     this.keep();
+    this.nextUnread(f, cx);
+  }
+
+  nextUnread(f, cx) {
     // On to the next file not viewed yet, when there is one.
     const all = this.all(), at = all.findIndex((x) => x.path === f.path && x.group === f.group);
     const next = [...all.slice(at + 1), ...all.slice(0, at)].find((x) => !this.isViewed(x));
     if (next) this.select(next, cx);
+  }
+
+  reviewFileKey(f) {
+    return JSON.stringify([this.range.incremental ? "since" : "full", f.path]);
+  }
+
+  updateReview(state) {
+    this.reviewState = state;
+    setShared(this.reviewKey, state);
+  }
+
+  checkpoint(cx) {
+    const range = this.range, state = shared(this.reviewKey) ?? {};
+    if (!range || state.checkpoint?.tip === range.tip && state.checkpoint.fork === range.fork) return;
+    if (JSON.stringify(state.checkpoint ?? null) !== JSON.stringify(range.checkpoint ?? null)) {
+      this.take({ ...this.req, path: this.cur?.path }, cx);
+      return;
+    }
+    const checkpoint = { tip: range.tip, fork: range.fork };
+    this.updateReview({ ...state, checkpoint });
+    this.take({ ...this.req, path: this.cur?.path, scope: "full" }, cx);
+  }
+
+  reviewNotes(choices) {
+    if (!this.range) return;
+    const { root, on, source } = this.req, { tip, fork, from } = this.range;
+    const file = this.file();
+    openOverlay({ mod: MOD, kind: "dialog", width: 550, height: choices ? 215 : 400, props: {
+      reviewNotes: { key: this.reviewKey, root, on, source, tip, fork, from,
+        ...(choices ? { choices, path: file.path, signature: file.signature } : {}) },
+    } });
+  }
+
+  noteLine(row, split) {
+    if (!this.range || !row || !this.doc?.anchors) return;
+    const { anchors } = this.doc, choices = [];
+    if (split) {
+      if (row.left?.kind === "-") choices.push(anchors.get("old" + row.left.n));
+      if (row.right?.kind === "+") choices.push(anchors.get("new" + row.right.n));
+    } else if (row.kind === "-") choices.push(anchors.get("old" + row.old));
+    else if (row.kind === "+") choices.push(anchors.get("new" + row.next));
+    const usable = choices.filter(Boolean);
+    if (usable.length) this.reviewNotes(usable);
   }
 
   // ---- commands
@@ -354,7 +439,13 @@ export default class GitDiff extends View {
   narrow() { return this.size ? this.width() < NARROW : false; }
 
   command(name, cx) {
-    if (name === "next") this.step(1, cx);
+    if (name === "review-refresh" || name === "review-scope") {
+      if (!this.reviewKey) return;
+      const scope = name === "review-refresh" ? "auto" : this.range?.incremental ? "full" : "since";
+      this.take({ ...this.req, path: this.cur?.path, scope }, cx);
+    } else if (name === "checkpoint" && this.range) this.checkpoint(cx);
+    else if (name === "review-notes") this.reviewNotes();
+    else if (name === "next") this.step(1, cx);
     else if (name === "prev") this.step(-1, cx);
     else if (name === "viewed") this.mark(cx);
     else if (name === "mode") {
@@ -419,15 +510,15 @@ export default class GitDiff extends View {
     return h_flex().id(id).flex_none().h(24).px(o.label ? 7 : 5).gap(4).items_center().rounded(6).text_size(11).tooltip(tip).cursor_pointer()
       .text_color(o.on ? t.foreground : t.muted).when(Boolean(o.on), (e) => e.bg(t.selected))
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
-      .on_click((_e, cx) => { cx.stop_propagation(); this.command(name, cx); this.handle.focus(); cx.notify(); })
+      .on_click((_e, cx) => { cx.stop_propagation(); this.command(name, cx); if (name !== "review-notes") this.handle.focus(); cx.notify(); })
       .when(Boolean(icon), (e) => e.child(svg(icon).size(13).flex_none()))
       .when(Boolean(o.label), (e) => e.child(div().child(o.label)));
   }
 
   head(t) {
     const s = this.req?.source, all = this.all(), seen = all.filter((f) => this.isViewed(f)).length;
-    const title = !s ? "Diff" : s.kind === "work" ? "Uncommitted changes" : s.title || s.sha.slice(0, 7);
-    const sub = !s ? "" : s.kind === "work" ? base(this.req.root) : s.sub ?? "";
+    const title = !s ? "Diff" : s.kind === "work" ? "Uncommitted changes" : s.kind === "branch" ? review.branchName(s.branch) : s.title || s.sha.slice(0, 7);
+    const sub = !s ? "" : s.kind === "work" ? base(this.req.root) : s.kind === "branch" ? "against " + review.branchName(s.base) : s.sub ?? "";
     const side = this.layout() === "split";
     return h_flex().flex_none().h(40).px(12).gap(8).items_center().border_b(1).border_color(t.border)
       .child(div().flex_none().max_w("55%").truncate().font_semibold().child(title))
@@ -436,6 +527,22 @@ export default class GitDiff extends View {
         .child(div().flex_none().text_size(11).text_color(seen === all.length ? t.ansi2 : t.dim).child(`${seen} / ${all.length} viewed`))
         .child(this.button(t, "gd-mode", ICON(side ? "split" : "unified"), side ? "Side by side: click for one column (S)" : "One column: click for side by side (S)", "mode"))
         .child(this.button(t, "gd-whole", ICON("whole"), this.whole ? "The whole file: click for the changes only (W)" : "Show the whole file (W)", "whole", { on: this.whole })));
+  }
+
+  reviewBar(t) {
+    const r = this.range, state = this.reviewState ?? {}, count = (state.notes ?? []).length;
+    const marked = r && state.checkpoint?.tip === r.tip && state.checkpoint.fork === r.fork;
+    return v_flex().flex_none().px(8).py(4).gap(3).border_b(1).border_color(t.border)
+      .child(h_flex().flex_wrap().items_center().gap(4)
+        .child(this.button(t, "gd-refresh-review", null, "Read both branch tips again", "review-refresh", { label: "Refresh" }))
+        .when(Boolean(r?.since), (e) => e.child(this.button(t, "gd-scope", null, "Switch the comparison range", "review-scope",
+          { label: r.incremental ? "Show whole branch" : "Since my last review" })))
+        .when(Boolean(r && !marked), (e) =>
+          e.child(this.button(t, "gd-checkpoint", null, "Remember the displayed branch tip", "checkpoint", { label: "Mark this revision reviewed" })))
+        .when(Boolean(r), (e) => e.child(this.button(t, "gd-notes", null, "Read and copy saved feedback. Click a changed line to add a note.", "review-notes",
+          { label: count ? "Notes (" + count + ")" : "Notes" }))))
+      .when(Boolean(r), (e) => e.child(div().text_size(11).text_color(t.dim)
+        .child((r.incremental ? "Since your review" : "Whole branch") + " · " + r.from.slice(0, 7) + " → " + r.tip.slice(0, 7) + (r.notice ? " · " + r.notice : ""))));
   }
 
   list(t) {
@@ -536,7 +643,7 @@ export default class GitDiff extends View {
       return out;
     }).track_scroll(this.scroll).size_full()
       // A click on what is left out between two changes shows the whole file.
-      .on_item_click((key, cx) => { if (rows[Number(key)]?.kind === "gap" && !this.whole) { this.command("whole", cx); cx.notify(); } });
+      .on_item_click((key, cx) => { if (rows[Number(key)]?.kind === "gap" && !this.whole) { this.command("whole", cx); cx.notify(); } else this.noteLine(rows[Number(key)], side); });
     return div().size_full().relative().font_family(settings().font_family ?? "JetBrains Mono").text_size(SIZE)
       .child(side ? lines : div().id("gd-x").size_full().overflow_x_scrollbar().child(div().w_full().min_w(width).h_full().child(lines)))
       .child(Scrollbar.vertical("gd-rows").viewport_from_layout().absolute().inset_0())
@@ -544,6 +651,8 @@ export default class GitDiff extends View {
   }
 
   render(cx) {
+    if (this.notes) return this.notes.render(cx);
+    this.reviewState = this.reviewKey ? shared(this.reviewKey) : null;
     fit();
     this.title(cx);
     for (const [name, value] of Object.entries(this.pending)) localStorage.setItem(name, value);
@@ -567,6 +676,7 @@ export default class GitDiff extends View {
         cx.notify();
       })
       .child(this.head(t))
+      .when(Boolean(this.reviewKey), (e) => e.child(this.reviewBar(t)))
       .child(h_flex().flex_1().min_h(0).items_stretch()
         .when(!this.narrow() && this.groups.length > 0, (e) => e.child(this.list(t)))
         .child(v_flex().flex_1().min_w(0).min_h(0)

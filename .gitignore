@@ -63,6 +63,8 @@ __pycache__/
 !/mods/tabs-names/
 !/mods/pane-names/
 !/mods/status-names/
+!/mods/back-forward/
+!/mods/quick-actions/
 
 # Your themes and assets, once there are some
 !/themes/

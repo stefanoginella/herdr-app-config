@@ -26,6 +26,22 @@
     ]
   },
   "pictures": {
+    "workspace-tools": {
+      "cards": [
+        { "src": "raw/quick-actions.png", "crop": [372, 128, 1476, 625], "at": [98, 135] },
+        { "src": "raw/navigation.png", "crop": [1890, 1326, 330, 84], "at": [1243, 823] }
+      ]
+    },
+    "branch-review": {
+      "cards": [
+        { "src": "raw/branch-review.png", "crop": [328, 281, 1564, 848], "at": "center" }
+      ]
+    },
+    "failed-ci": {
+      "cards": [
+        { "src": "raw/failed-ci.png", "crop": [408, 291, 1404, 828], "at": "center" }
+      ]
+    },
     "power-tools": {
       "title": "Herdr Power Tools",
       "cards": [

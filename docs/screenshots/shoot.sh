@@ -1,7 +1,7 @@
 #!/bin/bash
 # shoot.sh [step ...]: the raw shots the pictures are made from, each the whole window as the app
 # drew it, into the sandbox's raw/. After scene.sh. With no step named, all of them, in this order:
-#   diff editor files search goto git sidebar window usage
+#   diff editor files search goto git sidebar window usage review ci tools
 # A step sets the zoom and the panels it needs. The crop boxes in pictures.json are in these shots'
 # pixels: a step that changes a zoom, a panel's width or a pane's place moves them.
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -124,7 +124,35 @@ s_usage() {
   zoom 1.3
 }
 
-steps=("$@"); [ ${#steps[@]} -gt 0 ] || steps=(diff editor files search goto git sidebar window usage)
+# Review a committed feature even though the terminal is on a different branch.
+s_review() {
+  zoom 1.45
+  req '[{"overlay":{"mod":"git-diff","kind":"window","key":"branch-demo","width":1080,"height":585,"props":{"tab":"branch-demo"}}}]' 3
+  req "[{\"shared\":[\"git-diff.open\",{\"tab\":\"branch-demo\",\"root\":\"$R\",\"on\":null,\"source\":{\"kind\":\"branch\",\"branch\":\"refs/heads/feat/editor-minimap\",\"base\":\"refs/heads/main\"},\"path\":\"mods/file-editor/minimap.js\",\"at\":\"now\"}]}]" 7
+  shot branch-review
+  h overlay.close --id "$(py -c 'import json, sys; print(json.load(open(sys.argv[1]))["stage.last"])' "$A/shared.json")"
+}
+
+s_ci() {
+  zoom 1.8
+  req "[{\"overlay\":{\"mod\":\"git-graph\",\"kind\":\"window\",\"key\":\"failed-job-demo\",\"width\":780,\"height\":460,\"props\":{\"failure\":{\"root\":\"$R\",\"on\":null,\"repo\":\"github.com/example/herdr-app\",\"run\":{\"name\":\"Test suite\",\"id\":4,\"url\":\"https://github.com/example/herdr-app/actions/runs/4\",\"state\":\"fail\"}}}}}]" 7
+  shot failed-ci
+  h overlay.close --id "$(py -c 'import json, sys; print(json.load(open(sys.argv[1]))["stage.last"])' "$A/shared.json")"
+}
+
+s_tools() {
+  zoom 3
+  h space.select "{\"id\":\"$S1\"}"; draw 2
+  h space.select "{\"id\":\"$S3\"}"; draw 3
+  h back-forward.back; draw 3; shot navigation
+  h back-forward.forward; draw 3
+  zoom 1.8
+  h mod.open '{"name":"quick-actions"}'; draw 6; shot quick-actions
+  h overlay.close
+  h space.select "{\"id\":\"$S1\"}"; h tab.select "{\"id\":\"$T1\"}"
+}
+
+steps=("$@"); [ ${#steps[@]} -gt 0 ] || steps=(diff editor files search goto git sidebar window usage review ci tools)
 for s in "${steps[@]}"; do
   declare -F "s_$s" >/dev/null || { echo "shoot: no step $s"; exit 1; }
   echo "== $s"; "s_$s"

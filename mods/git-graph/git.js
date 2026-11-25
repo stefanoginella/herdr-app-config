@@ -27,11 +27,11 @@ export function parseLog(text) {
   return out;
 }
 
-export const refArgs = ["for-each-ref", "--format=%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:short)%1f%(upstream:track)%1f%(creatordate:unix)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1e",
+export const refArgs = ["for-each-ref", "--format=%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:short)%1f%(upstream:track)%1f%(creatordate:unix)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1f%(if)%(worktreepath)%(then)Y%(end)%1e",
   "refs/heads", "refs/remotes", "refs/tags"];
 
 // { heads, remotes, tags }. A head: { name, sha, upstream, ahead, behind, gone, time, remote,
-// remoteBranch }. A remote branch: { name ("origin/main"), remote, branch, sha, time }. A tag:
+// remoteBranch, checkedOut }. A remote branch: { name ("origin/main"), remote, branch, sha, time }. A tag:
 // { name, sha (the commit it leads to), time }.
 // `remoteNames`: the remotes, to tell where a remote's name ends when it has a slash in it.
 export function parseRefs(text, remoteNames = []) {
@@ -42,7 +42,7 @@ export function parseRefs(text, remoteNames = []) {
     const [ref, sha, peeled, upstream, track, time, remote, remoteRef] = f;
     if (ref.startsWith("refs/heads/")) {
       heads.push({
-        name: ref.slice(11), sha, upstream: upstream || null, time: Number(time) || 0,
+        name: ref.slice(11), sha, checkedOut: f[8] === "Y", upstream: upstream || null, time: Number(time) || 0,
         ahead: Number(/ahead (\d+)/.exec(track)?.[1] ?? 0), behind: Number(/behind (\d+)/.exec(track)?.[1] ?? 0),
         gone: track.includes("gone"), remote: remote || null,
         remoteBranch: remoteRef.startsWith("refs/heads/") ? remoteRef.slice(11) : null,

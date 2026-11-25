@@ -23,6 +23,8 @@ Each feature has a page with everything it does: every key, limit and edge case.
 | [Git diff](docs/git-diff.md) | A diff pane, side by side, with the changed words marked | `git-diff` |
 | [File editor](docs/file-editor.md) | A text editor in a pane, also from a path Cmd-clicked in a terminal | `file-editor`, `editor-links` |
 | [Project search](docs/project-search.md) | Search and replace in every file of the project | `project-search` |
+| [Back and forward](docs/back-forward.md) | Return to the tab and pane you left | `back-forward` |
+| [Quick Actions](docs/quick-actions.md) | Run saved commands for the current project | `quick-actions` |
 | [Go to file](docs/go-to-file.md) | Any file of the project, by some of its name | `go-to-file` |
 | [File actions](docs/file-actions.md) | The Files panel with icons, a right-click menu, drag to move and undo | `files-actions` |
 | [Hide names](docs/hide-names.md) | Made-up names around the content, for a screenshot or a screen share | `tabs-names`, `pane-names`, `status-names` |
@@ -71,7 +73,8 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 - **Everyday git, by click:** stage, commit, fetch, pull, push, switch, branch, tag and stash.
 - **A message written for you:** ask Claude or Codex for the commit message, then edit it.
-- **GitHub at a glance:** with [`gh`](https://cli.github.com), a branch shows its pull request and a commit its checks.
+- **GitHub at a glance:** with [`gh`](https://cli.github.com), a branch shows its pull request and a commit its checks. Open a failed check to read and copy the job log.
+- **Go to Open Checkout** takes you from a checked-out branch to its open space.
 - **Nothing drastic:** it never rebases, merges, resets or forces. Those stay in a terminal.
 
 [Everything about the Git panel](docs/git-panel.md)
@@ -82,7 +85,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 ![The diff pane: a change side by side, with the changed words marked and one file ticked as viewed](docs/images/git-diff.webp)
 
-<kbd>J</kbd> and <kbd>K</kbd> walk the files, <kbd>V</kbd> ticks one as viewed and moves on, <kbd>S</kbd> switches between side by side and one column. It only reads. [Everything about the diff pane](docs/git-diff.md)
+<kbd>J</kbd> and <kbd>K</kbd> walk the files, <kbd>V</kbd> ticks one as viewed and moves on, <kbd>S</kbd> switches between side by side and one column. Choose **Review branch…** to review a branch against its base, copy feedback from changed lines and return to the changes since your last review. [Everything about the diff pane](docs/git-diff.md)
 
 ### File editor
 
@@ -137,6 +140,14 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 [Everything about hide names](docs/hide-names.md)
 
+### Workspace controls
+
+Use the status bar arrows or hold Option and press a mouse side button to return to the tab and pane you left. **Quick Actions** opens with <kbd>Alt</kbd>+<kbd>Q</kbd> or the adjacent status button. Save a project command once and run it in a new terminal tab on that project’s machine.
+
+![Saved DDEV commands and the navigation controls in the status bar](docs/images/workspace-tools.webp)
+
+[Back and forward](docs/back-forward.md) · [Quick Actions](docs/quick-actions.md)
+
 ## The same everywhere
 
 Three things hold for every feature, so the pages don't repeat them:
@@ -155,6 +166,7 @@ All in `keys.json`. A feature's page says what each key does; this is what to co
 | The editor | the sections `mod:file-editor` and `mod:file-editor > Input` |
 | Project search | the sections `mod:project-search` and `mod:project-search > Input`, and `cmd-shift-f`, `f4`, `shift-f4` from `global` |
 | Go to file | the section `mod:go-to-file > Input`, and `cmd-o` from `global` |
+| Quick Actions | `alt-q` from `global` |
 | Hide names | `cmd-shift-h` from `global` |
 | Usage | `cmd-shift-u` from `global` |
 | Jumping to an agent | `cmd-alt-1` to `cmd-alt-9` from `global` |
@@ -210,7 +222,7 @@ By hand: this was built against Herdr 0.1.18. From a clone of this repository, t
 
 ```sh
 cp layouts/main-folders.json ~/.config/herdr-app/layouts/
-for m in space-folders agent-inbox files-actions file-editor editor-links project-search go-to-file git-graph git-diff agent-usage tabs-names pane-names status-names; do
+for m in space-folders agent-inbox files-actions file-editor editor-links project-search go-to-file git-graph git-diff agent-usage tabs-names pane-names status-names back-forward quick-actions; do
   cp -R "mods/$m" ~/.config/herdr-app/mods/ && herdr-app check ~/.config/herdr-app/mods/"$m"
 done
 herdr-app do layout.switch '{"name":"main-folders"}'

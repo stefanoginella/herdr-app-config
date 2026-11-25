@@ -13,7 +13,7 @@ export const untab = (text) => (text.includes("\t") ? text.replace(/[^\t]*\t/g, 
 // A file's diff as git prints it: { hunks, binary, cut }. A hunk is { old, next (the line
 // numbers it starts at), note (what git says after the @@), lines: [{ kind: " " | "+" | "-",
 // text }] }. `cut`: the diff was longer than MOST lines.
-export function parse(text) {
+export function parse(text, originals = false) {
   const out = { hunks: [], binary: false, cut: false, conflict: false };
   let hunk = null, count = 0;
   for (const line of text.split("\n")) {
@@ -37,7 +37,7 @@ export function parse(text) {
     if (kind !== " " && kind !== "+" && kind !== "-") continue;
     if (++count > MOST) { out.cut = true; break; }
     const body = raw.slice(1);
-    hunk.lines.push({ kind, text: untab(body.length > LONG ? `${body.slice(0, LONG)}…` : body) });
+    hunk.lines.push({ kind, text: untab(body.length > LONG ? `${body.slice(0, LONG)}…` : body), ...(originals && body.length <= LONG ? { original: body } : {}) });
   }
   return out;
 }

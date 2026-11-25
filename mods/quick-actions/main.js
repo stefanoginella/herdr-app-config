@@ -1,0 +1,652 @@
+// Quick Actions: named scripts that run in the terminal of the active space, with 1 click or 1 key.
+//
+// Roles (props.part):
+//   "status"  the status bar item. It is also the runner: a key or a bar button sends
+//             `quick-actions.run-<id>`, and only a shown copy of the mod gets it. It keeps the last
+//             terminal that had the focus in shared("quick-actions.target").
+//   (none)    the dialog (mod.open:quick-actions, a click on the status item): the list and the form.
+//             With props { confirm: <id>, target }: the question before a run (opened by the runner).
+//
+// See docs/quick-actions-plan.md in the herdr-mods repository.
+
+import { View, div, svg } from "gpui-kit";
+import { h_flex, v_flex, InputState, TextareaState, ScrollHandle } from "gpui-base";
+import { theme, keys, props, shared, setShared, closeOverlay, openOverlay, nextCommand, run, notify, focused, checking, window, knownAgents, pickFiles, appHome, readTextFile } from "herdr";
+import { startWriter, startWriterBackground, headlessOf, writerPath, shortPath } from "./writer.js";
+import * as S from "./store.js";
+import { currentTarget, context, asksOf } from "./vars.js";
+import { runAction, prepare, fail, scriptText } from "./run.js";
+import { listView, visible, allowed } from "./list.js";
+import { editView, confirmView, errors } from "./form.js";
+import { DEMO, DEMO_CTX } from "./demo.js";
+import { jobs as allJobs, jobKey, isRunning, anyRunning, holdLease, checkJobs, stopJob, jobOutput, pruneJobs } from "./jobs.js";
+import { outputView } from "./output.js";
+import * as U from "./ui.js";
+
+const { KEY, MOD } = S;
+
+// Herdr 0.1.18 text fields consume the arrow keys. A context on the search field's
+// wrapper scopes these deeper bindings to that field, away from the editing form.
+let boundKeys = null;
+function bindSearchKeys(cx) {
+  const version = JSON.stringify(keys());
+  if (version === boundKeys) return;
+  cx.bind_keys(["up", "down"].map((keystroke) => ({
+    keystroke, action: "quick-actions." + keystroke, context: "QuickActionsSearch > Input",
+  })));
+  boundKeys = version;
+}
+
+const BEAT_MS = 500; // the runner looks at the focus this often
+const ALIVE_MS = 20000; // the runner says that it is on the screen this often
+const STALE_MS = 60000; // after this time without a sign, there is no runner
+
+// The mods-hub can turn this mod off (shared "herdr-mods.disabled", a list of mod names). Then the mod draws
+// nothing, closes its dialog and skips its timed work. The bars hide its blocks and buttons.
+const kitOff = () => { const v = shared("herdr-mods.disabled"); return Array.isArray(v) && v.includes(MOD); };
+const offView = () => { const o = props()?.overlay; if (o) closeOverlay(o); return div(); };
+
+const runnerAlive = () => Date.now() - (shared(KEY.runner)?.at ?? 0) < STALE_MS;
+const isWin = () => window()?.platform === "windows";
+
+/**
+ * Runs the async work of a handler. The cx of a click, a key or a timer is not valid after an await: the
+ * work gets the cx of cx.spawn. An error shows in a toast.
+ */
+const spawn = (cx, fn) => cx.spawn(async (cx) => {
+  try { await fn(cx); } catch (e) { notify({ title: "Quick Actions", body: String(e?.message ?? e), level: "error", timeout: 8000 }); }
+});
+
+export default class QuickActions extends View {
+  init(given, cx) {
+    // Read props once: props() in a later callback can answer for another copy.
+    this.props = (given && Object.keys(given).length ? given : props()) || {};
+    this.part = this.props.part === "status" ? "status" : "dialog";
+    this.handle = cx.focus_handle();
+    if (this.part === "status") return this.initStatus(cx);
+    this.initDialog(cx);
+  }
+
+  // ---- the runner (status copy) -------------------------------------------------------------
+
+  initStatus(cx) {
+    this.busy = false;
+    this.aliveAt = 0;
+    this.list = []; // the actions, for the filter of the bar buttons
+    this.listRev = undefined;
+    this.runnerId = Math.random().toString(36).slice(2); // for the lease of the background jobs
+    this.tracking = false;
+    if (checking()) return;
+    cx.timer.every(BEAT_MS, () => { if (!kitOff()) this.beat(); });
+    cx.timer.every(1000, (cx) => { if (!kitOff()) this.track(cx); });
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        if (kitOff()) continue;
+        if (c === "open") run("mod.open", { name: MOD });
+        else if (c.startsWith("run-")) this.runById(cx, c.slice(4));
+      }
+    });
+  }
+
+  /**
+   * Checks the background jobs (jobs.js): only while one runs, and only in the copy that holds the lease
+   * (a hidden layout can keep a second runner copy).
+   */
+  track(cx) {
+    if (this.tracking || !anyRunning() || !holdLease(this.runnerId)) return;
+    this.tracking = true;
+    cx.spawn(async (cx) => {
+      try { await checkJobs(); } catch (e) { console.log(`quick-actions: ${e?.message ?? e}`); }
+      this.tracking = false;
+      cx.notify();
+    });
+  }
+
+  /** Keeps the last terminal that had the focus, and says that the runner is on the screen. */
+  beat() {
+    const f = focused();
+    if (f?.terminal) {
+      const k = shared(KEY.target);
+      if (!k || k.terminal !== f.terminal || k.space !== f.space || k.tab !== f.tab) setShared(KEY.target, { terminal: f.terminal, space: f.space, tab: f.tab });
+    }
+    const now = Date.now();
+    if (now - this.aliveAt >= ALIVE_MS) { this.aliveAt = now; setShared(KEY.runner, { at: now }); }
+    const rev = shared(KEY.rev) ?? null;
+    if (rev !== this.listRev) {
+      this.listRev = rev;
+      S.loadList().then((d) => { if (d.list) { this.list = d.list; pruneJobs(d.list.map((a) => a.id)).catch(() => {}); } });
+    }
+  }
+
+  async runById(cx, id) {
+    if (this.busy) {
+      notify({ title: "Quick Actions", body: "An action is still starting. Try again in a moment.", level: "info", timeout: 3000 });
+      return;
+    }
+    this.busy = true;
+    cx.notify();
+    // A fault here must show: the key or the bar button that sent the command shows nothing.
+    try {
+      const target = currentTarget();
+      const { list, error } = await S.loadList();
+      const a = (list ?? []).find((x) => x.id === id);
+      if (!a) { fail(id, error ?? `No action has the id ${id}.`); return; }
+      // The question shows the script, and a field for each {ask:…}.
+      const src = await scriptText(a);
+      const asks = src.text ? asksOf(src.text) : [];
+      if (a.confirm || asks.length) {
+        openOverlay({ mod: MOD, kind: "dialog", width: 640, height: 340 + asks.length * 58, props: { confirm: a.id, target } });
+        return;
+      }
+      await runAction(cx, a, target);
+    } catch (e) {
+      fail(id, String(e?.message ?? e));
+    } finally {
+      this.busy = false;
+      cx.notify();
+    }
+  }
+
+  statusView(t) {
+    return h_flex().id("qa-status").size_full().items_center().justify_center()
+      .bg(t.chrome).border_t(1).border_color(t.border)
+      .child(div().id("qa-open").size(22).flex().items_center().justify_center().rounded(5).cursor_pointer()
+        .text_color(this.busy || anyRunning() ? t.working : t.dim)
+        .hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .tooltip("Quick Actions: click to open the list")
+        .on_click(() => run("mod.open", { name: MOD }))
+        .child(svg(U.icon("actions")).size(13)));
+  }
+
+  // ---- the dialog: data -------------------------------------------------------------------
+
+  initDialog(cx) {
+    this.list = [];
+    this.listError = null;
+    this.loadedRev = undefined;
+    this.demo = false;
+    this.selected = 0;
+    this.listScroll = ScrollHandle.new();
+    this.running = null; // the id of the action that runs from this dialog
+    this.confirmDelete = null;
+    this.draft = null;
+    this.preview = null; // the result of prepare() for the form or the question
+    this.previewKey = null;
+    // The target terminal now: this dialog runs the actions there.
+    this.target = this.props.confirm ? this.props.target : currentTarget();
+    this.targetError = "";
+    this.ctx = null;
+    this.demoCtx = DEMO_CTX;
+    this.loaded = false;
+    this.runnerId = Math.random().toString(36).slice(2); // for the lease of the background jobs
+    this.tracking = false;
+    this.outputKey = null; // the job of the output view
+    this.outputText = null;
+    this.agentList = []; // knownAgents(), for "with an agent" in the form
+    this.hasKeybinds = false;
+    // The cx of a callback (init, a click, a key, a timer) is not valid after an await: async work goes
+    // through cx.spawn, whose cx stays valid.
+    cx.spawn(async (cx) => { try { this.agentList = (await knownAgents()) ?? []; cx.notify(); } catch { /* no agents */ } });
+    this.search = InputState.new({ placeholder: "Search the actions" });
+    this.search.on("change", (_e, cx) => { this.selected = 0; this.listScroll.scroll_to_item(0); cx.notify(); });
+    if (!checking()) bindSearchKeys(cx);
+    this.search.on("submit", (_e, cx) => { if (this.view === "list") this.runSelected(cx); });
+    this.view = this.props.confirm ? "confirm" : "list";
+    this.refresh(cx);
+    if (this.target) {
+      const target = this.target;
+      cx.spawn(async (cx) => {
+        try { this.ctx = await context(target, new Set(["repo_name"])); }
+        catch (e) { this.targetError = String(e?.message || e); }
+        cx.notify();
+      });
+    }
+    if (checking()) return;
+    cx.spawn(async (cx) => {
+      const text = await readTextFile(`${appHome().replace(/\\/g, "/").replace(/\/+$/, "")}/mods/keybinds/mod.json`).catch(() => null);
+      this.hasKeybinds = text != null;
+      cx.notify();
+    });
+    cx.timer.every(1000, (cx) => {
+      if (kitOff()) return;
+      this.track(cx); // the background jobs, when no runner copy checks them
+      if (window()?.visible === false) { this.resumeDue = true; return; }
+      bindSearchKeys(cx);
+      this.refresh(cx);
+      if (this.view === "output") this.updateOutput(cx);
+      else if (anyRunning()) cx.notify(); // the time of a running job in the list
+    });
+    cx.timer.every(400, (cx) => {
+      if (kitOff()) return;
+      if (window()?.visible === false) { this.previewDue = true; return; }
+      this.updatePreview(cx);
+    });
+    // `herdr-app do quick-actions.<command>` drives an open dialog (tests): new, edit-<id>, list, save, demo, pin-<id>, up, down, enter.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        const a = (id) => this.shownList().find((x) => x.id === id);
+        if (c === "new") this.edit(cx, null);
+        else if (c.startsWith("edit-") && a(c.slice(5))) this.edit(cx, a(c.slice(5)));
+        else if (c === "list") this.back(cx);
+        else if (c === "save" && this.view === "edit") this.save(cx);
+        else if (c === "demo") { this.demo = !this.demo; this.selected = 0; this.listScroll.scroll_to_item(0); cx.notify(); }
+        else if (c.startsWith("pin-") && a(c.slice(4))) this.pin(cx, a(c.slice(4)));
+        else if (this.view === "list" && (c === "down" || c === "up")) this.move(cx, c === "down" ? 1 : -1);
+        else if (c === "enter") { if (this.view === "list") this.runSelected(cx); else if (this.view === "confirm") this.confirmRun(cx); }
+      }
+    });
+    cx.timer.after(40, () => (this.view === "confirm" ? this.handle.focus() : this.search.focus()));
+  }
+
+  shownList() { return this.demo ? DEMO : this.list; }
+
+  refresh(cx) {
+    const rev = shared(KEY.rev) ?? null;
+    if (rev === this.loadedRev) return;
+    this.loadedRev = rev;
+    cx.spawn(async (cx) => {
+      const d = await S.loadList();
+      this.listError = d.list == null ? d.error : null;
+      if (d.list) this.list = d.list;
+      this.loaded = true;
+      if (this.view === "confirm" && !this.confirmAction) this.confirmAction = this.list.find((x) => x.id === this.props.confirm) ?? null;
+      cx.notify();
+    });
+  }
+
+  /** Saves a change of the list. Call it only with the cx of cx.spawn: it awaits. */
+  async change(cx, fn) {
+    if (this.demo) return;
+    try {
+      this.list = await S.updateList(fn);
+      this.loadedRev = shared(KEY.rev);
+    } catch (e) {
+      notify({ title: "Quick Actions", body: `Cannot save: ${e?.message ?? e}`, level: "error", timeout: 8000 });
+      cx.notify();
+      return;
+    }
+    cx.notify();
+  }
+
+  /** Keeps a favorite at the top of the action list. */
+  pin(cx, a) {
+    spawn(cx, (cx) => this.change(cx, (l) => l.map((x) => (x.id === a.id ? { ...x, pinned: !x.pinned, updatedAt: Date.now() } : x))));
+  }
+
+  /** Deletes an action. */
+  remove(cx, a) {
+    spawn(cx, (cx) => this.change(cx, (l) => l.filter((x) => x.id !== a.id)));
+  }
+
+  /** The preview of the form or of the question: prepare() again when the draft changes. */
+  updatePreview(cx) {
+    const a = this.view === "edit" && this.draft ? this.collect() : this.view === "confirm" ? this.confirmAction : null;
+    if (!a) return;
+    // A script file can change on disk (an agent writes it): its text is read again every 2 s.
+    if (a.source === "file" && Date.now() - (this.fileReadAt ?? 0) > 2000) {
+      this.fileReadAt = Date.now();
+      const path = a.file;
+      cx.spawn(async (cx) => {
+        const text = (await scriptText(a)).text ?? null;
+        if (path === a.file && text !== this.fileText) { this.fileText = text; cx.notify(); }
+      });
+    }
+    const answers = this.view === "confirm" ? this.answers() : null;
+    const key = JSON.stringify([a.source, a.script, a.file, a.filter, a.where, answers, a.source === "file" ? this.fileText : null]);
+    if (key === this.previewKey) return;
+    this.previewKey = key;
+    cx.spawn(async (cx) => {
+      let p;
+      try { p = await prepare(a, this.target, answers); } catch (e) { p = { error: String(e?.message || e) }; }
+      if (this.previewKey !== key) return;
+      this.preview = p;
+      if (this.view === "confirm" && !this.askFields && p.asks) this.buildAsks(cx, p.asks);
+      cx.notify();
+    });
+  }
+
+  close_() {
+    const id = this.props.overlay ?? shared("kanban.panelDialog")?.id ?? null;
+    if (id) closeOverlay(id);
+  }
+
+  /** Opens Keybinds focused on this action (when installed and enabled). */
+  openKeybinds(actionId, autoRecord = false) {
+    openOverlay({
+      mod: "keybinds",
+      kind: "dialog",
+      width: 880,
+      height: 600,
+      props: { focusAction: `quick-actions.run-${actionId}`, autoRecord },
+    });
+  }
+
+  // ---- the dialog: runs -------------------------------------------------------------------
+
+  runSelected(cx) {
+    const a = visible(this)[this.selected];
+    if (a) this.runNow(cx, a);
+  }
+
+  runNow(cx, a) {
+    if (this.demo || !allowed(this, a)) return;
+    if (this.running) {
+      const busy = this.list.find((x) => x.id === this.running)?.name ?? "An action";
+      notify({ title: "Quick Actions", body: `${busy} is still starting. Try again when its line is in the terminal.`, level: "info", timeout: 5000 });
+      return;
+    }
+    spawn(cx, async (cx) => {
+      const src = await scriptText(a);
+      if (a.confirm || (src.text && asksOf(src.text).length)) {
+        this.confirmAction = a;
+        this.askFields = null;
+        this.preview = null;
+        this.previewKey = null;
+        this.view = "confirm";
+        this.handle.focus();
+        cx.notify();
+        return;
+      }
+      await this.exec(cx, a);
+    });
+  }
+
+  /** The fields of the {ask:…} questions of the question view, with their defaults. */
+  buildAsks(cx, asks) {
+    this.askFields = asks.map((q) => {
+      const state = InputState.new({ value: q.def, placeholder: q.label });
+      state.on("change", (_e, cx) => cx.notify());
+      state.on("submit", (_e, cx) => this.confirmRun(cx));
+      return { ...q, state };
+    });
+    if (this.askFields.length) cx.timer.after(40, () => this.askFields?.[0]?.state.focus());
+    cx.notify();
+  }
+
+  /** The answers of the question view: { label: value }, or null without questions. */
+  answers() {
+    return this.askFields?.length ? Object.fromEntries(this.askFields.map((f) => [f.label, f.state.value()])) : null;
+  }
+
+  confirmRun(cx) {
+    if (!this.confirmAction || !this.preview || this.preview.error || this.running) return;
+    const a = this.confirmAction;
+    const answers = this.answers();
+    spawn(cx, (cx) => this.exec(cx, a, answers));
+  }
+
+  /** Runs an action. Call it only with the cx of cx.spawn: it awaits. */
+  async exec(cx, a, answers = null) {
+    this.running = a.id;
+    cx.notify();
+    let r = null;
+    try { r = await runAction(cx, a, this.target, answers); } finally { this.running = null; }
+    // A background run has no terminal on the screen: the list shows it (and the toast at its end).
+    if (r?.background) { if (this.props.confirm) this.close_(); else this.back(cx); }
+    else if (r) {
+      this.close_();
+    }
+    cx.notify();
+  }
+
+  // ---- the dialog: background jobs ---------------------------------------------------------
+
+  /** Shows the output of a background job (kind "run" or "write") of an action. */
+  openOutput(cx, kind, a) {
+    this.outputFrom = this.view === "edit" && this.draft ? "edit" : "list";
+    this.outputKey = jobKey(kind, a.id);
+    this.outputText = null;
+    this.outputReadAt = 0;
+    this.view = "output";
+    this.handle.focus();
+    this.updateOutput(cx);
+    cx.notify();
+  }
+
+  /** Reads the output again: every second while the job runs, once after its end. */
+  updateOutput(cx) {
+    const key = this.outputKey;
+    const j = key ? allJobs()[key] ?? null : null;
+    if (!key || this.outputReading) return;
+    if (!isRunning(j) && this.outputText != null && this.outputReadAt > (j?.ended ?? 0)) return;
+    this.outputReading = true;
+    cx.spawn(async (cx) => {
+      try { this.outputText = await jobOutput(key); } catch { /* keep the old text */ }
+      this.outputReadAt = Date.now();
+      this.outputReading = false;
+      cx.notify();
+    });
+  }
+
+  /** Leaves the output view: back to the form that opened it, else to the list. */
+  closeOutput(cx) {
+    this.outputKey = null;
+    this.outputText = null;
+    if (this.outputFrom === "edit" && this.draft) { this.view = "edit"; cx.notify(); return; }
+    this.back(cx);
+  }
+
+  /** Stops the background job of a kind ("run" or "write") of an action. */
+  stopJobOf(cx, kind, a) {
+    spawn(cx, () => stopJob(jobKey(kind, a.id)));
+  }
+
+  /** Stops the job of the output view. */
+  stopOutput(cx) {
+    const key = this.outputKey;
+    if (key) spawn(cx, () => stopJob(key));
+  }
+
+  move(cx, by) {
+    const n = visible(this).length;
+    if (!n) return;
+    this.selected = (this.selected + by + n) % n;
+    this.listScroll.scroll_to_item(this.selected);
+    cx.notify();
+  }
+
+  /** A click on a row takes the keyboard from the search field: give it back. */
+  keepKeys() { this.search.focus(); }
+
+  key(e, cx) {
+    if (this.view === "confirm" && !this.askFields?.length && e.key === "enter") { this.confirmRun(cx); cx.stop_propagation(); return; }
+    if (e.key === "escape") {
+      if (this.view === "output") this.closeOutput(cx);
+      else if (this.view === "edit") this.back(cx);
+      else if (this.view === "confirm" && !this.props.confirm) this.back(cx);
+      else this.close_();
+      cx.stop_propagation();
+    }
+  }
+
+  addExamples(cx) {
+    const git = { ...S.blank(), name: "Show Git status", icon: "git-branch", script: "git status --short --branch" };
+    const ddev = { ...S.blank(), name: "DDEV project details", icon: "server", script: "ddev describe" };
+    spawn(cx, (cx) => this.change(cx, (l) => [...l, git, ddev]));
+  }
+
+  // ---- the dialog: editing ----------------------------------------------------------------
+
+  edit(cx, a) {
+    const d = S.normalize(a ? JSON.parse(JSON.stringify(a)) : S.blank());
+    this.draft = d;
+    this.isNew = !a;
+    this.showErrors = false; // errors show after the first Save
+    const inp = (value, placeholder) => {
+      const s = InputState.new({ value: String(value ?? ""), placeholder });
+      s.on("change", (_e, cx) => cx.notify());
+      return s;
+    };
+    this.f = {
+      name: inp(d.name, "Example: Sync the repository"),
+      file: inp(d.file, isWin() ? "Example: ~/scripts/sync.ps1, or empty: Write with an agent… picks it" : "Example: ~/scripts/sync.sh, or empty: Write with an agent… picks it"),
+      filter: inp(d.filter, "Example: D:/MyProjects, herdr-mods"),
+    };
+    this.script = TextareaState.new({
+      value: d.script,
+      placeholder: isWin() ? "Example:\ngit pull --ff-only\nif ($?) { npm install }" : "Example:\ngit pull --ff-only && npm install",
+      rows: 7,
+    });
+    this.script.on("change", (_e, cx) => cx.notify());
+    this.preview = null;
+    this.previewKey = null;
+    this.fileText = undefined;
+    this.fileReadAt = 0;
+    this.writer = null; // the "with an agent" panel of the form
+    this.view = "edit";
+    cx.timer.after(40, () => this.f.name.focus());
+    cx.notify();
+  }
+
+  /** The draft with the values of the fields. */
+  collect() {
+    const d = { ...this.draft };
+    d.name = this.f.name.value().trim();
+    d.file = this.f.file.value().trim();
+    d.filter = this.f.filter.value().trim();
+    d.script = this.script.value().replace(/\s+$/, "");
+    return d;
+  }
+
+  /** A click on a control of the form: the change, then the keyboard to the dialog (Esc works). */
+  set(cx, fn) {
+    fn(this.draft);
+    this.handle.focus();
+    cx.notify();
+  }
+
+
+
+  save(cx) {
+    if (this.demo) { this.back(cx); return; }
+    const d = this.collect();
+    if (Object.keys(errors(d)).length) { this.showErrors = true; cx.notify(); return; }
+    d.updatedAt = Date.now();
+    spawn(cx, async (cx) => {
+      await this.change(cx, (list) => (list.some((x) => x.id === d.id) ? list.map((x) => (x.id === d.id ? d : x)) : [...list, d]));
+      this.back(cx);
+    });
+  }
+
+  /** Opens the "with an agent" panel of the form. mode: "new" | "edit". */
+  openWriter(cx, mode) {
+    const desc = TextareaState.new({
+      value: "",
+      placeholder: mode === "edit" ? "Example: also run the tests after the install" : "Example: pull the branch, then install the npm packages and the plugins of the repository",
+      rows: 4,
+    });
+    desc.on("change", (_e, cx) => cx.notify());
+    const installed = this.agentList.filter((x) => x.installed);
+    const last = shared(KEY.agent);
+    const where = shared(KEY.writerWhere) === "background" ? "background" : "tab";
+    this.writer = { mode, desc, where, agent: installed.some((x) => x.key === last) ? last : installed[0]?.key ?? null, error: "" };
+    cx.timer.after(40, () => desc.focus());
+    cx.notify();
+  }
+
+  /** Saves the action with its script file, starts the agent that writes the file, and closes the dialog. */
+  runWriter(cx) {
+    const w = this.writer;
+    if (!w || w.busy || this.demo) return;
+    const d = this.collect();
+    const what = w.desc.value().trim();
+    const agent = this.agentList.find((x) => x.key === w.agent && x.installed);
+    w.error = !d.name ? "Write a name for the action first." : !what ? "Write what the script must do." : !agent ? "Choose an agent."
+      : w.where === "background" && !headlessOf(agent) ? `${agent.name} has no background mode. Choose In a tab, or another agent.` : "";
+    if (w.error) { cx.notify(); return; }
+    const path = writerPath(d, this.list);
+    d.source = "file";
+    d.file = shortPath(path);
+    d.updatedAt = Date.now();
+    w.busy = true;
+    cx.notify();
+    spawn(cx, (cx) => this.writeWithAgent(cx, w, d, path, what, agent));
+  }
+
+  /** The work of Start (runWriter), with the cx of cx.spawn. */
+  async writeWithAgent(cx, w, d, path, what, agent) {
+    try {
+      await this.change(cx, (list) => (list.some((x) => x.id === d.id) ? list.map((x) => (x.id === d.id ? d : x)) : [...list, d]));
+      // The form shows the saved file from now on (Save after a fault keeps it).
+      this.draft = { ...this.draft, source: "file", file: d.file };
+      this.f.file.set_value(d.file);
+      this.isNew = false; // the action is saved: the form shows Save, not Create
+      setShared(KEY.writerWhere, w.where);
+      if (w.where === "background") {
+        await startWriterBackground({ mode: w.mode, path, what, agent, name: d.name, actionId: d.id });
+        // The form stays: its preview shows the file when the agent writes it, and a toast shows the end.
+        this.writer = null;
+        cx.notify();
+        return;
+      }
+      await startWriter(cx, { mode: w.mode, path, what, agent, space: this.target?.space ?? null, name: d.name });
+    } catch (e) {
+      w.busy = false;
+      w.error = `The agent did not start: ${e?.message ?? e}`;
+      notify({ title: "Quick Actions", body: "The agent did not start. The form shows why.", level: "error", timeout: 8000 });
+      cx.notify();
+      return;
+    }
+    this.close_();
+  }
+
+  /** Back to the list, without saving. */
+  back(cx) {
+    this.view = "list";
+    this.outputKey = null;
+    this.outputText = null;
+    this.draft = null;
+    this.confirmAction = null;
+    this.askFields = null;
+    this.fileText = undefined;
+    this.preview = null;
+    this.previewKey = null;
+    cx.timer.after(40, () => this.search.focus());
+    cx.notify();
+  }
+
+  pickFile(cx) {
+    spawn(cx, async (cx) => {
+      const picked = await pickFiles({ prompt: "Choose script" });
+      const file = picked?.[0];
+      if (!file || !this.f?.file) return;
+      this.f.file.set_value(shortPath(file.replace(/\\/g, "/")));
+      cx.notify();
+    });
+  }
+
+  // ---- views -------------------------------------------------------------------------------
+
+  render(cx) {
+    if (kitOff()) return offView();
+    if (this.part !== "status" && window()?.visible !== false) {
+      if (this.resumeDue) {
+        this.resumeDue = false;
+        this.refresh(cx);
+        if (this.view === "output") this.updateOutput(cx);
+      }
+      if (this.previewDue) { this.previewDue = false; this.updatePreview(cx); }
+    }
+    const t = theme();
+    if (this.part === "status") return this.statusView(t);
+    let body;
+    if (this.view === "edit" && this.draft) body = editView(this, t);
+    else if (this.view === "output") body = outputView(this, t);
+    else if (this.view === "confirm") body = confirmView(this, t);
+    else {
+      const notice = this.listError ?? (!this.demo && !runnerAlive()
+        ? "The Quick Actions item is not in the status bar of this layout. Keys and bar buttons run actions only with it." : null);
+      body = listView(this, t, notice);
+    }
+    return v_flex().id("quick-actions").size_full().min_h(0).bg(t.popover).text_color(t.foreground)
+      .track_focus(this.handle)
+      .on_mouse_down("back", (_e, cx) => {
+        if (this.view === "output") { this.closeOutput(cx); cx.stop_propagation(); return; }
+        if (this.view === "edit" || (this.view === "confirm" && !this.props.confirm)) { this.back(cx); cx.stop_propagation(); }
+      })
+      .on_key_down((e, cx) => this.key(e, cx))
+      .child(body);
+  }
+}

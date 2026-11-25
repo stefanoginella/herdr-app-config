@@ -23,6 +23,10 @@ licensed under the Apache License, Version 2.0:
   bar, pane headers and status bar show `tabs-names`, `pane-names` and
   `status-names`.
 
+The full layout also includes Back and forward from PostHog/herdr and Quick
+Actions from dougcunha/herdr-mods. Each is distributed under its MIT license
+in the corresponding mod folder.
+
 This repository also includes the icons of Material Icon Theme
 (https://github.com/material-extensions/vscode-material-icon-theme, version
 5.40.0), which is licensed under the MIT License:

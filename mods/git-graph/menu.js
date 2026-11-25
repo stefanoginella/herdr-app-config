@@ -15,6 +15,7 @@
 //                                               is "around", "here" or "inside" (of `base`);
 //                                               states: { root: how it stands } (main.js `stands`)
 //   "writer": { writers: [{ id, label }], writer }   who writes commit messages
+//   "checkouts": { name, places }   choose a space using this local branch
 // ↑/↓ move, Enter runs, Esc closes. Drawn like Herdr's own menu.
 //
 // Nothing is run here (ops.js): a choice leaves a request for the panel, or opens a dialog
@@ -52,6 +53,7 @@ function rows(m) {
   const web = (label, url, rule) => ({ label, icon: "open", rule, act: ask({ op: "url", url }) });
   const naming = (n) => () => openOverlay({ mod: MOD, kind: "dialog", width: 440, height: 214, props: { naming: { ...at, ...n } } });
   const confirm = (c) => () => openOverlay({ mod: MOD, kind: "dialog", width: 440, height: 188, props: { confirm: c } });
+  const review = (branch) => ({ label: "Review branch…", icon: "graph", act: ask({ op: "choose-review-base", branch, tab: m.tab }) });
   const origin = m.remotes?.includes("origin") ? "origin" : m.remotes?.[0] ?? null;
   const here = { branch: m.branch ?? null };
   const inGraph = (rule) => ({ label: "Show in Graph", icon: "graph", rule, act: ask({ op: "show", sha: m.sha }) });
@@ -63,10 +65,12 @@ function rows(m) {
     out.push({ label: "New Branch Here…", icon: "branch", rule: true, act: naming({ what: "branch", at: m.sha, go: m.sha === m.head }) });
     out.push({ label: "New Tag Here…", icon: "tag", act: naming({ what: "tag", at: m.sha }) });
     if (m.hub) out.push(web("Open Commit on GitHub", `${m.hub}/commit/${m.sha}`, true));
+    if (m.run?.state === "fail" && m.run.id) out.push({ label: "Show Failed Step…", icon: "graph", act: ask({ op: "failure", run: m.run }) });
     if (m.run) out.push(web(`Open Workflow Run (${m.run.name})`, m.run.url, !m.hub));
   } else if (m.kind === "branch") {
     const current = m.name === m.branch, tip = [[`refs/heads/${m.name}`, m.sha]];
     out.push({ section: m.name });
+    if (m.checkedOut) out.push({ label: "Go to Open Checkout", icon: "open", act: ask({ op: "open-checkout", branch: m.name }) });
     if (!current) out.push({ label: "Switch to Branch", icon: "check", act: ask({ op: "switch", branch: m.name, expect: { refs: tip } }) });
     if (m.upstream && !m.gone) {
       if (current) out.push({ label: `Pull from ${m.upstream}`, icon: "down", act: ask({ op: "pull", expect: here }) });
@@ -79,10 +83,11 @@ function rows(m) {
     } else if (!m.upstream && origin) {
       out.push({ label: `Push to ${origin} and Track`, icon: "up", act: ask({ op: "push", branch: m.name, remote: origin, track: true, expect: { refs: tip } }) });
     }
-    out.push(inGraph(true));
+    out.push(inGraph(true), review("refs/heads/" + m.name));
     out.push({ label: "New Branch from Here…", icon: "branch", act: naming({ what: "branch", at: m.sha, go: current }) });
     out.push(copy("Copy Name", m.name));
     if (m.pr) out.push(web(`Open Pull Request #${m.pr.number}`, m.pr.url, true));
+    if (m.pr?.failure?.id) out.push({ label: "Show Failed Step…", icon: "graph", act: ask({ op: "failure", run: m.pr.failure }) });
     if (!current) out.push({
       label: "Delete Branch…", icon: "trash", rule: true,
       act: confirm({
@@ -97,7 +102,7 @@ function rows(m) {
     out.push(m.local
       ? { label: `Switch to “${m.short}”`, icon: "check", act: ask({ op: "switch", branch: m.short }) }
       : { label: `Switch to It as “${m.short}”`, icon: "check", act: ask({ op: "track", name: m.name }) });
-    out.push(inGraph(true));
+    out.push(inGraph(true), review("refs/remotes/" + m.name));
     out.push(copy("Copy Name", m.name));
     if (m.hub && m.remote === "origin") out.push(web("Open Branch on GitHub", `${m.hub}/tree/${m.short.split("/").map(encodeURIComponent).join("/")}`, true));
   } else if (m.kind === "tag") {
@@ -156,6 +161,12 @@ function rows(m) {
     if (m.unstaged) out.push({ label: "Stage All", icon: "plus", act: ask({ op: "stage", expect: here }) });
     if (m.staged) out.push({ label: "Unstage All", icon: "minus", act: ask({ op: "unstage", expect: here }) });
     out.push({ label: "Stash All", icon: "stash", rule: true, act: ask({ op: "stash", expect: here }) });
+  } else if (m.kind === "checkouts") {
+    out.push({ section: `Open checkout of ${m.name}` });
+    for (const place of m.places) out.push({
+      label: `${place.index} · ${place.name}`, icon: "folder",
+      act: ask({ op: "open-checkout", branch: m.name, space: place.space }),
+    });
   } else if (m.kind === "repos") {
     const name = (dir) => dir.slice(dir.lastIndexOf("/") + 1);
     const row = (r, label) => ({ label, icon: r.root === m.root ? "check" : "folder", state: m.states?.[r.root], act: ask({ op: "repo", to: r.root }) });
@@ -170,6 +181,7 @@ function rows(m) {
   } else if (m.kind === "repo") {
     out.push({ section: m.name ?? "Repository" });
     out.push({ label: "Fetch", icon: "fetch", act: ask({ op: "fetch" }) });
+    if (m.branch) out.push(review("refs/heads/" + m.branch));
     if (m.head) out.push({ label: "New Branch…", icon: "branch", act: naming({ what: "branch", at: m.head, go: true }) });
     if (m.hub) out.push(web("Open on GitHub", m.hub, true));
   }

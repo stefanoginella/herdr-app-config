@@ -21,8 +21,10 @@
 //   { op: "discard", path }                      the file's changes, staged ones too, kept as a stash
 //   { op: "commit", message, all }               all: stage everything first
 //   { op: "copy", text }   { op: "url", url }   { op: "edit", path }   { op: "show", sha }
+//   { op: "failure", run }                        opens the failed run's read-only inspector
 //   { op: "repo", to }   { op: "writer", id }    the panel's own (main.js): no program is run,
 //                                                or none on the repository
+//   { op: "open-checkout", branch, space? }      navigate to a terminal already on that branch
 //
 // `expect` is { branch?, refs?: [[name, sha]] }: the branch HEAD is on (null: detached) and
 // what names must still lead to. The panel shows what was true a moment ago, and an agent may

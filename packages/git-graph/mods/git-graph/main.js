@@ -18,11 +18,14 @@ import { v_flex, h_flex, TextareaState, Textarea, Scrollbar, v_virtual_list, Vir
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, openOverlay, nextCommand, run, shared, setShared, layout, checking, window as app } from "herdr";
 import Menu, { any, height } from "./menu.js";
 import Naming from "./naming.js";
+import ReviewBase from "./review-base.js";
 import Confirm from "./confirm.js";
+import Failure from "./failure.js";
 import * as ops from "./ops.js";
 import * as hub from "./hub.js";
 import * as git from "./git.js";
 import * as write from "./write.js";
+import * as checkout from "./checkout.js";
 import { layout as lanes, TOP, MID } from "./lanes.js";
 
 const MOD = "git-graph";
@@ -122,7 +125,7 @@ export default class GitPanel extends View {
   init(_props, cx) {
     // Opened by itself as a popup or a dialog: the menu, the name prompt, the question.
     const p = props();
-    const Other = p?.menu ? Menu : p?.naming ? Naming : p?.confirm ? Confirm : null;
+    const Other = p?.reviewBase ? ReviewBase : p?.failure ? Failure : p?.menu ? Menu : p?.naming ? Naming : p?.confirm ? Confirm : null;
     if (Other) {
       this.other = new Other();
       this.other.init(cx);
@@ -493,11 +496,32 @@ export default class GitPanel extends View {
   }
 
   async act(r, cx) {
+    if (r.op === "failure") {
+      const repo = hub.runRepo(r.run, this.hub?.repo?.url);
+      if (repo) openOverlay({ mod: MOD, kind: "window", key: "git-graph.failure", width: 0.65, height: 0.67,
+        props: { failure: { root: r.root, on: r.on, repo, run: r.run } } });
+      else if (/^https:\/\//.test(r.run?.url || "")) cx.open_url(r.run.url);
+      return;
+    }
     if (r.op === "copy") { cx.write_to_clipboard(String(r.text ?? "")); this.say("Copied"); return; }
     if (r.op === "url") { if (/^https:\/\//.test(r.url ?? "")) cx.open_url(r.url); return; }
     if (r.op === "edit") { this.edit(r.path); return; }
+    if (r.op === "choose-review-base") {
+      const refs = [...this.heads.map((h) => "refs/heads/" + h.name), ...this.remotes.map((h) => "refs/remotes/" + h.name)];
+      const preferred = ["refs/remotes/origin/main", "refs/heads/main", "refs/remotes/origin/master", "refs/heads/master"];
+      const choices = [...new Set([...preferred.filter((ref) => refs.includes(ref)), ...refs])];
+      openOverlay({ mod: MOD, kind: "dialog", width: 430, height: 360, props: { reviewBase: {
+        root: r.root, on: r.on, tab: r.tab, branch: r.branch, refs: choices,
+      } } });
+      return;
+    }
+    if (r.op === "review-branch") {
+      this.pane(DIFF, { root: this.root, source: { kind: "branch", branch: r.branch, base: r.base } }, r.tab);
+      return;
+    }
     if (r.op === "show") { this.go(r.sha, true); return; }
     if (r.op === "repo") { this.choose(r.to); this.refresh(cx); return; }
+    if (r.op === "open-checkout") { await this.openCheckout(r, cx); return; }
     if (r.op === "writer") { this.writer = write.writer(r.id).id; this.remember("writer", this.writer); return; }
     if (this.busy) { this.note = { error: "Something is still running: try again in a moment", at: Date.now() }; return; }
     this.busy = r.op; this.busyAt = Date.now(); this.note = null;
@@ -521,6 +545,24 @@ export default class GitPanel extends View {
   say(text) { this.note = { text, at: Date.now() }; }
 
   current() { return this.heads.find((h) => h.name === this.status.branch) ?? null; }
+
+  async openCheckout(r, cx) {
+    const tab = focused()?.tab, key = this.key();
+    this.checkoutRequest = r;
+    this.say("Looking for open checkouts…");
+    cx.notify();
+    try {
+      const places = await checkout.find(r);
+      if (this.checkoutRequest !== r || this.key() !== key || focused()?.tab !== tab) return;
+      if (!places.length) { this.say("No open terminal is in this branch’s checkout."); return; }
+      this.note = null;
+      if (places.length > 1) { this.menu({ kind: "checkouts", name: r.branch, places }); return; }
+      run("tab.select", { id: places[0].tab });
+      run("pane.focus", { pane: places[0].pane });
+    } catch (e) {
+      if (this.checkoutRequest === r && this.key() === key) this.note = { error: String(e?.message ?? e), at: Date.now() };
+    }
+  }
 
   pull(cx) {
     const h = this.current();
@@ -625,14 +667,15 @@ export default class GitPanel extends View {
   }
 
   menu(m) {
-    const all = { ...this.about(), ...m };
+    const all = { ...this.about(), tab: focused()?.tab, ...m };
     if (this.root && any(all)) openOverlay({ mod: MOD, kind: "popup", width: m.kind === "repos" ? 360 : 268, height: height(all), props: { menu: all } });
   }
 
   // The pane of `mod` in the focused tab takes what was left for it in shared state, or one
   // is split in beside the focused pane.
-  pane(mod, ask) {
-    const f = focused(), tab = f?.tab;
+  pane(mod, ask, targetTab) {
+    const f = focused(), tab = targetTab ?? f?.tab;
+    if (targetTab && targetTab !== f?.tab) return;
     if (!tab || !this.root) return;
     const here = panes().filter((p) => p.tab === tab), there = here.find((p) => p.mod === mod);
     const beside = here.find((p) => p.pane === f.pane) ?? here[0];
@@ -727,8 +770,8 @@ export default class GitPanel extends View {
     return el;
   }
 
-  graphRow(i, t) {
-    const c = this.commits[i], row = this.rows[i], work = c.sha === WORK;
+  graphRow(c, row, t) {
+    const work = c.sha === WORK;
     const selected = work ? this.sel?.kind === "work" : this.sel?.kind === "commit" && this.sel.sha === c.sha;
     const pills = this.pills.get(c.sha) ?? [], runState = this.hub?.runs?.[c.sha]?.state;
     const el = h_flex().w_full().h(ROW).flex_none().pr(10).gap(6).items_center().when(selected, (e) => e.bg(t.selected))
@@ -752,19 +795,25 @@ export default class GitPanel extends View {
   }
 
   graph(t) {
-    const n = this.commits.length;
+    // A previous list can ask for its rows while a checkout jump loads a shorter history.
+    // Its count, keys and lane geometry must all come from the same read.
+    const commits = this.commits, rows = this.rows, n = commits.length, root = this.root, on = this.on;
     if (!n) return div().flex_1().min_h(0).p(14).text_color(t.dim).child(this.error ?? (this.loading ? "Reading the repository…" : "No commits yet"));
     return v_flex().flex_1().min_h(0)
       // The wheel near the end reads the next page; the "Load more" row is there as well.
       .child(div().flex_1().min_h(0).relative()
         .on_scroll_wheel((_e, cx) => { if (this.nearEnd()) this.loadMore(cx); })
-        .child(v_virtual_list("git-graph", n, ROW, (i) => this.commits[i].sha, (range) => {
+        .child(v_virtual_list("git-graph", n, ROW, (i) => commits[i].sha, (range) => {
           const out = [];
-          for (let i = range.start; i < range.end; i++) out.push(this.graphRow(i, t));
+          for (let i = range.start; i < Math.min(n, range.end); i++) out.push(this.graphRow(commits[i], rows[i], t));
           return out;
         }).track_scroll(this.scroll).size_full()
-          .on_item_click((sha, cx) => { this.pick(sha === WORK ? { kind: "work" } : { kind: "commit", sha }); cx.notify(); })
+          .on_item_click((sha, cx) => {
+            if (root !== this.root || on !== this.on || !this.index.has(sha) && sha !== WORK) return;
+            this.pick(sha === WORK ? { kind: "work" } : { kind: "commit", sha }); cx.notify();
+          })
           .on_item_secondary_click((sha) => {
+            if (root !== this.root || on !== this.on) return;
             if (sha === WORK) return this.menu({ kind: "work", staged: this.status.staged.length, unstaged: this.status.unstaged.length });
             const c = this.commits[this.index.get(sha)];
             if (c) this.menu({ kind: "commit", sha, subject: c.subject, run: this.hub?.runs?.[sha] ?? null });
@@ -866,6 +915,10 @@ export default class GitPanel extends View {
   // A pull request's number, with the state of its checks.
   pr(t, pr) {
     return h_flex().flex_none().gap(3).items_center().text_size(10.5).text_color(pr.draft ? t.dim : t.muted)
+      .when(Boolean(pr.failure), (el) => el.id(`ci-pr-${pr.number}`).cursor_pointer()
+        .tooltip(pr.failure.id ? "Show failed step" : "Open failed check")
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); this.ask({ op: "failure", run: { ...pr.failure, url: pr.failure.url || pr.url } }, cx); }))
       .child(div().child(`#${pr.number}`))
       .when(Boolean(pr.checks), (e) => e.child(div().w(6).h(6).rounded(3).bg(checkColor(t, pr.checks))));
   }
@@ -1054,8 +1107,8 @@ export default class GitPanel extends View {
         .when(Boolean(rest), (e) => e.child(div().text_size(12).text_color(t.muted).child(rest.length > 1200 ? `${rest.slice(0, 1200)}…` : rest)))
         .child(h_flex().gap(6).items_center().text_size(11).text_color(t.dim)
           .child(div().flex_1().min_w(0).truncate().child(`${c.author} · ${git.when(c.time)}`))
-          .when(Boolean(runInfo), (e) => e.child(h_flex().id("git-run").flex_none().gap(4).items_center().cursor_pointer().hover((x) => x.text_color(t.foreground)).tooltip(`${runInfo?.name}: open the workflow run`)
-            .on_click((_e, cx) => this.ask({ op: "url", url: runInfo.url }, cx))
+          .when(Boolean(runInfo), (e) => e.child(h_flex().id("git-run").flex_none().gap(4).items_center().cursor_pointer().hover((x) => x.text_color(t.foreground)).tooltip(`${runInfo?.name} · ${runInfo?.state === "fail" ? "Show failed step" : "Open workflow run"}`)
+            .on_click((_e, cx) => this.ask(runInfo.state === "fail" ? { op: "failure", run: runInfo } : { op: "url", url: runInfo.url }, cx))
             .child(div().w(6).h(6).rounded(3).bg(checkColor(t, runInfo?.state)))
             .child(div().child(runInfo?.state === "fail" ? "failed" : runInfo?.state === "running" ? "running" : "passed"))))
           .child(h_flex().id("git-sha").flex_none().gap(3).items_center().cursor_pointer().hover((x) => x.text_color(t.foreground)).tooltip("Copy the commit ID")

@@ -184,14 +184,47 @@
           "gap": 8
         },
         {
-          "id": "status",
-          "type": "block",
-          "content": {
-            "mod": "status-names"
-          },
+          "id": "status-row",
+          "type": "row",
+          "resizable": false,
           "size": {
             "px": 28
-          }
+          },
+          "children": [
+            {
+              "id": "status",
+              "type": "block",
+              "content": {
+                "mod": "status-names"
+              },
+              "size": {
+                "weight": 1
+              }
+            },
+            {
+              "id": "back-forward",
+              "type": "block",
+              "content": {
+                "mod": "back-forward"
+              },
+              "size": {
+                "px": 76
+              }
+            },
+            {
+              "id": "quick-actions-status",
+              "type": "block",
+              "content": {
+                "mod": "quick-actions",
+                "props": {
+                  "part": "status"
+                }
+              },
+              "size": {
+                "px": 34
+              }
+            }
+          ]
         },
         {
           "id": "search-keys",

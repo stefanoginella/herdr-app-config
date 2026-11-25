@@ -12,7 +12,9 @@ The repository the focused pane is in, in the panel on the right, in place of He
 - **Stage and commit:** the `+` and `−` on a file's row (they show while the pointer is on it) stage and unstage it; the same in the headings do it for all. Type a message and press Cmd+Enter, or the Commit button. Enter is a new line: the field grows for a body. With nothing staged, everything is committed.
 - **Have the message written:** the sparkle at the right of the message field asks `claude -p` or `codex exec` for it: a Conventional Commit heading and a body, in the style of the repository's earlier commits. It takes a few seconds, and what comes back is in the field to edit. Right-click the sparkle to choose who writes: Claude (Haiku or Sonnet) or Codex. See [below](#the-message-writer) for what is sent.
 - **A commit:** click it to read its message and see its files below. Click a file to see its diff in the [diff pane](git-diff.md).
+- **Review a branch:** right-click a local or remote branch in Refs, choose **Review branch…**, then pick the base. The [diff pane](git-diff.md) opens the committed comparison and remembers the last revision you mark reviewed. The repository menu also offers this for the checked-out branch.
 - **Refs:** the other view lists branches, each remote's branches, tags and stashes. A branch shows how far it is ahead and behind its upstream. Click one to see its commit below; double-click a branch to switch to it; right-click, Show in Graph, to go to it there. The mouse's back button goes back to the graph.
+- **Go to Open Checkout** appears in the right-click menu of a local branch that is checked out. It focuses a terminal already working on that branch on the repository’s machine. When several spaces qualify, pick one by name. When no space has it open, the panel says so.
 - **Fetch, pull, push:** the three buttons in the header, with how many commits wait in each direction. Pull is fast-forward only. Push is never forced, and a branch with no upstream is pushed to `origin` and starts tracking it.
 - **Right-click** a commit, a branch, a tag, a stash or a file for the rest: new branch or tag here, switch, fast-forward, push, delete a branch or a tag, apply or drop a stash, open the file in the [editor](file-editor.md), copy an ID, a name or a path.
 - **Stashes:** "Stash all" in the changes list puts everything uncommitted away, untracked files too. A stash shows its files like a commit, with Apply and Pop.
@@ -20,6 +22,10 @@ The repository the focused pane is in, in the panel on the right, in place of He
 - **GitHub:** when the repository is on GitHub and [`gh`](https://cli.github.com) is installed and logged in, a branch shows its open pull request's number with the state of its checks, a commit shows a dot for its workflow run (green, red, or yellow while it runs), and a tag says when it is a release. The menus open them on GitHub. It is read once a minute while the panel is shown, more often while a workflow runs. Without `gh` there are simply no marks.
 
 What the panel never does: rebase, merge, cherry-pick, reset, force push or delete a branch that is not merged. Those stay in a terminal. While a rebase or a merge is under way it only looks, and says so.
+
+Click **failed** in a commit's details, or a red pull request check in Refs, to inspect a GitHub Actions failure. The commit and branch menus also offer **Show Failed Step…**. The window opens on the failed job, shows its failed step names and fetches their log. Select another failed job to inspect it. **Copy log** copies the displayed excerpt (up to the last 160 lines and 32 KiB). **Open on GitHub** opens the original run or check, including when a log has expired. Checks from other providers open at their own link.
+
+![A failed test step and its copyable output](images/failed-ci.webp)
 
 Before anything is changed the panel checks that what it showed is still true: that HEAD is on the same branch, that the branch or the stash clicked is still the same commit. If an agent moved something in between, nothing is done and the panel says why.
 

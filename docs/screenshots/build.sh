@@ -38,6 +38,14 @@ cat > "$DEMO/bin/gh" <<X
 #!/bin/sh
 echo "gh \$* (\$PWD)" >> $DEMO/stub.log
 case "\$PWD" in $R*) ;; *) exit 1 ;; esac
+if [ "\$1 \$2" = "run view" ]; then
+  case " \$* " in
+    *" --json jobs "*) cat "$DEMO/gh/jobs.json" ;;
+    *" --log-failed "*) cat "$DEMO/gh/failed.log" ;;
+    *) exit 1 ;;
+  esac
+  exit
+fi
 case "\$1" in repo|pr|run|release) cat $DEMO/gh/\$1.json ;; *) exit 1 ;; esac
 X
 chmod +x "$DEMO"/bin/*
@@ -65,6 +73,14 @@ cp "$REPO/keys.json" "$A/keys.json"
 cp "$REPO/layouts/main-folders.json" "$A/layouts/"
 (cd "$REPO" && git ls-files -co --exclude-standard mods | rsync -a --files-from=- "$REPO/" "$A/")
 cp -R "$SHOTS/stage" "$A/mods/stage"
+mkdir -p "$A/data"
+cat > "$A/data/quick-actions.json" <<'X'
+{"actions":[
+  {"id":"site-tests","name":"Run PHP tests","script":"ddev exec vendor/bin/pest","where":"tab","filter":"nimbus-web","icon":"play"},
+  {"id":"site-logs","name":"Follow web logs","script":"ddev logs -f","where":"tab","filter":"nimbus-web","icon":"terminal"},
+  {"id":"project-info","name":"Describe the project","script":"ddev describe","where":"tab","icon":"server"}
+]}
+X
 # The pictures' own settings: this setup's, with a font the fake home has, one zoom to start from,
 # and nothing that makes a sound or reports.
 py - "$REPO/settings.json" "$A/settings.json" <<'P'
@@ -395,10 +411,14 @@ u = "https://github.com/example/herdr-app"
 json.dump([{"number": 42, "title": "Editor minimap", "headRefName": "feat/editor-minimap", "headRefOid": pr, "isDraft": False, "isCrossRepository": False,
             "url": u + "/pull/42", "statusCheckRollup": [{"status": "COMPLETED", "conclusion": "SUCCESS"}]}], open(out + "/pr.json", "w"))
 st = [("in_progress", ""), ("completed", "success"), ("completed", "success"), ("completed", "failure"), ("completed", "success")]
-runs = [{"headSha": s, "status": a, "conclusion": b, "workflowName": "check", "url": u + "/actions/runs/%d" % i} for i, (s, (a, b)) in enumerate(zip(m, st))]
+runs = [{"databaseId": i, "headSha": s, "status": a, "conclusion": b, "workflowName": "check", "url": u + "/actions/runs/%d" % i} for i, (s, (a, b)) in enumerate(zip(m, st), 1)]
 runs.append({"headSha": pr, "status": "completed", "conclusion": "success", "workflowName": "check", "url": u + "/actions/runs/9"})
 json.dump(runs, open(out + "/run.json", "w"))
 P
+cat > "$DEMO/gh/jobs.json" <<'X'
+{"jobs":[{"databaseId":107,"name":"Unit tests","status":"completed","conclusion":"failure","steps":[{"number":1,"name":"Checkout","conclusion":"success"},{"number":2,"name":"Install dependencies","conclusion":"success"},{"number":3,"name":"Run tests","conclusion":"failure"}]}]}
+X
+printf 'Unit tests\tRun tests\t%s\n' 'FAIL initials.test.mjs' 'Expected "NH", received "N".' '1 test failed, 18 passed.' > "$DEMO/gh/failed.log"
 
 # ---- usage: a year of fake sessions, so that the sidebar's widget has something to say from the start ----
 node "$SHOTS/gen-usage.mjs" "$DEMO/home"

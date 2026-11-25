@@ -1,6 +1,6 @@
 # Git Diff
 
-Review a commit, stash or working tree beside the terminal. Mark a file viewed and move straight to the next unread change.
+Review a branch, commit, stash or working tree beside the terminal. Mark a file viewed and move straight to the next unread change.
 
 ![A side-by-side diff with word highlights and a viewed file](preview.png)
 
@@ -12,13 +12,15 @@ Put a file list on the left and the patch on the right in the terminal's font si
 
 Click a file in **Git Graph** to open or reuse the current tab's diff pane. J and K move through files, V marks viewed, S changes columns, and W expands the unchanged lines between hunks. O opens the current file in **File Editor**. Remember review progress across restarts and clear a working-tree tick when that file changes again.
 
+A branch review compares the common ancestor of a chosen base with the branch tip. Mark the displayed revision reviewed to open only follow-up commits on the next visit. Keep the whole-branch view available, preserve still-identical file ticks, and show the whole comparison with an explanation after a history rewrite. Click a changed line for a saved note. Show its original revision and excerpt, retain outdated notes, and copy the selected, verified notes as a single message.
+
 ## Built from
 
 Install `mods/git-diff/` alongside the **Git Graph** package, which opens this view. The editor shortcut also needs **File Editor**. The panel sends `git-diff.open` with the tab, repository, machine, source, path and group. Reuse a `git-diff` pane with matching tab props or split one beside the terminal. Run Git on the source machine, parse patch rows once per read and draw them in a virtual list.
 
 ## Watch out
 
-Keep the viewer read-only. Limit the diff to 6,000 lines and bound the work spent matching words. Save the source, mode and viewed marks in local storage. Key working-tree marks to changed content so switching context display does not clear them.
+Keep the viewer read-only. Limit the diff to 6,000 lines and bound the work spent matching words. Save the source, mode and non-branch viewed marks in local storage. Share branch checkpoints, viewed blob pairs and notes by machine, checkout, branch and base. Key working-tree marks to changed content so switching context display does not clear them.
 
 ## Done when
 
