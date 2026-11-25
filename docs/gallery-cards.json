@@ -1,0 +1,69 @@
+{
+  "agent-usage": {
+    "caption": "See how long your Claude and Codex limits will last.",
+    "shots": [
+      {"crop": [73, 71, 1533, 706], "at": [572, 176], "width": 805},
+      {"crop": [884, 847, 721, 151], "at": [726, 514], "width": 492}
+    ]
+  },
+  "space-folders": {
+    "caption": "Group projects and see which spaces need attention.",
+    "shots": [
+      {"crop": [81, 186, 722, 677], "at": [600, 122], "width": 555},
+      {"crop": [876, 341, 722, 367], "at": [811, 478], "width": 449}
+    ]
+  },
+  "agent-inbox": {
+    "caption": "Mark an agent unread and come back to it later.",
+    "shots": [
+      {"crop": [876, 123, 722, 863], "at": [659, 81], "width": 537}
+    ]
+  },
+  "git-graph": {
+    "caption": "Trace branches, stage changes, and commit.",
+    "shots": [
+      {"crop": [121, 71, 686, 915], "at": [591, 100], "width": 515},
+      {"crop": [873, 171, 683, 620], "at": [891, 420], "width": 411}
+    ]
+  },
+  "git-diff": {
+    "caption": "Review changes side by side and mark files viewed.",
+    "shots": [
+      {"crop": [86, 71, 1507, 915], "at": [578, 170], "width": 791}
+    ]
+  },
+  "file-editor": {
+    "caption": "Edit a file beside the terminal that opened it.",
+    "shots": [
+      {"crop": [61, 71, 749, 835], "at": [588, 117], "width": 541},
+      {"crop": [814, 151, 804, 704], "at": [848, 389], "width": 448}
+    ]
+  },
+  "project-search": {
+    "caption": "Find and replace across your whole project.",
+    "shots": [
+      {"crop": [168, 71, 838, 890], "at": [586, 161], "width": 489},
+      {"crop": [1021, 71, 490, 897], "at": [828, 108], "width": 389}
+    ]
+  },
+  "go-to-file": {
+    "caption": "Find a file by name. Jump straight to a line.",
+    "shots": [
+      {"crop": [265, 126, 1149, 797], "at": [579, 157], "width": 691}
+    ]
+  },
+  "file-actions": {
+    "caption": "Move, rename, and undo from the file tree.",
+    "shots": [
+      {"crop": [1021, 71, 490, 904], "at": [794, 85], "width": 422},
+      {"crop": [632, 210, 344, 742], "at": [608, 250], "width": 277}
+    ]
+  },
+  "hide-names": {
+    "caption": "Disguise project names while you share your screen.",
+    "shots": [
+      {"crop": [91, 71, 366, 536], "at": [599, 104], "width": 353},
+      {"crop": [576, 441, 366, 536], "at": [864, 226], "width": 364}
+    ]
+  }
+}
