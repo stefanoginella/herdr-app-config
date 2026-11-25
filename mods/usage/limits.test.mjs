@@ -50,7 +50,6 @@ test('the run-out time is said to the half hour, the same in the verdict and the
   assert.ok(Math.abs(r - b.pace.runsOutAt) <= 15 * 60_000);
   assert.ok(L.verdict({ pct: 70, resets, samples: [] }, now, now).one.includes(`around ${L.clock(r)}`));
   assert.equal(L.short(b, now), `dry ${L.shortWhen(r, now).split(' ')[0]} ~${L.clock(r)}`);
-  assert.equal(L.short(b, now, true), L.short(b, now));
 });
 
 test('a block: the even point, the words, the short words', () => {
@@ -62,7 +61,6 @@ test('a block: the even point, the words, the short words', () => {
   assert.equal(L.paceWords({ diff: 0 }), 'on pace');
   assert.match(L.short(b, now), /^dry \w+ ~\d\d:(00|30)$/);
   assert.equal(L.short(L.limitBlock(100, resets, 7 * DAY, now), now), 'dry until Sun 06:00');
-  assert.equal(L.short(L.limitBlock(100, resets, 7 * DAY, now), now, true), 'dry');
   assert.equal(L.limitBlock(10, now - 1, 7 * DAY, now), null);
   // A five-hour window, by the clock.
   const f = L.limitBlock(30, now + 2.5 * H, 5 * H, now);

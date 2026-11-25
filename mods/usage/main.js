@@ -1,7 +1,7 @@
 // Usage: will the agents' limits last, and what is eating them; then where the usage went over
 // 24 hours, 7 days, 30 days or everything on record; then the year. Opened as a dialog
 // (`mod.open {name: "usage"}`, the palette's "Usage", Cmd+Shift+U). The same mod is the sidebar
-// widget and the status bar's end (props `{ role }`, glance.js). Tokens are the unit; dollars
+// widget (props `{ role: "side" }`, glance.js). Tokens are the unit; dollars
 // are a side figure (Codex's an estimate, marked "≈").
 //
 //   collect()   runs collect.mjs here and on every other machine that is connected, then
@@ -196,9 +196,9 @@ const STEPS = [0.22, 0.4, 0.58, 0.78, 1];
 
 export default class Usage extends View {
   init(_props, cx) {
-    // The sidebar widget and the status bar's end are this mod too.
+    // The sidebar widget is this mod too.
     const role = props()?.role;
-    if (role === "side" || role === "bar") {
+    if (role === "side") {
       this.glance = new Glance();
       this.glance.init(cx, role);
       return;

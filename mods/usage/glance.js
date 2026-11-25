@@ -1,5 +1,5 @@
-// The glances of the limits: the sidebar widget (props `{ role: "side" }`) and the status bar's
-// end (props `{ role: "bar" }`). A click on either opens the dialog.
+// The glance of the limits: the sidebar widget (props `{ role: "side" }`). A click on it opens
+// the dialog.
 //
 // They never run the collector. Every TICK, while Herdr is the active app, they read the
 // statusline's cache file (a few hundred bytes) and its age for Claude; every CODEX_EVERY, one
@@ -12,8 +12,7 @@
 // limit most in danger, after that agent's icon ("both on pace", without one, when two readings
 // are both on pace), the working agents and the last hour's burn. With one reading, the older
 // layout: its name and percentage, its track, its words. The rail: the worst limit's percentage
-// and track. The status bar: each agent's icon and percentage, the worst one's words after its
-// own ("on pace" first, alone, when both are).
+// and track.
 
 import { div, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -166,18 +165,15 @@ export default class Glance {
     return {
       rows: rows.map(row),
       words: dimOf(worst) ? `as of ${WEEKDAYS[new Date(now - this.age).getDay()]} ${clock(now - this.age)}` : both ? "both on pace" : short(worst.b, now),
-      bar: short(worst.b, now, true), level: worst.b.level, old: dimOf(worst), agent: both ? null : worst.agent,
+      level: worst.b.level, old: dimOf(worst), agent: both ? null : worst.agent,
       burn: bu ? `${formatRate(bu.perHour)}%/h` : null,
-      // Each agent's percentage, for the status bar: its weekly one when there is one.
-      each: ["claude", "codex"].map((a) => blocks.find((x) => x.agent === a && (x.label === "Claude" || x.label === "Codex")) ?? blocks.find((x) => x.agent === a))
-        .filter(Boolean).map((x) => ({ agent: x.agent, pct: Math.round(x.b.pct), old: dimOf(x) })),
     };
   }
 
   render(_cx) {
     const t = theme();
     const s = this.shown ?? { none: true };
-    return this.role === "bar" ? this.bar(t, s) : narrow() ? this.rail(t, s) : this.side(t, s);
+    return narrow() ? this.rail(t, s) : this.side(t, s);
   }
 
   open() { run("mod.open", { name: "usage" }); }
@@ -243,23 +239,5 @@ export default class Glance {
     return el
       .child(div().font_family(MONO()).text_size(13).font_semibold().text_color(x.old ? t.dim : levelColor(x.level, t)).child(`${x.pct}%`))
       .child(div().w(28).child(this.track(t, x, 3, 0)));
-  }
-
-  // The status bar's end, drawn as workspace-status draws the rest of the bar: each agent's icon
-  // and percentage, the words of the limit most in danger after its own agent's.
-  bar(t, s) {
-    const el = h_flex().id("usage-bar").size_full().px(14).gap(6).items_center().justify_end()
-      .bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).text_color(t.muted).cursor_pointer()
-      .hover((st) => st.text_color(t.foreground))
-      .on_click(() => this.open());
-    if (s.none) return el.child(div().text_color(t.dim).child("no limit reading"));
-    const tone = s.old ? t.dim : s.level === "ok" ? t.muted : levelColor(s.level, t);
-    if (!s.agent) el.child(div().size(6).rounded(3).flex_none().bg(s.old ? t.dim : levelColor(s.level, t))).child(div().mr(6).text_color(tone).child(s.old ? s.words : s.bar));
-    s.each.forEach((x, i) => {
-      el.child(i > 0 ? agentIcon(x.agent, 12).ml(10) : agentIcon(x.agent, 12))
-        .child(div().text_color(x.old ? t.dim : t.foreground).child(`${x.pct}%`));
-      if (s.agent === x.agent) el.child(div().text_color(t.dim).child("·")).child(div().text_color(tone).child(s.old ? s.words : s.bar));
-    });
-    return el;
   }
 }

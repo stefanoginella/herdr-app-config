@@ -1,12 +1,12 @@
-// A limit reading as words and as a block: the dialog's verdict and limits column, the sidebar
-// widget and the status bar all say it this way. Nothing in it touches the app, so it runs under
+// A limit reading as words and as a block: the dialog's verdict and limits column, and the sidebar
+// widget say it this way. Nothing in it touches the app, so it runs under
 // node (limits.test.mjs).
 //
 //   fromCache()  the statusline's cache file as a weekly reading (the collector's rule)
 //   limitBlock() one limit: its percentage, the even-pace point, the verdict, the reset
 //   danger()     how bad a block is; byDanger() sorts blocks, the most in danger first
 //   judge()      the dialog's two sentences, for the weekly limit most in danger (verdict(): one)
-//   short()      the glances' few words
+//   short()      the sidebar widget's few words
 
 import { pace, verdict as gauge, burn, usableMsBetween, formatBudget, formatRate, WEEK_MS, HOUR_MS, USABLE_DAY_MS, localMidnight } from "./pace.js";
 
@@ -161,15 +161,15 @@ function one(name, week, at, now) {
   return { level: "ok", burst: bu, one: `${name} is on pace to end the week at ${end}%.`, two: burstLine ?? `Using ${using}% a day.` + (budget ? ` Up to ${budget}% would last.` : "") };
 }
 
-// The glances' words: "dry Fri ~11:30", "tight: on pace for 97%", "on pace for 86%",
-// "dry until Sun 06:00". `bar`: the status bar's shorter set.
-export function short(b, now, bar = false) {
-  if (!b) return bar ? "no reading" : "No reading yet";
+// The sidebar widget's words: "dry Fri ~11:30", "tight: on pace for 97%", "on pace for 86%",
+// "dry until Sun 06:00".
+export function short(b, now) {
+  if (!b) return "No reading yet";
   const p = b.pace;
-  if (p?.state === "out") return bar ? "dry" : `dry until ${shortWhen(b.resets, now)}`;
+  if (p?.state === "out") return `dry until ${shortWhen(b.resets, now)}`;
   if (p?.runsOutAt) { const w = shortWhen(dryAt(p.runsOutAt), now).split(" "); return `dry ${w[0]} ~${w[1]}`; }
-  if (b.level === "tight") return bar ? "tight" : `tight: on pace for ${Math.round(p.projected)}%`;
-  return bar ? "on pace" : `on pace for ${Math.round(p?.projected ?? b.pct)}%`;
+  if (b.level === "tight") return `tight: on pace for ${Math.round(p.projected)}%`;
+  return `on pace for ${Math.round(p?.projected ?? b.pct)}%`;
 }
 
 // Theme color of a level.
