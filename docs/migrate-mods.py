@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -105,6 +106,11 @@ def migrate(home, apply):
     records = json.loads((home / registry).read_text()) if (home / registry).exists() else {}
     original_records = json.dumps(records, sort_keys=True)
     packages = records.get("packages", {})
+    remote = subprocess.run(["git", "-C", str(ROOT), "remote", "get-url", "origin"],
+                            capture_output=True, text=True).stdout.strip()
+    origin = re.search(r"github\.com[/:]([^/:]+)/(herdr-powertools|herdr-app-config)(?:\.git)?/?$", remote, re.I)
+    source = origin.group(1) + "/herdr-powertools" if origin else None
+    previous = origin.group(1) + "/herdr-app-config" if origin else None
     names = {}
     writes = {}
     archive = []
@@ -128,7 +134,7 @@ def migrate(home, apply):
         if rec:
             if rec.get("pin") or rec.get("branch") or rec.get("renamed") or rec.get("path") != src.as_posix():
                 raise ValueError(f"Review the pinned, branch-specific or renamed herdr-pkg record for {old} before migrating.")
-            if rec["source"].split("/")[-1] not in {"herdr-app-config", "herdr-powertools"} or new_key in packages:
+            if not source or rec["source"] not in {previous, source} or new_key in packages:
                 raise ValueError(f"Conflicting herdr-pkg source or destination for {old}.")
         legacy_code = {}
         if (home / src).is_dir():
@@ -163,19 +169,17 @@ def migrate(home, apply):
             archive.append(data)
         if rec:
             packages.pop(old_key)
-            owner = rec["source"].split("/")[0]
-            packages[new_key] = dict(rec, name=new, path=dst.as_posix(), source=owner + "/herdr-powertools",
+            packages[new_key] = dict(rec, name=new, path=dst.as_posix(),
                                      files=expected, modified=[], commit=head)
             packages[new_key].pop("conflict", None)
 
-    if not names:
-        print("No Power Tools mods to migrate.")
-        return
     for path in (home / "layouts").glob("*.json"):
         change_json(path.relative_to(home), lambda obj: layout(obj, names))
     change_json(Path("windows.json"), lambda obj: layout(obj, names))
     change_json(Path("keys.json"), lambda obj: keymap(obj, names))
     for rec in packages.values():
+        if origin and origin.group(2) == "herdr-powertools" and rec.get("source") == previous:
+            rec["source"] = source
         for binding in rec.get("keys", []):
             binding["action"] = action(binding["action"], names)
             binding["section"] = next(iter(keymap({binding["section"]: {}}, names)))
