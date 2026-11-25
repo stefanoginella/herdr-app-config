@@ -174,6 +174,7 @@ export default class Spaces extends View {
     this.stackMap = {}; // space -> its stacks, as last drawn
     this.acting = {}; // stack id -> "starting" | "stopping", while that runs
     this.hot = null; // "<space>:<stack|dev>": the stack button the pointer is on
+    this.hotFolder = null; // the folder whose header the pointer is on: its + shows
     this.pollStacks(cx, true);
     cx.timer.every(2000, (cx) => this.pollStacks(cx));
     // Refresh only when the refs could have changed (see `due`).
@@ -777,8 +778,35 @@ export default class Spaces extends View {
     });
   }
 
+  // The folder header's +: a new space in that machine's home folder, filed straight into the folder.
+  // Through `herdr-app do`, which says the new space's id (`run()` says nothing), so the space filed is
+  // the one made here, not whichever new space shows up next. The folder unfolds so it is seen.
+  newSpaceIn(f, cx) {
+    this.change((m) => model.setFolded(m, f.id, false));
+    cx.spawn(async (cx) => {
+      try {
+        const on = f.on ?? null;
+        const dir = on
+          ? (await exec("sh", ["-c", 'printf %s "$HOME"'], { on, timeout: 15000 })).stdout.trim()
+          : home();
+        if (!dir) throw new Error(`no home folder on ${on}`);
+        const r = await exec("herdr-app", ["do", "space.new", "--folder", dir, "--machine", on ?? ""], { timeout: 30000 });
+        let said = null;
+        try { said = JSON.parse(r.stdout); } catch {}
+        if (!said?.space) throw new Error(said?.error || r.stderr.trim() || "no space was made");
+        // A space on another machine is known by "<machine>/<id>" here.
+        const id = on && model.machineOf(said.space) === null ? `${on}/${said.space}` : said.space;
+        this.change((m) => model.moveSpace(m, id, { folder: f.id }));
+      } catch (e) {
+        notify({ title: "New space failed", body: String(e?.message ?? e), level: "error" });
+      }
+      cx.notify();
+    });
+  }
+
   // A folder's header: click folds, drag reorders it, a space dropped on it goes in (on its top
   // edge: before it). Folded, it speaks for its spaces: how many, and a dot when one needs you.
+  // Hovered (and nothing dragged), a + makes a new space in it.
   folderRow(f, inside, t, collapsed) {
     const d = this.drag, o = this.over;
     const aimed = o?.on === "folder" && o.id === f.id;
@@ -836,11 +864,30 @@ export default class Spaces extends View {
       })
       .on_mouse_up("left", (_e, cx) => this.release(cx, (d) => { if (d.kind === "folder" && d.id === f.id) toggle(); }))
       .on_mouse_down("right", open)
+      .on_hover((hovered, cx) => {
+        const next = hovered ? f.id : this.hotFolder === f.id ? null : this.hotFolder;
+        if (next !== this.hotFolder) { this.hotFolder = next; cx.notify(); }
+      })
       .child(h_flex().size(18).flex_none().items_center().justify_center()
         .child(svg("mods/workspace-chrome/folder.svg").size(14).flex_none().text_color(active ? t.muted : t.dim)))
       .child(div().flex_1().min_w(0).truncate().font_medium().child(f.name))
       .when(Boolean(urgent), (el) => el.child(div().flex_none().text_color(tone(t, urgent)).child(glyph(urgent))))
       .when(f.folded && inside.length > 0, (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(String(inside.length))))
+      .when(this.hotFolder === f.id && !d, (el) => el.child(h_flex()
+        .id(`folder-new-${f.id}`)
+        .size(18)
+        .mx(-3)
+        .flex_none()
+        .rounded(4)
+        .items_center()
+        .justify_center()
+        .text_color(t.dim)
+        .hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .tooltip(f.on ? `New space in ${f.name}, on ${f.on}` : `New space in ${f.name}`)
+        // Its own press: the row's would begin a drag, and the release would fold the folder.
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); this.newSpaceIn(f, cx); })
+        .child(svg("mods/workspace-chrome/plus.svg").size(12))))
       .child(svg(`mods/workspace-chrome/chevron-${f.folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim));
   }
 
