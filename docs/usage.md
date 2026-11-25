@@ -1,4 +1,4 @@
-# Usage
+# Agent Usage
 
 How much of the AI agents' limits is used, whether each will last the week, and where the usage went: for Claude Code and Codex, on this Mac and every connected machine. Cmd+Shift+U opens it (or "Usage" in the command palette), and a widget above Spaces shows the same readings at a glance.
 
@@ -32,13 +32,13 @@ Above Spaces: each weekly limit as a bar with its even pace, and the verdict in 
 
 ## Keys
 
-`1` to `4` choose the range, `r` reads again, `h` [hides names](hide-names.md), and Escape clears the project filter, then closes. `cmd-shift-u` is in `keys.json` under `global` (`mod.open:usage`). More commands can be bound: `usage.refresh`, `usage.day`, `usage.week`, `usage.month`, `usage.all`, `usage.names`, `usage.claude` and `usage.codex`.
+`1` to `4` choose the range, `r` reads again, `h` [hides names](hide-names.md), and Escape clears the project filter, then closes. `cmd-shift-u` is in `keys.json` under `global` (`mod.open:agent-usage`). More commands can be bound: `agent-usage.refresh`, `agent-usage.day`, `agent-usage.week`, `agent-usage.month`, `agent-usage.all`, `agent-usage.names`, `agent-usage.claude` and `agent-usage.codex`.
 
 ## Where the figures come from
 
 It only reads, and it asks the network nothing.
 
-- **Usage:** Claude Code's transcripts and cost records (`~/.claude/projects`) and Codex's sessions (`~/.codex/sessions`), read by one Node script, `mods/usage/collect.mjs`. It needs `node` 18 or later, and uses ripgrep when there is one.
+- **Usage:** Claude Code's transcripts and cost records (`~/.claude/projects`) and Codex's sessions (`~/.codex/sessions`), read by one Node script, `mods/agent-usage/collect.mjs`. It needs `node` 18 or later, and uses ripgrep when there is one.
 - **Limits:** Codex's come from its own session files. Claude's come from the file my statusline writes, `~/.claude/statusline/.usage-cache.json`: without one there is no Claude limit, and the usage still shows.
 - **Other machines:** the same script runs there through Herdr, with nothing installed. A machine that fails, or has no `node`, is shown as unreachable.
 - **Dev containers:** read through `docker`, and counted as their project's.

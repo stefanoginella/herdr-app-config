@@ -1,0 +1,20 @@
+{
+  "place": "none",
+  "title": "Agent Usage",
+  "overlay": {
+    "kind": "dialog",
+    "width": 1280,
+    "height": 0.93
+  },
+  "palette": [
+    {
+      "title": "Agent Usage",
+      "command": "mod.open",
+      "args": {
+        "name": "agent-usage"
+      },
+      "group": "Usage",
+      "words": "limits tokens cost pace dashboard"
+    }
+  ]
+}

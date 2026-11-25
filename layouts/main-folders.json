@@ -28,7 +28,7 @@
             "px": 62
           },
           "content": {
-            "mod": "usage",
+            "mod": "agent-usage",
             "props": {
               "role": "side"
             }
@@ -53,7 +53,7 @@
               "id": "agents",
               "type": "block",
               "content": {
-                "mod": "agents-unread"
+                "mod": "agent-inbox"
               },
               "size": {
                 "weight": 1
@@ -152,7 +152,7 @@
                       "id": "changes",
                       "type": "block",
                       "content": {
-                        "mod": "git-panel"
+                        "mod": "git-graph"
                       }
                     },
                     {

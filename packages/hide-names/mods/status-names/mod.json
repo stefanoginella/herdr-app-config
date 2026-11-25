@@ -1,0 +1,15 @@
+{
+  "place": "none",
+  "cloned_from": {
+    "name": "workspace-status",
+    "version": "0.1.18"
+  },
+  "palette": [
+    {
+      "title": "Hide Names / Show Names",
+      "command": "status-names.toggle",
+      "group": "View",
+      "words": "hide names screenshot privacy alias show fake"
+    }
+  ]
+}

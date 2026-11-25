@@ -1,0 +1,22 @@
+{
+  "global": {
+    "cmd-shift-f": "project-search.open",
+    "f4": "project-search.next",
+    "shift-f4": "project-search.prev"
+  },
+  "mod:file-editor": {
+    "cmd-shift-f": "file-editor.search-project"
+  },
+  "mod:file-editor > Input": {
+    "cmd-shift-f": "file-editor.search-project"
+  },
+  "mod:project-search": {
+    "alt-up": "project-search.older",
+    "alt-down": "project-search.newer"
+  },
+  "mod:project-search > Input": {
+    "down": "project-search.list",
+    "tab": "project-search.tab",
+    "shift-tab": "project-search.back-tab"
+  }
+}

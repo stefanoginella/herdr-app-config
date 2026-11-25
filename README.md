@@ -1,12 +1,14 @@
-# Herdr App Configuration
+# Herdr Power Tools
 
-[Herdr](https://herdr.dev) is a desktop app for terminals and coding agents. This is my setup of it: ten additions for watching the agents' limits, keeping their spaces in folders, and reading, searching, editing and committing code without leaving the window.
+Keep an agent's terminal, the file it is changing, and the Git diff side by side in [Herdr](https://herdr.dev). Install the whole workspace or pick the tools you need.
 
-It is opinionated: everything here follows my own preferences and the way I work. Take all of it or a single mod, fork it, or use it as inspiration.
+![Herdr Power Tools showing a weekly usage forecast, project folders and a Git graph](docs/images/power-tools.webp)
 
-![The Herdr window with this setup: the usage widget, folders of spaces and the agents list on the left, an agent's terminal, the file editor and the Git panel](docs/images/overview.webp)
+**Agent support.** Agent Usage reads Claude Code and Codex, and the optional Git commit-message writer can use either one. The file editor, search, Git tools and space folders work with ordinary terminals. Agent Inbox works with agents whose status Herdr recognizes.
 
-*Every picture here is the real app, run in a sandbox: the projects, sessions and figures are made up.*
+[See the whole window](docs/images/overview.webp) · [Install and update](#install) · [Upgrading an earlier install](#upgrading-an-earlier-install)
+
+*Every picture is the real app in a demo workspace with fictional projects, sessions and figures.*
 
 ## What's here
 
@@ -14,10 +16,10 @@ Each feature has a page with everything it does: every key, limit and edge case.
 
 | Feature | In short | Mods |
 |---|---|---|
-| [Usage](docs/usage.md) | Whether the agents' limits last the week, and where the usage went | `usage` |
+| [Agent Usage](docs/usage.md) | Whether the agents' limits last the week, and where the usage went | `agent-usage` |
 | [Space folders](docs/space-folders.md) | Folders for the Spaces sidebar, with each space's containers and agents | `space-folders` |
-| [Unread agents](docs/unread-agents.md) | "Mark as unread" for the Agents list | `agents-unread` |
-| [Git panel](docs/git-panel.md) | The history as a graph, and everyday git by click | `git-panel` |
+| [Agent Inbox](docs/unread-agents.md) | "Mark as unread" for the Agents list | `agent-inbox` |
+| [Git Graph](docs/git-panel.md) | The history as a graph, and everyday git by click | `git-graph` |
 | [Git diff](docs/git-diff.md) | A diff pane, side by side, with the changed words marked | `git-diff` |
 | [File editor](docs/file-editor.md) | A text editor in a pane, also from a path Cmd-clicked in a terminal | `file-editor`, `editor-links` |
 | [Project search](docs/project-search.md) | Search and replace in every file of the project | `project-search` |
@@ -29,7 +31,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 ## The tour
 
-### Usage
+### Agent Usage
 
 **Will the weekly limit last?** One sentence says so for the limit most at risk, Claude's or Codex's, and a ruler for each limit shows which project is spending it.
 
@@ -53,7 +55,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 [Everything about space folders](docs/space-folders.md)
 
-### Unread agents
+### Agent Inbox
 
 **Mark an agent as unread.** Click the ring on an idle agent's row and it goes back under Done, until you come back to it or it starts working again.
 
@@ -61,7 +63,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 <kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd> to <kbd>9</kbd> jump to the first nine agents, in the order drawn. [Everything about unread agents](docs/unread-agents.md)
 
-### Git panel
+### Git Graph
 
 **The repository you are in, as a graph.** Every branch as lines of commits with what is not committed on top, and a second view of branches, remotes, tags and stashes.
 
@@ -109,7 +111,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 ### Go to file
 
-**Any file, a few letters away.** <kbd>Cmd</kbd>+<kbd>O</kbd>, then some of the name: words in any order, `gp main` finds `git-panel/main.js`, and `:12` goes to a line. With nothing typed, the files opened lately come first.
+**Any file, a few letters away.** <kbd>Cmd</kbd>+<kbd>O</kbd>, then some of the name: words in any order, `gp main` finds `git-graph/main.js`, and `:12` goes to a line. With nothing typed, the files opened lately come first.
 
 ![The Go to File popup with two words typed and the files that match](docs/images/go-to-file.webp)
 
@@ -161,13 +163,54 @@ Commands without a key (folders, the Git panel's, the diff's, more of the editor
 
 ## Install
 
-The quick way: point your AI agent at this README and ask it to install the mods in your Herdr, all of them or only the ones you name. Everything it needs is on this page: the commands below, what each mod needs, and the [keys](#keys) to copy.
+### Install and update with herdr-pkg
+
+Start Herdr once. From a clone of this repository, install the community [herdr-pkg manager](https://github.com/manastalukdar/herdr-pkg#install) if you do not already use it. Sign in with the GitHub CLI for a full install. The file icons alone exceed GitHub's anonymous hourly download quota.
+
+```sh
+git clone https://github.com/manastalukdar/herdr-pkg.git ../herdr-pkg
+python3 ../herdr-pkg/scripts/install.py --no-adopt
+```
+
+Install the collection and select its layout:
+
+```sh
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+pkg="${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/pkg/pkg.py"
+python3 "$pkg" install "$repo" --yes
+herdr-app do layout.switch '{"name":"main-folders"}'
+```
+
+For one feature, use its folder under [packages/](packages), for example `python3 "$pkg" install "$repo/packages/agent-usage" --yes`. Each recipe explains where to place it and which companion tools it opens. Merge any shortcuts the manager reports as already taken.
+
+Already copied a mod? After migrating any older names, use `python3 "$pkg" adopt agent-usage --from "$repo"` to track that installed copy. Run it once per mod or layout you want to follow. The manager can track itself with `python3 "$pkg" adopt pkg --from manastalukdar/herdr-pkg`.
+
+Open **Packages** to check for updates and choose **Update all**, or run `python3 "$pkg" update`. The manager tracks installed mods and layouts. Newly added tools, future shortcut changes and personal settings need separate attention. Its optional daily update indicator needs a layout block with `{"mod":"pkg","props":{"bar":true}}`. Applying an update takes a click or a scheduled invocation of the command.
+
+### Follow the whole configuration with Git
+
+For a fresh setup, clone this repository into `~/.config/herdr-app` before first launch, open Herdr, then select `main-folders`. Update with `git -C ~/.config/herdr-app pull --ff-only`. This also brings in settings, key bindings, newly added mods and documentation. To try it alongside an existing setup, use a separate checkout and point `HERDR_APP_HOME` there when launching Herdr.
+
+### Upgrading an earlier install
+
+The installed IDs changed from `usage` to `agent-usage`, `agents-unread` to `agent-inbox`, and `git-panel` to `git-graph`. Quit Herdr, update the configuration checkout first, and run these commands from it before updating individual packages. The migration needs the repository's Git history.
+
+```sh
+python3 docs/migrate-mods.py
+python3 docs/migrate-mods.py --apply
+```
+
+The first command previews the migration. It updates personal layout references, shortcuts and existing herdr-pkg records, and carries across saved view settings. Backups go under the Herdr home's `data/powertools-migration-…/`. If a copied mod has local code edits, keep a copy of the edited folder outside Herdr, restore the original release's files to the old folder, run the migration, then reapply your edits to the new folder. For a separate Herdr home, pass `--home PATH`. Personal scripts that call an old mod command also need its new ID.
+
+### Copy by hand or ask your agent
+
+Point your agent at this README or a [feature recipe](packages). It can install the full setup or just the tools you name.
 
 By hand: this was built against Herdr 0.1.18. From a clone of this repository, the following adds the mods and the layout that shows them:
 
 ```sh
 cp layouts/main-folders.json ~/.config/herdr-app/layouts/
-for m in space-folders agents-unread files-actions file-editor editor-links project-search go-to-file git-panel git-diff usage tabs-names pane-names status-names; do
+for m in space-folders agent-inbox files-actions file-editor editor-links project-search go-to-file git-graph git-diff agent-usage tabs-names pane-names status-names; do
   cp -R "mods/$m" ~/.config/herdr-app/mods/ && herdr-app check ~/.config/herdr-app/mods/"$m"
 done
 herdr-app do layout.switch '{"name":"main-folders"}'
@@ -178,13 +221,13 @@ Your own layout stays as it was: `layout.switch` goes back to it, and deleting t
 What needs what:
 
 - Copy each mod's folder whole, `mod.json` included: a mod folder Herdr first sees without one is docked into the shown layout by itself.
-- `files-actions`, `project-search`, `go-to-file`, `editor-links` and `git-panel` open files in `file-editor`. `git-panel` needs `git-diff`, which is what a click on a file opens.
-- `project-search` and `go-to-file` need [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`), also on another machine whose project is searched. `usage` needs `node`. The Git panel's GitHub marks need [`gh`](https://cli.github.com), and its message writer `claude` or `codex`.
+- `files-actions`, `project-search`, `go-to-file`, `editor-links` and `git-graph` open files in `file-editor`. `git-graph` needs `git-diff`, which is what a click on a file opens.
+- `project-search` and `go-to-file` need [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`), also on another machine whose project is searched. `agent-usage` needs `node`. The Git panel's GitHub marks need [`gh`](https://cli.github.com), and its message writer `claude` or `codex`.
 - `editor-links` is turned on by the layout's `"link_handlers": ["editor-links"]` (Herdr adds it to a layout of your own the first time it sees the mod).
-- `go-to-file` and the `usage` dialog are in no layout: their keys open them.
-- The three hide names mods, `space-folders`, `agents-unread` and `usage` share the mode: with only some of them, only those hide their names. `status-names` holds the command that switches it.
+- `go-to-file` and the `agent-usage` dialog are in no layout: their keys open them.
+- The three hide names mods, `space-folders`, `agent-inbox` and `agent-usage` share the mode: with only some of them, only those hide their names. `status-names` holds the command that switches it.
 
-For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "agents-unread" }` in the `agents` block, `{ "mod": "files-actions" }` in the `files` block, `{ "mod": "git-panel" }` in the `changes` block, or a block 62 px tall with `{ "mod": "usage", "props": { "role": "side" } }` for the usage widget. `project-search` needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it. Herdr's shipped layouts are read-only, so clone one first:
+For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "agent-inbox" }` in the `agents` block, `{ "mod": "files-actions" }` in the `files` block, `{ "mod": "git-graph" }` in the `changes` block, or a block 62 px tall with `{ "mod": "agent-usage", "props": { "role": "side" } }` for the usage widget. `project-search` needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it. Herdr's shipped layouts are read-only, so clone one first:
 
 ```sh
 herdr-app do layout.clone '{"name":"main","as":"my-layout"}'
@@ -198,4 +241,4 @@ This repository is the app's home folder, `~/.config/herdr-app`, with only the c
 
 ## License
 
-Apache-2.0, see [LICENSE](LICENSE). `mods/space-folders/main.js`, `mods/agents-unread/main.js`, `mods/files-actions/main.js`, `mods/tabs-names/main.js`, `mods/pane-names/main.js`, `mods/status-names/main.js` and `layouts/main-folders.json` are modified copies of files from Herdr, which is also Apache-2.0. The icons in `mods/files-actions/icons/` are Material Icon Theme's, which is MIT. See [NOTICE](NOTICE).
+Apache-2.0, see [LICENSE](LICENSE). `mods/space-folders/main.js`, `mods/agent-inbox/main.js`, `mods/files-actions/main.js`, `mods/tabs-names/main.js`, `mods/pane-names/main.js`, `mods/status-names/main.js` and `layouts/main-folders.json` are modified copies of files from Herdr, which is also Apache-2.0. The icons in `mods/files-actions/icons/` are Material Icon Theme's, which is MIT. See [NOTICE](NOTICE).

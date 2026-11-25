@@ -1,6 +1,6 @@
-# `git-panel`
+# `git-graph`
 
-Notes for agents on the mod in `mods/git-panel/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `mods/git-graph/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 The Git panel, in the place of Herdr's `changes`. It is not a clone. The history as a graph, branches, remotes, tags and stashes, what is not committed, and the everyday actions on them.
 
@@ -51,6 +51,6 @@ The Git panel, in the place of Herdr's `changes`. It is not a clone. The history
 
 ## Trying it
 
-- `git-panel` and `git-diff` can be tried on a scratch repository in windows: `openOverlay({ mod: "git-panel", kind: "window", key, width: 380, height: 760, props: { root } })`, and `openOverlay({ mod: "git-diff", kind: "window", key, props: { tab: "probe" } })` with a `git-diff.open` for that `tab`. A request with the scratch `root` in `git-panel.request` is run by that window. How such a window is closed is under Working here in `AGENTS.override.md`.
+- `git-graph` and `git-diff` can be tried on a scratch repository in windows: `openOverlay({ mod: "git-graph", kind: "window", key, width: 380, height: 760, props: { root } })`, and `openOverlay({ mod: "git-diff", kind: "window", key, props: { tab: "probe" } })` with a `git-diff.open` for that `tab`. A request with the scratch `root` in `git-panel.request` is run by that window. How such a window is closed is under Working here in `AGENTS.override.md`.
 - `write.js` can be tried under `node` with a stub of `herdr` (`exec`, `home`): a real call costs a little of the owner's usage, so make few.
 - `exec` gives a program nothing to read on its input, which `codex exec` needs: with an input left open it waits for it. A test under `node` must close the child's input, or it hangs.

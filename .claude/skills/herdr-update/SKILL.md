@@ -54,7 +54,7 @@ The clones, copied from a shipped file (`grep -l cloned_from mods/*/mod.json lay
 | Clone | `<original>` | Installed copy |
 |---|---|---|
 | `space-folders` | `defaults/mods/spaces/main.js` | `mods/spaces/main.js` |
-| `agents-unread` | `defaults/mods/agents/main.js` | `mods/agents/main.js` |
+| `agent-inbox` | `defaults/mods/agents/main.js` | `mods/agents/main.js` |
 | `files-actions` | `defaults/mods/files/main.js` | `mods/files/main.js` |
 | `tabs-names` | `defaults/mods/tabs/main.js` | `mods/tabs/main.js` |
 | `pane-names` | `defaults/mods/pane/main.js` | `mods/pane/main.js` |
@@ -65,7 +65,7 @@ The shipped mods that other custom mods stand in for. Nothing was copied from th
 
 | Stand-in | `<original>` | Installed copy |
 |---|---|---|
-| `git-panel`, `git-diff` | `defaults/mods/changes/main.js` | `mods/changes/main.js` |
+| `git-graph`, `git-diff` | `defaults/mods/changes/main.js` | `mods/changes/main.js` |
 | `go-to-file` | `defaults/mods/picker/main.js` | `mods/picker/main.js` |
 | `file-editor` | the `files-actions` diff, read again for the preview | |
 

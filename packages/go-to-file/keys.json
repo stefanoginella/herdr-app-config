@@ -1,0 +1,9 @@
+{
+  "global": {
+    "cmd-o": "mod.open:go-to-file"
+  },
+  "mod:go-to-file > Input": {
+    "up": "go-to-file.up",
+    "down": "go-to-file.down"
+  }
+}

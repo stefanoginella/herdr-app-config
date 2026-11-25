@@ -19,7 +19,7 @@
     "cmd-p": "mod.open:picker",
     "cmd-o": "mod.open:go-to-file",
     "cmd-shift-p": "app.palette",
-    "cmd-shift-u": "mod.open:usage",
+    "cmd-shift-u": "mod.open:agent-usage",
     "cmd-shift-h": "status-names.toggle",
     "cmd-,": "app.settings",
     "cmd-d": "pane.split:right",

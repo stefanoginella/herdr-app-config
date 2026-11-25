@@ -1,0 +1,36 @@
+{
+  "place": "none",
+  "title": "Git Graph",
+  "palette": [
+    {
+      "title": "Git: Fetch",
+      "command": "git-graph.fetch",
+      "group": "Git",
+      "words": "remote"
+    },
+    {
+      "title": "Git: Pull",
+      "command": "git-graph.pull",
+      "group": "Git",
+      "words": "remote fast-forward"
+    },
+    {
+      "title": "Git: Push",
+      "command": "git-graph.push",
+      "group": "Git",
+      "words": "remote"
+    },
+    {
+      "title": "Git: Refresh",
+      "command": "git-graph.refresh",
+      "group": "Git",
+      "words": "reload"
+    },
+    {
+      "title": "Git: Write Commit Message",
+      "command": "git-graph.write",
+      "group": "Git",
+      "words": "generate ai commit message"
+    }
+  ]
+}

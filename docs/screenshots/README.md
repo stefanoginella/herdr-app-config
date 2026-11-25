@@ -53,6 +53,8 @@ quit_sandbox            # close the window and stop its core
 - **The window's three buttons** are drawn back in where a card shows the window's top left corner: the system draws them, so a shot has none.
 - **Lossless WebP**, about a third of the same PNG.
 
+The Power Tools cover uses the usage forecast, the expanded Spaces list and the Git graph from the same sandbox shots. Its title sits on the backdrop. Rebuild it with `./make.sh power-tools`, then run `python3 docs/gallery.py` from the repository root to refresh the gallery's PNG previews.
+
 ## Changing a picture, or adding one
 
 1. **Stage it** in a step of `shoot.sh`, and end with `shot <name>`. What can be driven from a shell: any app command (`h`), an overlay with props, and the requests the mods take from shared state (`req`; each mod's notes in `docs/agents/` say which it takes). What can't: typing, hovering, dragging and selecting. A picture that needs one of those can't be taken this way.
@@ -73,7 +75,7 @@ A change to a zoom, to a panel's width or to how a pane is split moves the boxes
 - **The diff pane's side by side switch is a switch.** In a sandbox where the `diff` step already ran, it switches back.
 - **An overlay's `at` is in window pixels**, not in the app's own.
 - **The usage data is made relative to now:** "Burning now" is the last hour, so shoot within a few minutes of `gen-usage.mjs`. The home is given to it as `/var/tmp/...`, not `/private/var/tmp/...`: the dialog files the second under "Other folders".
-- **The demo repository's uncommitted change is written against `mods/git-panel/git.js` as it is now.** When that file's `ago()`, `initials()` or `MONTHS` change, `build.sh` stops and says which: write the demo change again.
+- **The demo repository's uncommitted change is written against `mods/git-graph/git.js` as it is now.** When that file's `ago()`, `initials()` or `MONTHS` change, `build.sh` stops and says which: write the demo change again.
 - **A mod first seen without a `mod.json` is docked into the layout:** `stage/` has one, and goes in whole.
 
 ---

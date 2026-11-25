@@ -316,7 +316,7 @@ commit 9 "Noor Haddad" "docs(file-editor): say why the minimap is not drawn"
 
 # a local branch nobody pushed
 git checkout -q -b feat/usage-export main~1
-w mods/usage/export.js <<'X'
+w mods/agent-usage/export.js <<'X'
 // The shown range as CSV: one line a day and project.
 export const csv = (rows) => rows.map((r) => [r.day, r.project, r.tokens, r.cost ?? ""].join(",")).join("\n");
 X
@@ -336,7 +336,7 @@ git branch -q --set-upstream-to=origin/feat/editor-minimap feat/editor-minimap
 edit_git_js() { # $1: the comment's wording, so that the stash and the working copy differ
   py - "$1" <<'P'
 import sys
-p = "mods/git-panel/git.js"; t = open(p).read()
+p = "mods/git-graph/git.js"; t = open(p).read()
 old = '''  if (!words.length) return "?";
   const first = Array.from(words[0]), last = words.length > 1 ? Array.from(words[words.length - 1]) : [];
   return (first[0] + (last[0] ?? first[1] ?? "")).toUpperCase();'''
@@ -344,7 +344,7 @@ new = '''  if (!words.length) return "?";
   const first = Array.from(words[0]), last = words.length > 1 ? Array.from(words.at(-1)) : [];
   // %s
   return (first[0] + (last[0] ?? first[1] ?? "")).toLocaleUpperCase();''' % sys.argv[1]
-assert old in t, "build: initials() in mods/git-panel/git.js is not as the demo change expects"
+assert old in t, "build: initials() in mods/git-graph/git.js is not as the demo change expects"
 open(p, "w").write(t.replace(old, new))
 P
 }
@@ -352,9 +352,9 @@ edit_git_js 'One word: its first two letters. "robin" is RO, never R alone.'
 t=$((now - 17 * 60)); GIT_AUTHOR_DATE="@$t" GIT_COMMITTER_DATE="@$t" git stash push -q -m "try wider rulers in the usage dialog"
 edit_git_js 'One word gives its first two letters: "robin" is RO, never R alone.'
 py - <<'P'
-p = "mods/git-panel/git.js"; t = open(p).read()
+p = "mods/git-graph/git.js"; t = open(p).read()
 old = 'const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];'
-assert old in t, "build: MONTHS in mods/git-panel/git.js is not as the demo change expects"
+assert old in t, "build: MONTHS in mods/git-graph/git.js is not as the demo change expects"
 t = t.replace(old, 'const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");')
 old = '''  if (s < 86400) return `${Math.floor(s / 3600)}h`;
   if (s < 86400 * 14) return `${Math.floor(s / 86400)}d`;
@@ -363,15 +363,15 @@ old = '''  if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / (86400 * 365))}y`;
 '''
 head = "export function ago(seconds, now = Date.now() / 1000) {\n"
-assert old in t and head in t, "build: ago() in mods/git-panel/git.js is not as the demo change expects"
+assert old in t and head in t, "build: ago() in mods/git-graph/git.js is not as the demo change expects"
 t = t.replace(old, old.replace("86400", "DAY")).replace(head, head + "  const DAY = 86400;\n")
 open(p, "w").write(t)
-p = "mods/git-panel/lanes.js"; t = open(p).read().split("\n")
+p = "mods/git-graph/lanes.js"; t = open(p).read().split("\n")
 t.insert(1, "// A lane that ends is left empty, never taken out: that keeps a passing line straight.")
 open(p, "w").write("\n".join(t))
 P
-git add mods/git-panel/lanes.js
-w mods/git-panel/initials.test.mjs <<'X'
+git add mods/git-graph/lanes.js
+w mods/git-graph/initials.test.mjs <<'X'
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { initials } from "./git.js";

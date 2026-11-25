@@ -1,0 +1,19 @@
+{
+  "place": "none",
+  "title": "Editor",
+  "focusable": true,
+  "palette": [
+    {
+      "title": "Editor: Markdown Preview",
+      "command": "file-editor.preview",
+      "group": "Editor",
+      "words": "markdown render toggle"
+    },
+    {
+      "title": "Editor: Toggle Line Wrap",
+      "command": "file-editor.wrap",
+      "group": "Editor",
+      "words": "soft wrap lines"
+    }
+  ]
+}

@@ -9,6 +9,17 @@
 # The repository itself
 !/.gitignore
 !/README.md
+!/RECIPE.md
+!/preview.png
+!/packages/
+/packages/*/*
+!/packages/*/RECIPE.md
+!/packages/*/preview.png
+!/packages/*/keys.json
+!/packages/*/mods/
+/packages/*/mods/*/*.d.ts
+/packages/*/mods/*/jsconfig.json
+__pycache__/
 !/LICENSE
 !/NOTICE
 
@@ -40,15 +51,15 @@
 !/mods/
 /mods/*
 !/mods/space-folders/
-!/mods/agents-unread/
+!/mods/agent-inbox/
 !/mods/files-actions/
 !/mods/file-editor/
 !/mods/project-search/
-!/mods/git-panel/
+!/mods/git-graph/
 !/mods/git-diff/
 !/mods/go-to-file/
 !/mods/editor-links/
-!/mods/usage/
+!/mods/agent-usage/
 !/mods/tabs-names/
 !/mods/pane-names/
 !/mods/status-names/

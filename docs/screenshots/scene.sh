@@ -46,7 +46,7 @@ req "$(folders_json)" 3
 h layout.hide '{"id":"panel"}'; h layout.resize '{"id":"sidebar","px":290}'
 h space.select "{\"id\":\"$S1\"}"; h tab.select '{"index":1}'; nap 2
 # The editor pane beside the agent's terminal: asked for a file first, then split in.
-stage "[{\"shared\":[\"file-editor.open\",{\"tab\":\"$T1\",\"path\":\"$R/mods/git-panel/git.js\",\"on\":null,\"select\":{\"line\":145,\"start\":2,\"end\":2},\"at\":\"now\"}]},{\"run\":[\"pane.split\",{\"direction\":\"right\",\"mod\":\"file-editor\",\"props\":{\"tab\":\"$T1\"}}]}]"
+stage "[{\"shared\":[\"file-editor.open\",{\"tab\":\"$T1\",\"path\":\"$R/mods/git-graph/git.js\",\"on\":null,\"select\":{\"line\":145,\"start\":2,\"end\":2},\"at\":\"now\"}]},{\"run\":[\"pane.split\",{\"direction\":\"right\",\"mod\":\"file-editor\",\"props\":{\"tab\":\"$T1\"}}]}]"
 nap 1; draw 8; h pane.focus "{\"terminal\":\"$TERM1\"}"; draw 2
 h window.minimize
 
