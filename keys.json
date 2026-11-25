@@ -19,6 +19,7 @@
     "cmd-p": "mod.open:picker",
     "cmd-o": "mod.open:go-to-file",
     "cmd-shift-p": "app.palette",
+    "cmd-shift-u": "mod.open:usage",
     "cmd-,": "app.settings",
     "cmd-d": "pane.split:right",
     "cmd-shift-d": "pane.split:down",
