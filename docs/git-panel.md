@@ -1,4 +1,4 @@
-# Git Graph
+# Git Panel
 
 The repository the focused pane is in, in the panel on the right, in place of Herdr's Changes: the tab bar's Changes button opens it. It follows the pane you are in, on this Mac or another machine.
 

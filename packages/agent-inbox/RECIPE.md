@@ -1,4 +1,4 @@
-# Agent Inbox
+# Mark Agents Unread
 
 Mark an idle agent unread when you want to return to its answer later. It moves to Done in the agents list, where it stays until you revisit it or it starts working again.
 

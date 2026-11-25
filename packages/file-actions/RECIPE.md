@@ -1,6 +1,6 @@
-# File Actions
+# File Explorer
 
-Manage project files from Herdr's Files panel. Drag a file to move it, drop it on a terminal to paste its path, or use the right-click menu to create, rename, duplicate and trash files.
+Browse project files with file-type icons and Git change indicators. Open a file in the editor, start a project search, or manage files with drag and drop and the right-click menu.
 
 ![The file tree and a file's action menu](preview.png)
 

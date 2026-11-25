@@ -6,14 +6,14 @@ Keep your agents, their code and the change you are reviewing in one Herdr windo
 
 ## What you see
 
-Start with a 268 px left sidebar. Under the window chrome put a 62 px usage widget, then spaces grouped into folders and an agent inbox. Keep the 42 px tab bar above the work area. Terminal and mod panes have a 30 px header, an 8 px gap and a softer background when inactive. A resizable 368 px panel on the right switches among Files, Git and Search. A 28 px status bar runs under the work area.
+Start with a 268 px left sidebar. Under the window chrome put a 62 px usage widget, then spaces grouped into folders and the Agents list. Keep the 42 px tab bar above the work area. Terminal and mod panes have a 30 px header, an 8 px gap and a softer background when inactive. A resizable 368 px panel on the right switches among Files, Git and Search. A 28 px status bar runs under the work area.
 
 ## How it behaves
 
 - File spaces into a folder, fold it, or start and stop its project's containers. Mark an idle agent unread to revisit it later. Blocked, done, working and idle agents retain their distinct indicators and keyboard order.
 - Click the usage widget for weekly projections and project costs. Agent Usage and the optional commit-message writer support Claude Code and Codex. File editing, project navigation, Git and the sidebar work with ordinary terminals and Herdr's other agents.
 - Cmd-click a source path or use Cmd+O to open a file. Cmd+Shift+F searches across the project. The editor keeps unsaved drafts and asks before saving over a change. Replacements offer an undo step.
-- Open Changes for Git Graph. Select a commit, stash or working-tree file to read its diff. Review an entire branch from its common ancestor, mark a revision reviewed and copy line notes. The next review can start at that revision. Go to a checked-out branch’s open space or inspect a failed CI step from the panel. Stage and commit in the panel. Cmd+Shift+H disguises names around the content for screen sharing.
+- Open the Git Panel from the Changes button. Select a commit, stash or working-tree file to read its diff. Review an entire branch from its common ancestor, mark a revision reviewed and copy line notes. The next review can start at that revision. Go to a checked-out branch’s open space or inspect a failed CI step from the panel. Stage and commit in the panel. Cmd+Shift+H disguises names around the content for screen sharing.
 
 ## Built from
 

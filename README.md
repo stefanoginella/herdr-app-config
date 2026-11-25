@@ -4,7 +4,7 @@ Keep an agent's terminal, the file it is changing, and the Git diff side by side
 
 ![Herdr Power Tools showing a weekly usage forecast, project folders and a Git graph](docs/images/power-tools.webp)
 
-**Agent support.** Agent Usage reads Claude Code and Codex, and the optional Git commit-message writer can use either one. The file editor, search, Git tools and space folders work with ordinary terminals. Agent Inbox works with agents whose status Herdr recognizes.
+**Agent support.** Agent Usage reads Claude Code and Codex, and the optional Git commit-message writer can use either one. The file editor, search, Git tools and space folders work with ordinary terminals. You can mark agents unread when Herdr recognizes their status.
 
 [See the whole window](docs/images/overview.webp) · [Install and update](#install) · [Upgrading an earlier install](#upgrading-an-earlier-install)
 
@@ -18,15 +18,15 @@ Each feature has a page with everything it does: every key, limit and edge case.
 |---|---|---|
 | [Agent Usage](docs/usage.md) | Whether the agents' limits last the week, and where the usage went | `agent-usage` |
 | [Space folders](docs/space-folders.md) | Folders for the Spaces sidebar, with each space's containers and agents | `space-folders` |
-| [Agent Inbox](docs/unread-agents.md) | "Mark as unread" for the Agents list | `agent-inbox` |
-| [Git Graph](docs/git-panel.md) | The history as a graph, and everyday git by click | `git-graph` |
+| [Mark Agents Unread](docs/unread-agents.md) | Flag idle agents to come back to later | `agent-inbox` |
+| [Git Panel](docs/git-panel.md) | Commit history, refs, branch review and everyday Git actions | `git-graph` |
 | [Git diff](docs/git-diff.md) | A diff pane, side by side, with the changed words marked | `git-diff` |
 | [File editor](docs/file-editor.md) | A text editor in a pane, also from a path Cmd-clicked in a terminal | `file-editor`, `editor-links` |
 | [Project search](docs/project-search.md) | Search and replace in every file of the project | `project-search` |
 | [Back and forward](docs/back-forward.md) | Return to the tab and pane you left | `back-forward` |
 | [Quick Actions](docs/quick-actions.md) | Run saved commands for the current project | `quick-actions` |
 | [Go to file](docs/go-to-file.md) | Any file of the project, by some of its name | `go-to-file` |
-| [File actions](docs/file-actions.md) | The Files panel with icons, a right-click menu, drag to move and undo | `files-actions` |
+| [File Explorer](docs/file-actions.md) | The Files panel with icons, change marks, drag and drop and search shortcuts | `files-actions` |
 | [Hide names](docs/hide-names.md) | Made-up names around the content, for a screenshot or a screen share | `tabs-names`, `pane-names`, `status-names` |
 
 Also here: `layouts/main-folders.json`, Herdr's default layout showing all of the above, with the panes you're not in faded and the dividers lit on hover; `keys.json` and `settings.json`, my key bindings and settings; notes for coding agents working in this folder (`AGENTS.override.md`, `CLAUDE.md`, `docs/agents/`); and the scripts that take the pictures on this page ([`docs/screenshots/`](docs/screenshots/README.md)).
@@ -57,7 +57,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 [Everything about space folders](docs/space-folders.md)
 
-### Agent Inbox
+### Mark Agents Unread
 
 **Mark an agent as unread.** Click the ring on an idle agent's row and it goes back under Done, until you come back to it or it starts working again.
 
@@ -65,7 +65,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 <kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd> to <kbd>9</kbd> jump to the first nine agents, in the order drawn. [Everything about unread agents](docs/unread-agents.md)
 
-### Git Graph
+### Git Panel
 
 **The repository you are in, as a graph.** Every branch as lines of commits with what is not committed on top, and a second view of branches, remotes, tags and stashes.
 
@@ -120,7 +120,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 [Everything about go to file](docs/go-to-file.md)
 
-### File actions
+### File Explorer
 
 **The Files panel, as a file manager.** Right-click for new, rename, duplicate, copy, paste and Trash, drag to move, and <kbd>Cmd</kbd>+<kbd>Z</kbd> takes back the last move, rename or Trash.
 
@@ -129,8 +129,9 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 - **At a glance:** each type's icon, a dot on folders with changes inside, and the file in the editor highlighted.
 - **To a terminal:** drag a file onto a terminal to paste its path, a quick way to hand it to an agent.
 - **In and out:** drop files in from Finder, or open one in VS Code, Obsidian or Finder.
+- **Search:** the header opens Project Search, and the folder menu can narrow it to that folder.
 
-[Everything about file actions](docs/file-actions.md)
+[Everything about File Explorer](docs/file-actions.md)
 
 ### Hide names
 

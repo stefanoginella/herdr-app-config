@@ -2,6 +2,8 @@
 
 Notes for agents on the mod in `mods/files-actions/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
+The gallery calls this mod File Explorer, and the panel heading is Files.
+
 A clone of Herdr's `files` panel (from version 0.1.18), without its preview (a click on a file opens it in `file-editor`), with file type icons, a dot on folders with git changes inside, a right-click menu (open in VS Code, Obsidian or TextEdit, reveal in Finder, new file and new folder, rename, duplicate, copy and paste through the clipboard, move to the Trash), drag to move or to paste a path in a terminal, files dropped from Finder, and undo.
 
 ## What is where

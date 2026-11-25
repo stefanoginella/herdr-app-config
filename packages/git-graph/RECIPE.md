@@ -1,4 +1,4 @@
-# Git Graph
+# Git Panel
 
 Follow a repository's history across branches, then stage files, write a commit or push from the same panel. Select a commit to read its message and see exactly which files changed.
 

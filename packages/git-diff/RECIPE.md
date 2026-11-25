@@ -10,13 +10,13 @@ Put a file list on the left and the patch on the right in the terminal's font si
 
 ## How it behaves
 
-Click a file in **Git Graph** to open or reuse the current tab's diff pane. J and K move through files, V marks viewed, S changes columns, and W expands the unchanged lines between hunks. O opens the current file in **File Editor**. Remember review progress across restarts and clear a working-tree tick when that file changes again.
+Click a file in the **Git Panel** to open or reuse the current tab's diff pane. J and K move through files, V marks viewed, S changes columns, and W expands the unchanged lines between hunks. O opens the current file in **File Editor**. Remember review progress across restarts and clear a working-tree tick when that file changes again.
 
 A branch review compares the common ancestor of a chosen base with the branch tip. Mark the displayed revision reviewed to open only follow-up commits on the next visit. Keep the whole-branch view available, preserve still-identical file ticks, and show the whole comparison with an explanation after a history rewrite. Click a changed line for a saved note. Show its original revision and excerpt, retain outdated notes, and copy the selected, verified notes as a single message.
 
 ## Built from
 
-Install `mods/git-diff/` alongside the **Git Graph** package, which opens this view. The editor shortcut also needs **File Editor**. The panel sends `git-diff.open` with the tab, repository, machine, source, path and group. Reuse a `git-diff` pane with matching tab props or split one beside the terminal. Run Git on the source machine, parse patch rows once per read and draw them in a virtual list.
+Install `mods/git-diff/` alongside the **Git Panel** package, which opens this view. The editor shortcut also needs **File Editor**. The panel sends `git-diff.open` with the tab, repository, machine, source, path and group. Reuse a `git-diff` pane with matching tab props or split one beside the terminal. Run Git on the source machine, parse patch rows once per read and draw them in a virtual list.
 
 ## Watch out
 

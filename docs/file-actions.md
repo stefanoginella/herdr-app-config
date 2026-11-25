@@ -1,6 +1,6 @@
-# File actions
+# File Explorer
 
-The Files panel, with more to look at and more to do. A click on a file opens it in the [file editor](file-editor.md).
+Browse and manage project files in the Files panel. The tree shows file-type icons and Git change indicators. Click a file to open it in the [file editor](file-editor.md).
 
 ![The Files panel with file type icons, change marks and a right-click menu, beside the editor](images/file-actions.webp)
 

@@ -2,7 +2,7 @@
 
 Notes for agents on the mod in `mods/git-graph/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
-The Git panel, in the place of Herdr's `changes`. It is not a clone. The history as a graph, branches, remotes, tags and stashes, what is not committed, and the everyday actions on them.
+The Git Panel replaces Herdr's `changes` view. Its gallery title and panel heading both read Git Panel. It shows commit history as a graph, branches, remotes, tags, stashes and uncommitted changes, with actions for day-to-day Git work.
 
 ## What is where
 

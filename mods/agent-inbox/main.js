@@ -553,7 +553,7 @@ export default class Agents extends View {
             .flex_none()
             .items_center()
             .justify_between()
-            .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agent Inbox"))
+            .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents"))
             .child(
               div()
                 .id("ag-sort")

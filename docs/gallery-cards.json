@@ -14,13 +14,13 @@
     ]
   },
   "agent-inbox": {
-    "caption": "Mark an agent unread and come back to it later.",
+    "caption": "Put idle agents back under Done so you can revisit them.",
     "shots": [
       {"crop": [876, 123, 722, 863], "at": [659, 81], "width": 537}
     ]
   },
   "git-graph": {
-    "caption": "Trace branches, stage changes, and commit.",
+    "caption": "Browse history and refs, stage changes, and review branches.",
     "shots": [
       {"crop": [121, 71, 686, 915], "at": [591, 100], "width": 515},
       {"crop": [873, 171, 683, 620], "at": [891, 420], "width": 411}
@@ -53,7 +53,7 @@
     ]
   },
   "file-actions": {
-    "caption": "Move, rename, and undo from the file tree.",
+    "caption": "Browse files with icons and Git status. Move, rename, or search.",
     "shots": [
       {"crop": [1021, 71, 490, 904], "at": [794, 85], "width": 422},
       {"crop": [632, 210, 344, 742], "at": [608, 250], "width": 277}

@@ -1,4 +1,4 @@
-# Agent Inbox
+# Mark Agents Unread
 
 Marks an idle agent as unread: it goes back under Done, with the done dot, as a reminder to look at it later.
 

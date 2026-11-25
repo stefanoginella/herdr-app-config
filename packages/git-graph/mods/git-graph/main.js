@@ -847,7 +847,7 @@ export default class GitPanel extends View {
     return v_flex().flex_none().border_b(1).border_color(t.border)
       .child(h_flex().id("git-head").h(42).px(14).gap(6).items_center()
         .on_mouse_down("right", () => this.menu({ kind: "repo", name }))
-        .child(div().font_semibold().child("Git Graph"))
+        .child(div().font_semibold().child("Git Panel"))
         .child(many
           ? h_flex().id("git-repo").flex_shrink(1).min_w(0).h(24).px(6).gap(3).items_center().rounded(6).text_size(11.5).text_color(t.muted).cursor_pointer().tooltip(`${repos.length} repositories here: choose which one to show`)
             .hover((s) => s.bg(t.hover).text_color(t.foreground))
