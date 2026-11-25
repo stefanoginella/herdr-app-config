@@ -10,7 +10,7 @@ Put a 62 px widget above Spaces. In the dialog, lead with a sentence about the w
 
 ## How it behaves
 
-Click the widget or press Cmd+Shift+U to open the dialog. Keys 1 through 4 select the last day, week, month or all history. Click a project to filter, press R to refresh and H to disguise names. Escape clears the filter before closing. Refresh the open dialog every five minutes while Herdr is active, or every two minutes while an agent works.
+Click the widget's readings or press Cmd+Shift+U to open the dialog. Click the widget's refresh icon to check both agents immediately. Keys 1 through 4 select the last day, week, month or all history. Click a project to filter, press R to refresh and H to disguise names. Escape clears the filter before closing. Refresh the open dialog every five minutes while Herdr is active, or every two minutes while an agent works. Apply each completed collection to the widget immediately.
 
 ## Built from
 

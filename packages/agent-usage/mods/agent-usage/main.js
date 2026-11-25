@@ -33,7 +33,7 @@ import { exec, readTextFile, writeTextFile, home, appHome, checking, machines, s
 import { prepare, weekView, rangeView, yearView, burning, tokens, weekSpan, RANGES, WEEKDAYS, MONTHS, SCRATCH_KEY, YEAR_WEEKS, COLORS, TOP, shiftDay } from "./reduce.js";
 import { HOUR_MS, localMidnight, nextLocalMidnight, usableStart, WEEK_MS, formatRate, evenAt } from "./pace.js";
 import { judge, limitBlock, paceWords, levelColor, dayWord, clock, dur, dryAt, byDanger, shortWhen as whenShort } from "./limits.js";
-import Glance, { agentIcon } from "./glance.js";
+import Glance, { agentIcon, publishLimits } from "./glance.js";
 import * as alias from "./alias.js";
 
 const HERE = () => `${appHome()}/mods/agent-usage`;
@@ -389,6 +389,7 @@ export default class Usage extends View {
       this.linkSig = null;
       this.rising(cx);
       this.lastCollect = Date.now();
+      publishLimits(snap);
       took.size = JSON.stringify(snap).length;
       await this.save(snap);
     } catch (e) {

@@ -28,7 +28,7 @@ A calendar of the last twelve months, the busiest day, the active days and the l
 
 ## The sidebar widget
 
-Above Spaces: each weekly limit as a bar with its even pace, and the verdict in a few words. A click opens the dialog. It reads Claude's limits every minute and Codex's every five, while Herdr is the active app.
+Above Spaces, the widget shows the limit closest to running out for each agent, its even pace and a short verdict. Click the readings to open the dialog. The widget updates whenever the dialog finishes collecting. It also checks Claude's limits every minute and Codex's every five while Herdr is active. Click the refresh icon at the right end of the third line to check both immediately.
 
 ## Keys
 

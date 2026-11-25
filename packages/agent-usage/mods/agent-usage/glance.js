@@ -4,8 +4,8 @@
 // They never run the collector. Every TICK, while Herdr is the active app, they read the
 // statusline's cache file (a few hundred bytes) and its age for Claude; every CODEX_EVERY, one
 // small `sh` (CODEX_READ) prints the last rate_limits line of the newest Codex session file, and
-// without one the dialog's snapshot stands in. They work the readings out with pace.js
-// (limits.js) and draw again only when what they show changed.
+// without one the dialog's snapshot stands in. Every dashboard collection publishes its limits
+// to the widget. Its refresh button reads both agents immediately using the same light poll.
 //
 // Sidebar: one row per agent with a reading (the two most in danger; "Claude 5h" when that
 // agent's worst window is the short one), each with its agent's icon; then the verdict of the
@@ -14,15 +14,16 @@
 // layout: its name and percentage, its track, its words. The rail: the worst limit's percentage
 // and track.
 
-import { div, image } from "gpui-kit";
+import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { readTextFile, exec, home, theme, settings, layout, run, checking, agents, window as app } from "herdr";
+import { readTextFile, exec, home, theme, settings, layout, run, checking, agents, shared, setShared, window as app } from "herdr";
 import { fromCache, limitBlock, short, levelColor, WEEKDAYS, clock, byDanger, danger } from "./limits.js";
 import { WEEK_MS, HOUR_MS, burn, formatRate } from "./pace.js";
 
 const CACHE = () => `${home()}/.claude/statusline/.usage-cache.json`;
 const SNAPSHOT = () => `${home()}/.local/state/herdr-usage/view.json`;
 const CODEX_SESSIONS = () => `${home()}/.codex/sessions`;
+const DASHBOARD_LIMITS = "agent-usage.limits";
 const TICK = 60_000;
 const CODEX_EVERY = 5 * 60_000;
 // A Claude reading older than this is drawn dim, with its time.
@@ -71,13 +72,33 @@ function fresher(a, b) {
   return (a.at ?? 0) >= (b.at ?? 0) ? a : b;
 }
 
+function snapshotCodex(s) {
+  const w = s?.weeks?.codex;
+  const lx = s?.codex;
+  const sh = [lx?.primary, lx?.secondary].find((x) => x && x.pct != null && x.resets && x.windowMinutes && x.windowMinutes < 1440);
+  return {
+    at: lx?.at ?? null,
+    week: w && !w.none ? { pct: w.pct, resets: w.end, windowMs: WEEK_MS } : null,
+    short: sh ? { pct: sh.pct, resets: sh.resets, windowMs: sh.windowMinutes * 60_000 } : null,
+  };
+}
+
+export function publishLimits(s) {
+  if ((shared(DASHBOARD_LIMITS)?.at ?? 0) >= s.at) return;
+  const w = s.weeks.claude;
+  const claude = w?.at != null ? { at: w.at, pct: w.pct ?? null, resets: w.end ?? null, samples: w.samples ?? [], fiveHour: w.fiveHour ?? null } : null;
+  setShared(DASHBOARD_LIMITS, { at: s.at, claude, codex: snapshotCodex(s) });
+}
+
 export default class Glance {
   init(cx, role) {
     this.role = role;
-    this.reading = null;   // fromCache(), or null
-    this.age = null;       // ms since the cache file was written, when known
+    this.reading = null;   // Claude's limits and the time of their reading
     this.codex = null;     // { at, week, short }: the fresher of the session file's and the snapshot's
     this.codexAt = 0;
+    this.dashboardAt = 0;
+    this.pollId = 0;
+    this.refreshing = false;
     this.sig = null;
     this.shown = null;     // what render() draws: worked out in look()
     if (checking()) return;
@@ -88,45 +109,81 @@ export default class Glance {
     });
   }
 
-  async look(cx, first) {
+  syncDashboard(now) {
+    const update = shared(DASHBOARD_LIMITS);
+    if (!update || update.at <= this.dashboardAt) return false;
+    this.dashboardAt = update.at;
+    this.reading = update.claude;
+    this.codex = update.codex;
+    this.codexAt = update.at;
+    return this.updateShown(now);
+  }
+
+  async look(cx, forceCodex, manual = false) {
+    if (this.refreshing) return;
+    const id = ++this.pollId;
+    if (manual) {
+      this.refreshing = true;
+      cx.notify();
+    }
     const now = Date.now();
-    let text = null, mtime = null;
-    try { text = await readTextFile(CACHE()); } catch {}
+    if (this.syncDashboard(now)) cx.notify();
+    const dashboardAt = this.dashboardAt;
+    try {
+      const checkCodex = forceCodex || now - this.codexAt >= CODEX_EVERY;
+      const [local, codex] = await Promise.all([this.readClaude(), checkCodex ? this.readCodex() : this.codex]);
+      if (this.syncDashboard(Date.now())) cx.notify();
+      // A dashboard collection or a manual refresh can finish while a poll is in flight.
+      if (id !== this.pollId || dashboardAt !== this.dashboardAt) return;
+      const collected = shared(DASHBOARD_LIMITS)?.claude;
+      // The local stat only has whole seconds. Keep the collected peak for the same week.
+      if (local && (local.at == null || local.at + 999 >= (collected?.at ?? 0))) {
+        if (local.resets === collected?.resets) local.pct = Math.max(local.pct, collected.pct);
+        this.reading = local;
+      } else this.reading = collected ?? null;
+      this.codex = codex;
+      if (checkCodex) this.codexAt = now;
+      if (this.updateShown(Date.now())) cx.notify();
+    } finally {
+      if (manual) {
+        this.refreshing = false;
+        cx.notify();
+      }
+    }
+  }
+
+  updateShown(now) {
+    const shown = this.work(now);
+    const sig = JSON.stringify(shown);
+    if (sig === this.sig) return false;
+    this.sig = sig;
+    this.shown = shown;
+    return true;
+  }
+
+  async readClaude() {
+    let reading, at = null;
+    try { reading = fromCache(await readTextFile(CACHE())); } catch {}
+    if (!reading) return null;
     try {
       const mac = app()?.platform !== "linux";
       const r = await exec("stat", mac ? ["-f", "%m", CACHE()] : ["-c", "%Y", CACHE()], { timeout: 5000 });
       const s = Number(r.stdout.trim());
-      if (r.code === 0 && Number.isFinite(s)) mtime = s * 1000;
+      if (r.code === 0 && Number.isFinite(s)) at = s * 1000;
     } catch {}
-    if (first || now - this.codexAt >= CODEX_EVERY) {
-      this.codexAt = now;
-      this.codex = await this.readCodex();
-    }
-    this.reading = text ? fromCache(text) : null;
-    this.age = mtime !== null ? now - mtime : null;
-    const shown = this.work(now);
-    const sig = JSON.stringify(shown);
-    if (sig !== this.sig) { this.sig = sig; this.shown = shown; cx.notify(); }
+    return { ...reading, at };
   }
 
   // Codex's reading: the newest session file's, else the snapshot's; per window, the fresher.
   async readCodex() {
-    let file = null, snap = null;
+    let file = null, snap = shared(DASHBOARD_LIMITS)?.codex ?? null;
     try {
       const r = await exec("sh", ["-c", CODEX_READ, "sh", CODEX_SESSIONS()], { timeout: 5000 });
       if (r.code === 0 && r.stdout.trim()) file = codexLine(r.stdout.trim().split("\n").pop());
     } catch {}
-    try {
-      const s = JSON.parse(await readTextFile(SNAPSHOT()) ?? "null");
-      const w = s?.weeks?.codex;
-      const lx = s?.codex;
-      const sh = [lx?.primary, lx?.secondary].find((x) => x && x.pct != null && x.resets && x.windowMinutes && x.windowMinutes < 1440);
-      snap = {
-        at: lx?.at ?? null,
-        week: w && !w.none ? { pct: w.pct, resets: w.end, windowMs: WEEK_MS } : null,
-        short: sh ? { pct: sh.pct, resets: sh.resets, windowMs: sh.windowMinutes * 60_000 } : null,
-      };
-    } catch {}
+    if (!snap) {
+      try { snap = snapshotCodex(JSON.parse(await readTextFile(SNAPSHOT()) ?? "null")); } catch {}
+    }
     if (!file && !snap) return null;
     const pick = (k) => fresher(file && { at: file.at, r: file[k] }, snap && { at: snap.at, r: snap[k] })?.r ?? null;
     return { week: pick("week"), short: pick("short") };
@@ -135,7 +192,7 @@ export default class Glance {
   // What is drawn, as plain values: compared with the last to decide whether to draw again.
   work(now) {
     const r = this.reading;
-    const old = this.age !== null && this.age > OLD;
+    const old = r?.at != null && now - r.at > OLD;
     const blocks = [];
     const add = (agent, label, x, windowMs) => {
       const b = x ? limitBlock(x.pct, x.resets, windowMs, now) : null;
@@ -161,22 +218,36 @@ export default class Glance {
     });
     // Two readings, neither in any danger: the words speak for both, without an icon.
     const both = rows.length > 1 && rows.every((x) => danger(x.b)[0] === 0 && x.b.level === "ok") && !dimOf(worst);
-    const bu = r && !old ? burn({ pct: r.pct, resets: r.resets, samples: r.samples }, now - (this.age ?? 0), now) : null;
+    const bu = r && !old ? burn(r, r.at ?? now, now) : null;
     return {
       rows: rows.map(row),
-      words: dimOf(worst) ? `as of ${WEEKDAYS[new Date(now - this.age).getDay()]} ${clock(now - this.age)}` : both ? "both on pace" : short(worst.b, now),
+      words: dimOf(worst) ? `as of ${WEEKDAYS[new Date(r.at).getDay()]} ${clock(r.at)}` : both ? "both on pace" : short(worst.b, now),
       level: worst.b.level, old: dimOf(worst), agent: both ? null : worst.agent,
       burn: bu ? `${formatRate(bu.perHour)}%/h` : null,
     };
   }
 
   render(_cx) {
+    this.syncDashboard(Date.now());
     const t = theme();
     const s = this.shown ?? { none: true };
-    return narrow() ? this.rail(t, s) : this.side(t, s);
+    return narrow()
+      ? v_flex().size_full().items_center().pb(2).child(this.rail(t, s)).child(this.refreshButton(t))
+      : this.side(t, s);
   }
 
   open() { run("mod.open", { name: "agent-usage" }); }
+
+  refreshButton(t) {
+    const b = div().id("usage-refresh").size(18).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.muted)
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        if (!this.refreshing) cx.spawn(async (cx) => this.look(cx, true, true));
+      });
+    if (this.refreshing) return b.tooltip("Refreshing usage").child(svg("mods/workspace-chrome/spinner.svg").size(12).spin(900));
+    return b.cursor_pointer().hover((st) => st.bg(t.hover).text_color(t.foreground))
+      .tooltip("Refresh usage").child(svg("mods/agent-usage/refresh.svg").size(12));
+  }
 
   track(t, x, h, tickH) {
     const color = x.old ? t.dim : levelColor(x.level, t);
@@ -191,7 +262,9 @@ export default class Glance {
     const el = v_flex().id("usage-side").size_full().px(16).justify_center().gap(4).cursor_pointer()
       .hover((st) => st.bg(t.hover))
       .on_click(() => this.open());
-    if (s.none) return el.child(div().text_size(11.5).text_color(t.dim).child("No reading yet"));
+    if (s.none) return el.child(h_flex().items_center()
+      .child(div().flex_1().text_size(11.5).text_color(t.dim).child("No reading yet"))
+      .child(this.refreshButton(t)));
     const mono = MONO();
     if (s.rows.length === 1) {
       // One reading: its name and percentage, its track, its words.
@@ -227,11 +300,11 @@ export default class Glance {
         .child(div().flex_none().text_color(t.muted).child(String(working)));
     }
     if (s.burn) last.child(div().flex_none().font_family(MONO()).text_size(11).text_color(t.muted).child(s.burn));
-    return last;
+    return last.child(this.refreshButton(t));
   }
 
   rail(t, s) {
-    const el = v_flex().id("usage-rail").size_full().items_center().justify_center().gap(5).cursor_pointer()
+    const el = v_flex().id("usage-rail").flex_1().w_full().items_center().justify_center().gap(5).cursor_pointer()
       .hover((st) => st.bg(t.hover))
       .on_click(() => this.open());
     if (s.none) return el.child(div().text_size(11.5).text_color(t.dim).child("—"));
