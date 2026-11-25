@@ -28,7 +28,7 @@
 // made in a task (build()).
 
 import { View, div, svg, image, PathBuilder, Background } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, ScrollHandle } from "gpui-base";
 import { exec, readTextFile, writeTextFile, home, appHome, checking, machines, spaces, panes, agents, theme, settings, shared, run, props, nextCommand, closeOverlay, window as app } from "herdr";
 import { prepare, weekView, rangeView, yearView, burning, tokens, weekSpan, RANGES, WEEKDAYS, MONTHS, SCRATCH_KEY, YEAR_WEEKS, COLORS, TOP, shiftDay } from "./reduce.js";
 import { HOUR_MS, localMidnight, nextLocalMidnight, usableStart, WEEK_MS, formatRate, evenAt } from "./pace.js";
@@ -207,6 +207,9 @@ export default class Usage extends View {
     this.overlay = props()?.overlay ?? null;
     this.handle = cx.focus_handle();
     this.handle.focus();
+    // The lists that scroll inside the body: contain() reads them.
+    this.projectsScroll = ScrollHandle.new();
+    this.modelsScroll = ScrollHandle.new();
     this.range = "week";
     this.filter = null;
     this.focus = null;      // the weekly limit the chart shows: "claude", "codex", or null (the one most in danger)
@@ -663,6 +666,13 @@ export default class Usage extends View {
         .on_click((_e, cx) => cx.spawn(async (cx) => this.collect(cx)))
         .child(this.busy ? svg(SPINNER).size(13).spin(900) : svg("mods/usage/refresh.svg").size(13))
         .child(div().text_size(LABEL).text_color(t.dim).child("R")));
+    // Closes the dialog, as Escape does once no project filter is on.
+    if (this.overlay) {
+      el.child(div().id("usage-close").p(4).ml(-6).rounded(4).cursor_pointer().text_color(t.muted)
+        .hover((st) => st.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => { cx.stop_propagation(); closeOverlay(this.overlay); })
+        .child(svg("mods/pane/close.svg").size(14)));
+    }
     return el;
   }
 
@@ -1302,9 +1312,9 @@ export default class Usage extends View {
 
   projects(t, rv, lay) {
     const el = v_flex().w(lay.three ? "36%" : "50%").min_w(0).h_full().pl(PAD).pr(16).pt(14).child(this.title("Projects", null, t));
-    const list = v_flex().id("usage-projects").flex_1().min_h(0).overflow_y_scroll()
+    const list = v_flex().id("usage-projects").flex_1().min_h(0).overflow_y_scroll().track_scroll(this.projectsScroll)
       .on_hover((on, cx) => { if (!on && this.hoverProject && !this.hoverRuler) { this.hoverProject = null; cx.notify(); } });
-    if (!rv || !rv.projects.length) return el.child(list);
+    if (!rv || !rv.projects.length) return el.child(this.contain("usage-projects-wheel", list, this.projectsScroll));
     const projects = this.snap.projects;
     const shown = this.open ? rv.projects : rv.projects.slice(0, LIST_FIRST);
     // The word that tells two same-named projects apart, only when both are rows here.
@@ -1339,7 +1349,19 @@ export default class Usage extends View {
         .on_click((_e, cx) => { this.open = !this.open; cx.notify(); })
         .child(this.open ? "fewer" : `${more.length} more, ${tokens(T)} tokens`));
     }
-    return el.child(list);
+    return el.child(this.contain("usage-projects-wheel", list, this.projectsScroll));
+  }
+
+  // A list that scrolls inside the body, wrapped so the wheel over it moves it alone: a scroll
+  // area doesn't stop the event, and the body scrolled with it. The wrapper's handler runs after
+  // the list has scrolled (the event bubbles up from it) and stops the event there, but only
+  // while the list has more than it shows: a list that fits lets the body scroll.
+  contain(id, list, handle) {
+    return v_flex().id(id).flex_1().min_h(0)
+      .on_scroll_wheel((_e, cx) => {
+        if (handle.content_size().height > handle.viewport_size().height + 1) cx.stop_propagation();
+      })
+      .child(list);
   }
 
   // The range's bars, then its biggest sessions.
@@ -1473,7 +1495,7 @@ export default class Usage extends View {
     el.child(this.title("Models", null, t));
     if (!rv) return el;
     // The models scroll inside what is left (three columns); every share is of all the range's tokens.
-    const list = three ? v_flex().id("usage-models").flex_1().min_h(0).overflow_y_scroll().pb(6) : v_flex().flex_none();
+    const list = three ? v_flex().id("usage-models").flex_1().min_h(0).overflow_y_scroll().track_scroll(this.modelsScroll).pb(6) : v_flex().flex_none();
     const top = Math.max(rv.claude[0]?.share ?? 0, rv.codex[0]?.share ?? 0) || 1;
     const group = (agent, g, ms) => {
       if (!ms.length) return;
@@ -1502,7 +1524,7 @@ export default class Usage extends View {
     group("claude", rv.cgroup, rv.claude);
     if (rv.claude.length && rv.codex.length) list.child(div().h(4).flex_none());
     group("codex", rv.xgroup, rv.codex);
-    el.child(list);
+    el.child(three ? this.contain("usage-models-wheel", list, this.modelsScroll) : list);
     if (three) el.child(this.machines(t, rv, true));
     return el;
   }
