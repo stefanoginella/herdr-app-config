@@ -21,6 +21,11 @@
 !/CLAUDE.md
 !/AGENTS.override.md
 
+# The feature pages and their pictures, and the notes on each mod for coding agents
+!/docs/
+# Finder's own file, in any folder let through above
+.DS_Store
+
 # Skills for coding agents (settings files in .claude stay ignored)
 !/.claude/
 /.claude/*

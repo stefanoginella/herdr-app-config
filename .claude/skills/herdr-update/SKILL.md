@@ -9,7 +9,7 @@ This setup's mods and layout were built against one Herdr version. Herdr has sin
 
 It reads, and writes in two places only: the scratchpad (outside Claude Code: `$TMPDIR/herdr-update`), and one new entry in `checks.md` next to this file (step 7). Its reads are `gh api`, `diff`, `jq`, `find`, `grep`, `herdr-app --version`, `herdr-app status` and `herdr-app check`. **The run ends with the report.**
 
-`AGENTS.override.md` is the map of the setup: "What is custom" says what each mod is and what it stands on, and the "Behavior to preserve" headings say what must keep working. Read it in full first. Run every command from the Herdr folder (`~/.config/herdr-app`): the paths are relative to it.
+`AGENTS.override.md` is the map of the setup: "What is custom" lists each mod and points to its notes in `docs/agents/`. Those say what the mod is and what it stands on, and their "Behavior to preserve" headings say what must keep working. Read it and every file in `docs/agents/` in full first. Run every command from the Herdr folder (`~/.config/herdr-app`): the paths are relative to it.
 
 ## 1. The range
 
@@ -56,6 +56,9 @@ The clones, copied from a shipped file (`grep -l cloned_from mods/*/mod.json lay
 | `space-folders` | `defaults/mods/spaces/main.js` | `mods/spaces/main.js` |
 | `agents-unread` | `defaults/mods/agents/main.js` | `mods/agents/main.js` |
 | `files-actions` | `defaults/mods/files/main.js` | `mods/files/main.js` |
+| `tabs-names` | `defaults/mods/tabs/main.js` | `mods/tabs/main.js` |
+| `pane-names` | `defaults/mods/pane/main.js` | `mods/pane/main.js` |
+| `status-names` | `defaults/mods/workspace-status/main.js` | `mods/workspace-status/main.js` |
 | `main-folders` | `defaults/layouts/main.json` | `layouts/main.json` |
 
 The shipped mods that other custom mods stand in for. Nothing was copied from them, but they show what Herdr added that the custom mod lacks:
@@ -74,7 +77,7 @@ An **item** is one feature or one fix. Take every bullet under `### New` and `##
 
 1. **Moves what a workaround stands on:** it changes something a "Behavior to preserve" item or a "Working here" note relies on. For example: how a mod pane gets the keyboard, key sections and their order, Cmd+F, Cmd+O or Cmd+P, file drags, link detection and what a link handler is given, `exec`, `writeTextFile`, which copies a command reaches, `workspace.panels` and the `changes` block's id, `on_size_change` at a zoom, the time a script may run, `mod.open` and popups. Name the "Behavior to preserve" items to try again.
 2. **Replaces a mod:** Herdr now does what a custom mod does (one in "What is custom"). Say what switching would gain and what it would lose. The owner decides, and a mod stays until they say otherwise.
-3. **Lifts a limit:** it gives what a note in `AGENTS.override.md` says a mod can't have. For example: more than one selection, a scroll position, a mark beside an editor line, handlers on virtual-list rows, a remote `writeTextFile`, an import from another mod, a syntax highlighter for any text, a `props()` that stays the copy's own after an `await`, a faster script engine. Name the workaround it retires and its note.
+3. **Lifts a limit:** it gives what a note in `AGENTS.override.md` or `docs/agents/` says a mod can't have. For example: more than one selection, a scroll position, a mark beside an editor line, handlers on virtual-list rows, a remote `writeTextFile`, an import from another mod, a syntax highlighter for any text, a `props()` that stays the copy's own after an `await`, a faster script engine. Name the workaround it retires and its note.
 4. **Everything else:** what it is, in a sentence. Why it matters for this setup (or that it doesn't). How it could be used here: a setting, a command or `herdr` function a mod could call, a key to bind, a shipped feature to try.
 
 Done when: every item of every version in the range appears in the report exactly once.
@@ -127,8 +130,8 @@ Every proposed change starts under "Open". The repository is public, so an entry
 Make a proposed change only after the owner names it. Then:
 
 - Port the change into the clone, run `herdr-app check` on it and `herdr-app status`, and look with `herdr-app shot`.
-- For a lifted limit, use what Herdr now gives. Delete the workaround and its note in `AGENTS.override.md`, and its example in step 4 here if it has one.
+- For a lifted limit, use what Herdr now gives. Delete the workaround and its note in `AGENTS.override.md` or `docs/agents/`, and its example in step 4 here if it has one.
 - Try again the "Behavior to preserve" items the report named, and say which could not be driven from a shell.
 - In `checks.md`, move the item under "Settled", marked `made` or `declined`.
 
-When no item of an entry is left open, the clones are ported up to its `to` version. Make that the new baseline: replace `from version <old>` in the clone entries of "What is custom", `Built against Herdr <old>` in `README.md`, and `(version <old>)` in `NOTICE`. Other version mentions date a fact ("since 0.1.17"): leave them.
+When no item of an entry is left open, the clones are ported up to its `to` version. Make that the new baseline: replace `from version <old>` in the clone entries of "What is custom" and in the clones' notes in `docs/agents/`, `Built against Herdr <old>` in `README.md`, and `(version <old>)` in `NOTICE`. Other version mentions date a fact ("since 0.1.17"): leave them.
