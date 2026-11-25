@@ -1,0 +1,12 @@
+\033[38;5;208m✻\033[0m \033[1mClaude Code\033[0m  \033[2m~/Developer/ledger-cli\033[0m
+
+\033[2m>\033[0m -5 cents prints as 0.-5, fix it
+
+\033[38;5;208m●\033[0m \033[1mUpdate\033[0m(src/money.rs)
+  \033[2m⎿  Updated with \033[0m\033[32m1 addition\033[0m\033[2m and \033[0m\033[31m1 removal\033[0m
+
+\033[38;5;208m●\033[0m \033[1mBash\033[0m(cargo test)
+  \033[2m⎿  test result: ok. 14 passed; 0 failed\033[0m
+
+\033[38;5;208m●\033[0m Fixed on \033[36mfix/rounding\033[0m: the cents are printed without their sign, so
+  -5 is `-0.05`. Committed as "fix(money): keep the sign out of the cents".

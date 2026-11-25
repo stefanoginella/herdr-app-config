@@ -1,0 +1,12 @@
+\033[1m>_ Codex\033[0m  \033[2m~/Developer/quarry\033[0m
+
+\033[2muser\033[0m
+write the export as Parquet too, with the schema from the warehouse
+
+\033[35mcodex\033[0m
+Reading the warehouse's column types to build the Arrow schema.
+
+  \033[2m$ python -m quarry.schema --table events\033[0m
+  \033[2m  12 columns, 3 nullable\033[0m
+
+\033[36m•\033[0m Writing quarry/parquet.py \033[2m(28s · esc to interrupt)\033[0m

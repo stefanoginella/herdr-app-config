@@ -1,0 +1,386 @@
+{
+  "canvas": [
+    1680,
+    1050
+  ],
+  "mat": {
+    "from": "#b7c3d3",
+    "to": "#8d9bb0",
+    "angle": 90,
+    "radius": 24
+  },
+  "card": {
+    "radius": 14,
+    "border": "#ffffff24",
+    "shadow": [
+      {
+        "blur": 60,
+        "y": 40,
+        "alpha": 0.38
+      },
+      {
+        "blur": 10,
+        "y": 6,
+        "alpha": 0.3
+      }
+    ]
+  },
+  "pictures": {
+    "overview": {
+      "canvas": [
+        2520,
+        1575
+      ],
+      "mat": {
+        "radius": 36
+      },
+      "cards": [
+        {
+          "src": "raw/hero.png",
+          "at": [
+            150,
+            82
+          ],
+          "radius": 13,
+          "lights": [
+            16,
+            21,
+            12,
+            20
+          ],
+          "shadow": [
+            {
+              "blur": 90,
+              "y": 60,
+              "alpha": 0.4
+            },
+            {
+              "blur": 14,
+              "y": 8,
+              "alpha": 0.3
+            }
+          ]
+        }
+      ]
+    },
+    "usage": {
+      "cards": [
+        {
+          "src": "raw/usage-top.png",
+          "crop": [
+            342,
+            49,
+            1536,
+            1311
+          ],
+          "at": [
+            72,
+            70
+          ],
+          "radius": 10
+        },
+        {
+          "src": "raw/widget.png",
+          "crop": [
+            0,
+            116,
+            725,
+            154
+          ],
+          "at": [
+            883,
+            846
+          ],
+          "radius": 14
+        }
+      ]
+    },
+    "usage-whole": {
+      "canvas": [
+        1680,
+        1470
+      ],
+      "cards": [
+        {
+          "src": "raw/usage-whole.png",
+          "crop": [
+            406,
+            49,
+            1408,
+            1311
+          ],
+          "at": [
+            136,
+            80
+          ],
+          "radius": 10
+        }
+      ]
+    },
+    "space-folders": {
+      "cards": [
+        {
+          "src": "raw/side-spaces.png",
+          "crop": [
+            0,
+            272,
+            725,
+            680
+          ],
+          "at": [
+            80,
+            185
+          ]
+        },
+        {
+          "src": "raw/side-folded.png",
+          "crop": [
+            0,
+            272,
+            725,
+            370
+          ],
+          "at": [
+            875,
+            340
+          ]
+        }
+      ]
+    },
+    "unread-agents": {
+      "cards": [
+        {
+          "src": "raw/side-agents-before.png",
+          "crop": [
+            0,
+            272,
+            725,
+            866
+          ],
+          "at": [
+            80,
+            62
+          ]
+        },
+        {
+          "src": "raw/side-agents-after.png",
+          "crop": [
+            0,
+            272,
+            725,
+            866
+          ],
+          "at": [
+            875,
+            122
+          ]
+        }
+      ]
+    },
+    "git-panel": {
+      "cards": [
+        {
+          "src": "raw/git-graph.png",
+          "crop": [
+            1519,
+            80,
+            688,
+            1272
+          ],
+          "at": [
+            120,
+            70
+          ],
+          "radius": 16
+        },
+        {
+          "src": "raw/git-refs.png",
+          "crop": [
+            121,
+            71,
+            686,
+            1268
+          ],
+          "at": [
+            872,
+            170
+          ],
+          "radius": 16
+        }
+      ]
+    },
+    "git-diff": {
+      "cards": [
+        {
+          "src": "raw/diff.png",
+          "crop": [
+            329,
+            55,
+            1510,
+            1315
+          ],
+          "at": [
+            85,
+            70
+          ],
+          "radius": 11
+        }
+      ]
+    },
+    "file-editor": {
+      "cards": [
+        {
+          "src": "raw/ed-source.png",
+          "crop": [
+            832,
+            80,
+            807,
+            1272
+          ],
+          "at": [
+            60,
+            70
+          ],
+          "radius": 16
+        },
+        {
+          "src": "raw/ed-preview.png",
+          "crop": [
+            832,
+            80,
+            807,
+            1272
+          ],
+          "at": [
+            813,
+            150
+          ],
+          "radius": 16
+        }
+      ]
+    },
+    "project-search": {
+      "cards": [
+        {
+          "src": "raw/search.png",
+          "crop": [
+            863,
+            73,
+            840,
+            1284
+          ],
+          "at": [
+            167,
+            70
+          ],
+          "radius": 14
+        },
+        {
+          "src": "raw/search.png",
+          "crop": [
+            1715,
+            73,
+            493,
+            1284
+          ],
+          "at": [
+            1020,
+            70
+          ],
+          "radius": 14
+        }
+      ]
+    },
+    "go-to-file": {
+      "cards": [
+        {
+          "src": "raw/goto.png",
+          "crop": [
+            534,
+            72,
+            1152,
+            801
+          ],
+          "at": "center",
+          "radius": 14
+        }
+      ]
+    },
+    "file-actions": {
+      "cards": [
+        {
+          "src": "raw/file-actions.png",
+          "crop": [
+            863,
+            73,
+            840,
+            1284
+          ],
+          "at": [
+            167,
+            70
+          ],
+          "radius": 14
+        },
+        {
+          "src": "raw/file-actions.png",
+          "crop": [
+            1715,
+            73,
+            493,
+            1284
+          ],
+          "at": [
+            1020,
+            70
+          ],
+          "radius": 14
+        }
+      ]
+    },
+    "hide-names": {
+      "cards": [
+        {
+          "src": "raw/hero.png",
+          "crop": [
+            0,
+            0,
+            1015,
+            540
+          ],
+          "at": [
+            90,
+            70
+          ],
+          "radius": 13,
+          "lights": [
+            16,
+            21,
+            12,
+            20
+          ]
+        },
+        {
+          "src": "raw/hidden.png",
+          "crop": [
+            0,
+            0,
+            1015,
+            540
+          ],
+          "at": [
+            575,
+            440
+          ],
+          "radius": 13,
+          "lights": [
+            16,
+            21,
+            12,
+            20
+          ]
+        }
+      ]
+    }
+  }
+}

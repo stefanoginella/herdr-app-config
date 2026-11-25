@@ -1,0 +1,11 @@
+\033[38;5;208m✻\033[0m \033[1mClaude Code\033[0m  \033[2m~/Developer/nimbus-web\033[0m
+
+\033[2m>\033[0m add the header to the theme
+
+\033[38;5;208m●\033[0m \033[1mWrite\033[0m(theme/header.php)
+  \033[2m⎿  Wrote 1 line\033[0m
+
+\033[38;5;208m●\033[0m The header is in `theme/header.php` and prints the site's name. I did not
+  touch `style.css`: say if you want it styled now or with the footer.
+
+\033[2m>\033[0m █

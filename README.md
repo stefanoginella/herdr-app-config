@@ -25,7 +25,7 @@ Each feature has a page with everything it does: every key, limit and edge case.
 | [File actions](docs/file-actions.md) | The Files panel with icons, a right-click menu, drag to move and undo | `files-actions` |
 | [Hide names](docs/hide-names.md) | Made-up names around the content, for a screenshot or a screen share | `tabs-names`, `pane-names`, `status-names` |
 
-Also here: `layouts/main-folders.json`, Herdr's default layout showing all of the above, with the panes you're not in faded and the dividers lit on hover; `keys.json` and `settings.json`, my key bindings and settings; and notes for coding agents working in this folder (`AGENTS.override.md`, `CLAUDE.md`, `docs/agents/`).
+Also here: `layouts/main-folders.json`, Herdr's default layout showing all of the above, with the panes you're not in faded and the dividers lit on hover; `keys.json` and `settings.json`, my key bindings and settings; notes for coding agents working in this folder (`AGENTS.override.md`, `CLAUDE.md`, `docs/agents/`); and the scripts that take the pictures on this page ([`docs/screenshots/`](docs/screenshots/README.md)).
 
 ## The tour
 

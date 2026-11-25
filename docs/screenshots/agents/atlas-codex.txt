@@ -1,0 +1,16 @@
+\033[1m>_ Codex\033[0m  \033[2m~/Developer/atlas-api\033[0m
+
+\033[2muser\033[0m
+refuse requests over the limit with a 429 and a Retry-After header
+
+\033[35mcodex\033[0m
+The limiter counts hits per key in src/limits.ts. I added `allowed()` and
+want to run the tests before wiring it into the router.
+
+\033[33m?\033[0m \033[1mAllow command?\033[0m
+
+    npm test -- limits
+
+  \033[1m1.\033[0m Yes
+  \033[1m2.\033[0m Yes, and don't ask again for npm test
+  \033[1m3.\033[0m No, tell Codex what to do differently
