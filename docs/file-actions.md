@@ -2,13 +2,13 @@
 
 Browse and manage project files in the Files panel. The tree shows file-type icons and Git change indicators. Click a file to open it in the [file editor](file-editor.md).
 
-![The Files panel with file type icons, change marks and a right-click menu, beside the editor](images/file-actions.webp)
+![The Files panel with file type icons, a nested checkout's Git badge, change marks and a right-click menu](images/file-actions.webp)
 
-*The Files panel, with a file's right-click menu. The names in the pictures are made up.*
+*The Files panel with a file's right-click menu and a Git badge on `demo-checkout`.*
 
-- **Icons:** every file and folder has its type's icon, from [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme); a folder's changes when it opens. What git ignores is faded.
+- **Icons.** Each file and folder has an icon from Material Icon Theme. Ignored entries are faded. A bright Git badge on a faded folder identifies a nested checkout that its enclosing repository ignores. The files inside follow the nested checkout's own Git ignore rules. [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
 - **The file in the editor:** the file the tab's editor shows is highlighted in the tree. When it is inside a closed folder, that folder is highlighted instead.
-- **Changes in folders:** a folder with modified, added or removed files anywhere inside it shows a dot, so a change is seen without opening the folder. The dot is green when everything inside is new, red when everything is removed or something is in conflict, and otherwise the color of a modified file.
+- **Changes in folders.** A folder shows a dot for modified, added or removed files in its repository. Expand a nested checkout to see its own change marks. The dot is green when everything inside is new, red when everything is removed or something is in conflict, and otherwise the color of a modified file.
 - **Open elsewhere.** Right-click a local file or folder to open it in an available external app or show it in your desktop’s file manager. A file can also open in its default app. Set which named apps appear in [External apps](external-apps.md).
 - **Open the project:** the same menu ends with the project, and right-clicking the header or the room under the list shows the project and what the folder shown takes: a new file, a new folder, a paste.
 - **New file or folder:** right-click, New File or New Folder, and name it. It is made in the folder you clicked, next to the file you clicked, or in the top folder when you clicked the header or the room under the list. A new file opens in the editor.

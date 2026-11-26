@@ -12,6 +12,8 @@ Place the query and its case, word and regex toggles above a foldable result lis
 
 Cmd+Shift+F opens the panel, using a one-line selection from the editor when available. Search as the user types in a repository, or on Enter outside one. F4 and Shift+F4 open the next and previous matches. Replace a match, a file, or all listed results with confirmation for Replace All. Undo the last replace in files that still match the written version.
 
+Resolve the project from the active tab's focused or last focused terminal. When Search first opens with the editor focused, use the first terminal in that tab. Wait for the current project before applying a search request.
+
 For a local result, offer the available external apps, the default app and the desktop file manager. Open at the match when the launcher accepts line and column arguments.
 
 ## Built from

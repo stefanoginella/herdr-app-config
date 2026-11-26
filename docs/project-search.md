@@ -7,7 +7,7 @@ Search every file of the project, and replace, in a panel that takes the place o
 *A search with the replace row open: every match shows what it becomes. The names in the pictures are made up.*
 
 - **Open:** Cmd+Shift+F, or the lens in the Files panel's header. From the editor, text selected on one line becomes the query. The Files button in the panel's header goes back.
-- **The project:** the repository the focused pane is in, else its folder. In a repository the search runs as you type; elsewhere, where nothing says how much there is to read, on Enter.
+- **The project.** Search follows the active tab's terminal to its repository or folder. When the editor has focus, Search uses the tab's last focused terminal, or its first terminal if Search has just opened. In a repository, Search runs as you type. In an ordinary folder, press Enter.
 - **Options:** match case (`Aa`), whole words (`ab`) and regular expression (`.*`). The syntax is ripgrep's: no lookaround, no backreferences.
 - **Filters:** the `…` button opens "files to include" and "files to exclude", comma-separated: `src`, `*.ts`, `docs/**` count at any depth, and `./src` is the folder at the project's top. Dotfiles are searched; what git ignores is not, unless "Search ignored files too" is ticked. Closed, the filters don't count.
 - **Find in Folder:** right-click a folder in the Files panel to search only there.

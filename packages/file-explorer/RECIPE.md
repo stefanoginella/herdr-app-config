@@ -8,6 +8,8 @@ Browse project files with file-type icons and Git change indicators. Open a file
 
 Use the Files tree in the side panel. Give files and folders Material Icon Theme icons, fade ignored entries and mark folders containing Git changes. Highlight the file shown in the tab's editor or its enclosing collapsed folder. Right-clicking blank space targets the project folder.
 
+Fade the folder name and icon when the enclosing repository ignores a nested Git checkout. Show a full-color Git badge alongside them. Use the nested checkout's Git status for its children when expanded.
+
 ## How it behaves
 
 Click a folder to fold it, or a file to open it in **File Editor**. A tree drop moves the entry, a terminal drop pastes the quoted path and a Finder drop copies in the files. Offer New File, New Folder, Rename and Duplicate on local and remote projects. Show available external apps and the desktop file manager for local items on macOS, Linux and Windows. Offer the Finder clipboard and Trash on macOS. Cmd+Z reverses the last move, rename or Trash for five minutes in the same folder.
@@ -25,3 +27,5 @@ Refuse a destination that already exists. Ask before moving an item to Trash. A 
 ## Done when
 
 Drag a file into another folder and undo it. A duplicate gets an unused copy name. Dropping a path onto a terminal leaves the file where it was. An externally edited file updates its tree markers when Herdr becomes active again.
+
+An ignored nested checkout shows a faded folder name and icon with a bright Git badge while folded. Expand it and check that its tracked files are at full brightness and its own ignored files are faded. Repeat with a linked worktree.

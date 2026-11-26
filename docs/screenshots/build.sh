@@ -286,6 +286,9 @@ commit $((12 * H)) "Mika Sato" "feat(export): write Parquet files"
 
 # ---- herdr-app: this repository as it is committed, with a working day drawn on top ----
 git clone -q --no-hardlinks "$REPO" "$R" && cd "$R"
+# The Files picture shows this checkout's Git badge while it is folded.
+git init -q "$R/demo-checkout"
+printf '\n/demo-checkout/\n' >> "$R/.git/info/exclude"
 git remote remove origin
 git checkout -q -B main
 

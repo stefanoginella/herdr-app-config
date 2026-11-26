@@ -1,8 +1,8 @@
 // A lazy file browser for the focused pane's folder. A click on a file opens it in the tab's
 // editor, a pane beside the terminals (the `file-editor` mod). The file that editor shows is
 // highlighted, or the closed folder it is in.
-// Each entry has its file type's icon; what git ignores is faded, and a folder with changes
-// inside has a dot. Right-click an entry to open it in an editor, rename it, duplicate it, move
+// Each entry has its file type's icon; what its repository ignores is faded, and a folder with
+// changes inside has a dot. Right-click an entry to open it in an editor, rename it, duplicate it, move
 // it to the Trash or make a new file or folder by it (menu.js); right-click the header or the
 // room under the list for the project and the folder shown.
 // Drag an entry onto a folder, or under the list for the top folder, to move it, or onto a
@@ -95,13 +95,33 @@ async function directory(path, on) {
     // Links keep directory attributes even when dangling; check their target.
     // Other reparse points (OneDrive's folders) have no LinkType and are folders.
     // PowerShell reads curly single quotes as quotes too, so they're doubled like '.
-    const r = await exec("powershell", ["-NoProfile", "-Command", "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); & { param($p) @(Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop | Where-Object Name -ne '.git' | Select-Object -First 501 | ForEach-Object { @{ name=$_.Name; dir=($_.PSIsContainer -and (-not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not $_.LinkType -or ($_.Target -and [IO.Directory]::Exists(([IO.Path]::Combine([IO.Path]::GetDirectoryName($_.FullName), $_.Target[0])))))) } }) | ConvertTo-Json -Compress } '" + path.replace(/['‘’‚‛]/g, "$&$&") + "'"], { on });
+    const script = `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+      & { param($p)
+        @(Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop | Where-Object Name -ne '.git' | Select-Object -First 501 | ForEach-Object {
+          $dir = $_.PSIsContainer -and (-not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not $_.LinkType -or ($_.Target -and [IO.Directory]::Exists(([IO.Path]::Combine([IO.Path]::GetDirectoryName($_.FullName), $_.Target[0])))))
+          @{ name=$_.Name; dir=$dir; gitMarker=($dir -and (Test-Path -LiteralPath (Join-Path $_.FullName '.git'))) }
+        }) | ConvertTo-Json -Compress
+      } '${path.replace(/['‘’‚‛]/g, "$&$&")}'`;
+    const r = await exec("powershell", ["-NoProfile", "-Command", script], { on });
     if (r.code !== 0) throw new Error(r.stderr || "Cannot list this folder");
     const result = JSON.parse(r.stdout || "[]");
     return Array.isArray(result) ? result : [result];
   };
   if (!on && window()?.platform === "windows") return windowsDirectory();
-  const script = 'n=0; for p in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$p" ] || [ -L "$p" ] || continue; name=${p##*/}; [ "$name" = .git ] && continue; if [ -d "$p" ]; then kind=d; else kind=f; fi; printf "%s\\0%s\\0" "$kind" "$name"; n=$((n+1)); [ "$n" -gt 500 ] && break; done; test -d "$1"';
+  const script = `n=0
+    for p in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+      [ -e "$p" ] || [ -L "$p" ] || continue
+      name=\${p##*/}
+      [ "$name" = .git ] && continue
+      kind=f
+      if [ -d "$p" ]; then
+        kind=d
+        if [ -d "$p/.git" ] || [ -f "$p/.git" ]; then kind=g; fi
+      fi
+      printf "%s\\0%s\\0" "$kind" "$name"
+      n=$((n+1)); [ "$n" -gt 500 ] && break
+    done
+    test -d "$1"`;
   let r;
   try { r = await exec("sh", ["-c", script, "files", path], { on }); }
   catch (e) {
@@ -110,8 +130,18 @@ async function directory(path, on) {
   }
   if (r.code !== 0) throw new Error(r.stderr || "Cannot list this folder");
   const fields = r.stdout.split("\0"), out = [];
-  for (let i = 0; i + 1 < fields.length; i += 2) out.push({ name: fields[i + 1], dir: fields[i] === "d" });
+  for (let i = 0; i + 1 < fields.length; i += 2) out.push({ name: fields[i + 1], dir: fields[i] !== "f", gitMarker: fields[i] === "g" });
   return out;
+}
+
+async function gitRoot(cwd, on, atRoot = false) {
+  const args = ["rev-parse", "--show-toplevel"];
+  if (atRoot) args.push("--show-prefix");
+  const r = await exec("git", args, { cwd, on }).catch(() => null);
+  if (r?.code !== 0) return null;
+  // Check for an empty prefix: a directory with a stray .git can resolve to its parent repo.
+  const end = atRoot ? /\r?\n\r?\n$/ : /\r?\n$/;
+  return end.test(r.stdout) ? r.stdout.replace(end, "") : null;
 }
 
 // One git scan of a repository at a time, shared by every copy of this panel (as Herdr's own
@@ -165,6 +195,24 @@ async function repoStatus(root, on, { after, visiting, urgent, allowInactive }, 
   return null;
 }
 
+function gitMarks(status, root) {
+  const marks = {}, changed = {}, ignored = new Set();
+  let marked = 0, rootMark;
+  if (status?.code === 0) for (const entry of status.stdout.split("\0").filter(Boolean)) {
+    const xy = entry.slice(0, 2), path = `${root}/${entry.slice(3)}`;
+    if (xy === "!!") { if (ignored.size < TOTAL) ignored.add(path.replace(/\/$/, "")); }
+    else if (marked++ < TOTAL) {
+      const mark = xy === "??" || xy.includes("A") ? "A" : xy.includes("U") ? "U" : xy.includes("D") ? "D" : "M";
+      marks[path] = mark;
+      rootMark = mix(rootMark, mark);
+      for (let dir = ops.parent(path); dir.length > root.length; dir = ops.parent(dir)) changed[dir] = mix(changed[dir], mark);
+    }
+  }
+  return { marks, changed, ignored, rootMark };
+}
+
+const EMPTY_GIT = gitMarks(null);
+
 export default class Files extends View {
   init(_props, cx) {
     // Opened by itself as a popup or a dialog: the menu, the name prompt, the Trash question.
@@ -176,9 +224,9 @@ export default class Files extends View {
       return;
     }
     this.saved = new Map();
-    this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
-    this.changed = {}; // folders with changes inside, as absolute paths: "A", "D", "U" or "M"
-    this.ignored = new Set(); // what git ignores, as absolute paths; a folder stands for all in it
+    this.entries = new Map(); this.folders = new Set(); this.pending = new Set();
+    this.git = EMPTY_GIT;
+    this.nestedGit = new Map(); // status for expanded checkouts, by their tree path
     this.inIgnored = false; // the folder shown is itself inside an ignored one
     this.top = null; // the repo's top folder, null outside a repo
     // The entry pressed: { path, name, dir, x, y } (where, in the window). Once the pointer has
@@ -239,11 +287,22 @@ export default class Files extends View {
 
   async loadFolder(path, context) {
     const { on, cwd: root } = context;
-    const entries = await directory(path ? `${root}/${path}` : root, on);
+    const cwd = path ? `${root}/${path}` : root;
+    const entries = await directory(cwd, on);
+    for (const entry of entries) {
+      if (!entry.gitMarker) continue;
+      if (!this.current(context) || (path && !this.folders.has(path))) return;
+      entry.repo = await gitRoot(`${cwd}/${entry.name}`, on, true);
+    }
     if (!this.current(context) || (path && !this.folders.has(path))) return;
     const used = [...this.entries.entries()].filter(([p]) => p !== path).reduce((n, [, e]) => n + e.length, 0);
     this.entries.set(path, entries.slice(0, Math.max(0, Math.min(PER_FOLDER, TOTAL - used))).sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name)));
     if (entries.length > PER_FOLDER || used + entries.length > TOTAL) this.limited = true;
+  }
+
+  entry(path) {
+    const name = ops.base(path);
+    return this.entries.get(ops.parent(path))?.find(entry => entry.name === name);
   }
 
   // `force`: this panel just changed a file (act(), bring()). The scan is then made after the
@@ -259,8 +318,8 @@ export default class Files extends View {
       }
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on, dirtyAt: 0 }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
-      this.pending = new Set(); this.marks = {}; this.changed = {}; this.error = null; this.limited = false;
-      this.ignored = new Set(); this.inIgnored = false; this.top = null; this.drag = null; this.over = null;
+      this.pending = new Set(); this.git = EMPTY_GIT; this.nestedGit = new Map(); this.error = null; this.limited = false;
+      this.inIgnored = false; this.top = null; this.drag = null; this.over = null;
       // What undo takes back is of the folder that was shown.
       this.last = null;
       this.loading = false; this.again = false;
@@ -278,7 +337,7 @@ export default class Files extends View {
     if (this.loading) { this.again = this.again === "force" || force ? "force" : true; return; }
     if (force || (context.catchUp && !context.dirtyAt)) context.dirtyAt = now + 1;
     const request = {
-      after: visiting ? now + 1 : context.dirtyAt || (context.lastStatus ?? -1) + 1,
+      after: visiting ? now + 1 : context.dirtyAt,
       visiting,
       urgent: force || visiting || context.catchUp,
       allowInactive: force || visiting,
@@ -297,38 +356,36 @@ export default class Files extends View {
           if (path && !this.folders.has(path)) continue;
           await this.loadFolder(path, context);
         }
-        const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }).catch(() => null);
+        const root = await gitRoot(cwd, on);
         if (!this.current(context)) return;
-        const marks = {}, changed = {}, ignored = new Set();
-        const root = top?.code === 0 ? top.stdout.trim() : null;
+        const repos = new Map();
+        if (root) repos.set("", root);
+        for (const path of this.folders) {
+          const repo = this.entry(path)?.repo;
+          if (repo) repos.set(path, repo);
+        }
+        const nestedGit = new Map();
+        let git = EMPTY_GIT, watchAt = Infinity, pollAt = Infinity, deferredWatchAt = Infinity;
         let covered = dirtyAtListing;
-        if (root) {
-          const scan = await repoStatus(root, on, request, cx, () => this.context === context);
+        for (const [path, repo] of repos) {
+          const scan = await repoStatus(repo, on, request, cx, () => this.context === context);
           if (!scan || !this.current(context)) return;
-          const { status, started, pollAt, watchAt } = scan;
-          context.lastStatus = started;
-          context.pollAt = pollAt;
-          context.watchAt = watchAt;
-          covered = Math.min(dirtyAtListing, started);
+          const { status, started } = scan;
+          pollAt = Math.min(pollAt, scan.pollAt);
+          watchAt = Math.min(watchAt, scan.watchAt);
+          covered = Math.min(covered, started);
+          if (dirtyAtListing > started) deferredWatchAt = Math.min(deferredWatchAt, scan.watchAt);
           // The scan reused began before what had to be seen: one more, at the next tick.
           if (request.urgent && request.after > started) context.catchUp = true;
-          let marked = 0;
-          if (status?.code === 0) for (const entry of status.stdout.split("\0").filter(Boolean)) {
-            const xy = entry.slice(0, 2), path = `${root}/${entry.slice(3)}`;
-            if (xy === "!!") { if (ignored.size < TOTAL) ignored.add(path.replace(/\/$/, "")); }
-            else if (marked++ < TOTAL) marks[path] = xy === "??" || xy.includes("A") ? "A" : xy.includes("U") ? "U" : xy.includes("D") ? "D" : "M";
-          }
-          // Every folder above a change, up to the repo's top, shows it.
-          for (const [path, mark] of Object.entries(marks)) {
-            for (let dir = ops.parent(path); dir.length > root.length; dir = ops.parent(dir)) changed[dir] = mix(changed[dir], mark);
-          }
-        } else {
-          context.watchAt = Date.now();
+          if (path) nestedGit.set(path, gitMarks(status, `${cwd}/${path}`));
+          else git = gitMarks(status, root);
         }
-        if (!this.current(context)) return;
+        // Retry a watch that reused an older scan when that repository's cooldown ends.
+        context.watchAt = Number.isFinite(deferredWatchAt) ? deferredWatchAt : Number.isFinite(watchAt) ? watchAt : Date.now();
+        context.pollAt = Number.isFinite(pollAt) ? pollAt : Date.now() + 10000;
         if (context.dirtyAt <= covered) context.dirtyAt = 0;
-        this.marks = marks; this.changed = changed; this.ignored = ignored; this.top = root; this.error = null;
-        this.inIgnored = [...ignored].some(path => ops.within(cwd, path));
+        this.git = git; this.nestedGit = nestedGit; this.top = root; this.error = null;
+        this.inIgnored = [...git.ignored].some(path => ops.within(cwd, path));
       } catch (e) { if (this.current(context)) this.error = String(e); }
       finally {
         if (this.context === context) {
@@ -519,7 +576,8 @@ export default class Files extends View {
       }
     } else {
       this.folders.add(path);
-      if (!this.entries.has(path) && !this.pending.has(path)) {
+      if (this.entry(path)?.repo) this.refresh(cx);
+      else if (!this.entries.has(path) && !this.pending.has(path)) {
         const context = this.context;
         this.pending.add(path);
         cx.spawn(async cx => {
@@ -561,16 +619,19 @@ export default class Files extends View {
   }
 
   // `s`: what every row needs. { dark, parent: the folder's name, ignored: it is inside an
-  // ignored folder, shown: the row to highlight (shown()) }
+  // ignored folder, git: marks from the enclosing repo, shown: the row to highlight (shown()) }
   rows(prefix, depth, out, t, s) {
     if (out.length >= TOTAL || depth > 40) return out;
     const d = this.drag, aim = this.over?.dir ?? null;
     for (const entry of this.entries.get(prefix) ?? []) {
       if (out.length >= TOTAL) break;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path);
+      const absolute = `${this.root}/${path}`;
+      const git = s.git, nested = entry.repo && open ? this.nestedGit.get(path) : null;
       // A folder's own mark (a submodule) counts as a change inside it.
-      const mark = entry.dir ? this.changed[`${this.root}/${path}`] ?? this.marks[`${this.root}/${path}`] : this.marks[`${this.root}/${path}`];
-      const ignored = s.ignored || this.ignored.has(`${this.root}/${path}`);
+      let mark = entry.dir ? git.changed[absolute] ?? git.marks[absolute] : git.marks[absolute];
+      if (nested?.rootMark) mark = mix(mark, nested.rootMark);
+      const ignored = s.ignored || git.ignored.has(absolute);
       const icon = entry.dir ? folderIcon(entry.name, s.parent, open, s.dark) : fileIcon(entry.name, s.parent, s.dark);
       // A drop goes into the folder the pointer is on, or the one the file under it is in.
       const into = entry.dir ? path : prefix;
@@ -594,9 +655,12 @@ export default class Files extends View {
         .child(entry.dir ? svg(`mods/file-explorer/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(image(icon).size(16).flex_none().when(ignored, el => el.opacity(0.45)))
         .child(div().flex_1().min_w(0).truncate().text_color(ignored ? t.dim : t.foreground).child(entry.name))
+        .when(Boolean(entry.repo) && ignored, el => el.child(div().id(`repo-${path}`).size(14).flex_none()
+          .tooltip("Nested Git repository · ignored by the enclosing repository")
+          .child(image("mods/file-explorer/icons/git.svg").size(14))))
         // A file says what happened to it; a folder only that something inside changed.
         .when(Boolean(mark), el => el.child(entry.dir ? div().size(7).mx(1).flex_none().rounded(4).bg(markColor(t, mark)) : div().text_size(11).text_color(markColor(t, mark)).child(mark))));
-      if (entry.dir && open) this.rows(path, depth + 1, out, t, { ...s, parent: entry.name, ignored });
+      if (entry.dir && open) this.rows(path, depth + 1, out, t, { ...s, parent: entry.name, ignored: !entry.repo && ignored, git: entry.repo ? nested ?? EMPTY_GIT : git });
     }
     return out;
   }
@@ -658,7 +722,7 @@ export default class Files extends View {
     // A menu or a dialog left something to do. Taken in a task: only one copy gets it.
     if (ops.waiting()) cx.spawn(async cx => { const r = ops.take(); if (r) this.act(r, cx); });
     const t = theme();
-    const list = this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored, shown: this.shown() });
+    const list = this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored, git: this.git, shown: this.shown() });
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       // Only while an entry is pressed: every move in the window is a call into the script.
       .when(Boolean(this.drag), el => el

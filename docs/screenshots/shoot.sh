@@ -51,12 +51,10 @@ s_files() {
   h overlay.close; nap 0.8
 }
 
-# Project search with a replacement. Asked with a terminal focused: shown first while the editor has
-# the focus, the panel never finds its project.
+# Project search with a replacement, opened from the editor.
 s_search() {
   zoom 1.45; h layout.hide '{"id":"sidebar"}'; h layout.show '{"id":"panel"}'; h layout.resize '{"id":"panel","px":340}'
   open_file "$R/mods/git-panel/git.js" 131
-  h pane.focus "{\"terminal\":\"$TERM1\"}"; draw 2
   req "[{\"shared\":[\"project-search.ask\",{\"query\":\"initials\",\"to\":\"monogram\",\"focus\":false,\"at\":\"now\"}]},{\"run\":[\"project-search.open\",{}]}]" 8
   nap 2; draw 4
   shot search

@@ -67,6 +67,7 @@ const clip = (s, most = 60) => (s.length > most ? `${s.slice(0, most)}…` : s);
 // A theme color, see-through.
 const tint = (color, alpha) => (/^#[0-9a-f]{6}$/i.test(color ?? "") ? color + alpha : color);
 const fileKey = (path) => `\n${path}`;
+const placeKey = ({ on, cwd }) => `${on ?? ""}\n${cwd ?? ""}`;
 
 export default class ProjectSearch extends View {
   init(_props, cx) {
@@ -94,7 +95,7 @@ export default class ProjectSearch extends View {
     }
     this.back = p?.back ?? null;
     this.fixed = typeof p?.root === "string" && p.root ? { cwd: p.root, on: p.on ?? null } : null;
-    this.held = new Map(); // tab: where its last terminal pane was (see location())
+    this.held = new Map(); // tab: its last focused terminal pane (see location())
     this.tops = new Map(); // a folder: its repository's top folder, and when that was read
     this.where = null; // the pane's place, as last seen
     this.ctx = null; // what is searched: { key, root, on, name, repo, auto }
@@ -183,17 +184,21 @@ export default class ProjectSearch extends View {
     cx.timer.after(STASH_AFTER, () => { this.stashing = false; this.keep(); });
   }
 
-  // Where the focused pane is. A mod pane (the editor) is in no folder: while one has the
-  // focus, it is where the terminal that had it before was, in that tab. As the Files panel.
+  // The shown tab owns the search, even when a panel has the keyboard. Read the last terminal's
+  // live folder when the editor is focused, or use the tab's first terminal on a fresh visit.
   location() {
     if (this.fixed) return this.fixed;
     const space = spaces().find((s) => s.active), f = focused();
-    const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
-    if (pane?.mod && this.held.has(pane.tab)) return this.held.get(pane.tab);
-    const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-    const at = { cwd: pane?.cwd || f?.cwd || space?.folder || null, on: on ?? null };
-    if (pane && !pane.mod) this.held.set(pane.tab, at);
-    return at;
+    if (f?.pane === null && f.terminal && f.cwd && (!space || f.space === space.id)) {
+      return { cwd: f.cwd, on: f.terminal.includes("/") ? f.terminal.split("/")[0] : null };
+    }
+    const tab = space?.tabs.find((t) => t.active)?.id;
+    const terminals = tab ? panes().filter((p) => p.tab === tab && p.terminal) : [];
+    const pane = terminals.find((p) => p.pane === f?.pane);
+    if (pane) this.held.set(tab, pane.pane);
+    const last = terminals.find((p) => p.pane === this.held.get(tab));
+    const first = terminals.find((p) => p.cwd);
+    return { cwd: pane?.cwd || (pane && f.cwd) || last?.cwd || first?.cwd || space?.folder || null, on: space?.machine ?? null };
   }
 
   // The top folder of the repository `cwd` is in, or null. Spelled as `cwd` is, where it can
@@ -214,21 +219,26 @@ export default class ProjectSearch extends View {
 
   // Follows the focused pane: when it is in another project, that one is searched.
   place(cx) {
-    const at = this.location(), where = `${at.on ?? ""}\n${at.cwd ?? ""}`;
+    const at = this.location(), where = placeKey(at);
     if (where === this.where || checking()) return;
     this.where = where;
     const turn = ++this.placing;
+    this.placed = false;
+    this.ctx = null;
+    this.result = null; this.error = null; this.cursor = null;
+    this.next = false;
+    this.halt(cx);
     this.after(cx, async (cx) => {
       const top = at.cwd ? await this.top(at.cwd, at.on) : null;
       if (turn !== this.placing) return;
+      if (where !== placeKey(this.location())) return this.place(cx);
       const root = top ?? at.cwd, key = root ? `${at.on ?? ""}\n${root}` : null;
-      if (key !== (this.ctx?.key ?? null)) {
-        // Outside a repository nothing says where the project ends: the search waits for Enter.
-        this.ctx = root ? { key, root, on: at.on, name: root.split("/").pop() || root, repo: Boolean(top), auto: Boolean(top) && !(!at.on && root === home()) } : null;
-        this.result = null; this.error = null; this.cursor = null;
-        if (!this.answer(cx) && this.ctx?.auto) this.go(cx);
-      } else this.answer(cx);
+      // Outside a repository nothing says where the project ends: the search waits for Enter.
+      this.ctx = root ? { key, root, on: at.on, name: root.split("/").pop() || root, repo: Boolean(top), auto: Boolean(top) && !(!at.on && root === home()) } : null;
       this.placed = true;
+      const requested = this.searchWhenPlaced;
+      this.searchWhenPlaced = false;
+      if (!this.answer(cx) && (this.ctx?.auto || requested)) this.go(cx);
       cx.notify();
     });
   }
@@ -242,6 +252,7 @@ export default class ProjectSearch extends View {
       if (shared(ASK)?.at === a.at) setShared(ASK, null);
       if (Date.now() - a.at > FRESH) return;
       this.pending = a;
+      this.place(cx);
       this.answer(cx);
       cx.notify();
     });
@@ -250,7 +261,7 @@ export default class ProjectSearch extends View {
   // Does what the waiting ask says, once the project is known. True when it began a search.
   answer(cx) {
     const a = this.pending, c = this.ctx;
-    if (!a || (!this.placed && !c)) return false;
+    if (!a || !this.placed) return false;
     this.pending = null;
     let any = false;
     if (typeof a.query === "string" && a.query) { this.query.set_value(a.query); any = true; }
@@ -318,6 +329,8 @@ export default class ProjectSearch extends View {
   // Searches now. One search at a time: asked again while one runs, that one is stopped, and
   // the next one starts when it ends, with the fields as they are then.
   go(cx) {
+    this.place(cx);
+    if (!this.placed) { this.searchWhenPlaced = true; return; }
     this.turn++;
     const c = this.ctx, o = this.options();
     if (!c || !o.query) {

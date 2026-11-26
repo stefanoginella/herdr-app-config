@@ -73,7 +73,6 @@ A change to a zoom, to a panel's width or to how a pane is split moves the boxes
 - **The mods read nothing while Herdr is not the active app.** `build.sh` tells the sandbox's copies that it always is.
 - **A pointer over the window leaves hover marks** in the shots, and they stay once the window is minimized. If a shot shows one, take the pointer away from the screen's bottom right corner and run the step again in a fresh sandbox.
 - **The Usage dialog keeps its layout through a zoom change:** close it and open it again.
-- **The search panel, first shown while the editor has the focus, never finds its project:** focus a terminal first.
 - **The diff step selects Split explicitly.** It produces the same layout if the step is run again in the same sandbox.
 - **An overlay's `at` is in window pixels**, not in the app's own.
 - **The usage data is made relative to now:** "Burning now" is the last hour, so shoot within a few minutes of `gen-usage.mjs`. The home is given to it as `/var/tmp/...`, not `/private/var/tmp/...`: the dialog files the second under "Other folders".
