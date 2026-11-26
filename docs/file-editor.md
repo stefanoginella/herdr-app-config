@@ -4,7 +4,7 @@ A text editor beside the terminals. Click a file in the Files panel and it opens
 
 ![The editor showing a Markdown file with its toolbar and change marks, and the same file rendered](images/file-editor.webp)
 
-*A Markdown file in the editor, and its preview. The names in the pictures are made up.*
+*A pinned Markdown file in the editor, and its preview. The names in the pictures are made up.*
 
 - **Wrapped lines:** long lines wrap, and go on under the line's own indentation. The Wrap button, or the command palette's "Editor: Toggle Line Wrap", turns that off for a file, and long lines then scroll sideways. The choice is kept with the file.
 - **Indentation:** Tab indents as the file does: with tabs in a Makefile or a file indented with tabs, else by the file's own step of 2, 4 or 8 spaces.
@@ -21,7 +21,8 @@ A text editor beside the terminals. Click a file in the Files panel and it opens
 - **Changes since the last commit:** a file git has gets a thin strip on the right of its text, with a mark where lines were added (green), changed (blue) or deleted (red), unsaved typing included. The strip is the whole file from top to bottom, not a margin: in a file shorter than the pane a mark is level with its lines, until a long line wraps above them, and in a longer file it shows where in the file they are. Click a mark, or press Alt+F3 and Alt+Shift+F3, or the `±` button that counts the changes, to go to a change with its lines selected. A file git does not have yet has no marks.
 
 - **From a terminal:** Cmd-click a file path in a terminal, an agent's `src/app.ts:42:7` for one, and it opens in that tab's editor at that line and column (`editor-links`). Paths on another machine open there. Images, PDFs, archives, folders and missing files go to Herdr's usual opener instead. Herdr only sees a path as a link when it has a folder in it (`src/app.ts`, `./app.ts`, `~/x/app.ts`): a bare `app.ts:42` is not underlined and can't be clicked.
-- **Tabs:** the mouse's back and forward buttons go to the previous and the next file of the strip.
+- **Tabs.** Right-click a file tab for **Pin** or **Unpin**, **Close**, **Close Others**, **Close to the Right**, and **Close All**. Pinned tabs move to the left, stay pinned when the editor reopens, and survive all three bulk close actions. Close a pinned tab directly from its menu or close button. The mouse's back and forward buttons move through the tab strip.
+- **Unsaved tabs.** A bulk close closes clean tabs first, then offers Save, Discard, or Cancel for each unsaved file. Cancel leaves the remaining files open.
 - **The pane's name:** the pane's header says which file the editor shows, and "File Editor" when it shows none (the diff pane's says "Git Diff Viewer"). A name you give the pane yourself stays.
 - **Text size:** the text is as large as the terminals' (`font_size`), as Herdr's own file preview and diff are.
 

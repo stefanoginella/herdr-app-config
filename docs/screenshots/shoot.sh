@@ -30,9 +30,9 @@ s_editor() {
   zoom 1.6; h layout.hide '{"id":"sidebar"}'; h layout.show '{"id":"panel"}'
   h layout.select '{"stack":"panel-body","child":"files"}'; h layout.resize '{"id":"panel","px":347}'
   h pane.focus "{\"terminal\":\"$TERM1\"}"; draw 3
-  open_file "$N/2026/11-week-48.md"; shot ed-source
+  open_file "$N/2026/11-week-48.md"; h file-editor.toggle-pin; shot ed-source
   h file-editor.preview; nap 1; draw 5; shot ed-preview
-  h file-editor.preview; nap 0.5; draw 2
+  h file-editor.preview; h file-editor.toggle-pin; nap 0.5; draw 2
 }
 
 # The Files panel with a file's menu. The panel unfolds a folder when something is made in it: a

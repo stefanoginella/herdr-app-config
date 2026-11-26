@@ -24,11 +24,12 @@
 // The editing itself is Herdr's `Editor`: undo, several cursors (Alt-click, Cmd-Alt-Up/Down),
 // indenting, bracket pairs, folding. What this mod adds is in edit.js, and reaches it as key
 // commands (keys.json, section `mod:file-editor`): save, find, replace, find-next, find-prev,
-// escape, preview, wrap, close, bold, italic, code, strike, link, bullets, numbers, tasks, comment,
+// escape, preview, wrap, close, close-all, close-others, close-right, toggle-pin,
+// bold, italic, code, strike, link, bullets, numbers, tasks, comment,
 // line-up, line-down, duplicate, next-same, next-change, prev-change, search-project.
-import { View, div } from "gpui-kit";
+import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextView } from "gpui-base";
-import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, run, window as app } from "herdr";
+import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, run, openOverlay, closeOverlay, window as app } from "herdr";
 import * as edit from "./edit.js";
 import * as diff from "./diff.js";
 import * as remote from "./remote.js";
@@ -38,6 +39,13 @@ const MOD = "file-editor";
 // The pane's name while it shows no file.
 const TITLE = "File Editor";
 const OPEN = "file-editor.open", MOVED = "file-editor.moved", SHOWN = "file-editor.shown";
+const TAB_ACTION = "file-editor.tab-action";
+const TAB_ACTIONS = {
+  "close": "Close",
+  "close-others": "Close Others",
+  "close-right": "Close to the Right",
+  "close-all": "Close All",
+};
 // The Search panel (`project-search`), and what it reads in shared state (its header).
 const SEARCH = "project-search", ASK = "project-search.ask";
 // A request older than this was left by a window that closed before it was taken.
@@ -96,9 +104,19 @@ function hint(text, command) {
 
 export default class FileEditor extends View {
   init(_props, cx) {
+    const menu = props()?.tabMenu;
+    if (menu) {
+      this.menu = menu;
+      this.menuAt = 0;
+      this.handle = cx.focus_handle();
+      this.handle.focus();
+      return;
+    }
     this.tab = props()?.tab ?? null;
+    this.editor = `${Date.now()}-${Math.random()}`;
     this.docs = []; // the open files, in the strip's order (see load())
     this.active = null; // the id of the one shown
+    this.closing = null;
     this.serial = 0;
     this.seen = { open: 0, moved: Date.now() };
     // The pane's own place for the keyboard, for when no text can take it (the preview, no
@@ -139,6 +157,7 @@ export default class FileEditor extends View {
 
   // The pane is going (or the app): what was typed is kept for the next time.
   async close() {
+    if (this.menu) return;
     this.store();
     if (this.tab) this.say(null);
   }
@@ -158,7 +177,7 @@ export default class FileEditor extends View {
     try {
       localStorage.setItem(STORE, JSON.stringify({
         active: this.active,
-        open: this.docs.map(d => ({ path: d.path, on: d.on, preview: d.preview, wrap: d.wrap, ...(d.dirty && d.state ? { draft: d.text, base: d.base } : {}) })),
+        open: this.docs.map(d => ({ path: d.path, on: d.on, preview: d.preview, wrap: d.wrap, pinned: d.pinned, ...(d.dirty ? { draft: d.text, base: d.base } : {}) })),
       }));
     } catch (e) { console.log(`${MOD}: could not keep the open files: ${e}`); }
   }
@@ -174,7 +193,7 @@ export default class FileEditor extends View {
     let kept = null;
     try { kept = JSON.parse(localStorage.getItem(STORE) ?? "null"); } catch { kept = null; }
     for (const o of kept?.open ?? []) {
-      if (typeof o?.path === "string") this.load({ path: o.path, on: o.on ?? null, preview: Boolean(o.preview), wrap: o.wrap !== false, draft: o.draft, base: o.base }, cx, false);
+      if (typeof o?.path === "string") this.load(o, cx, false);
     }
     if (this.docs.some(d => d.id === kept?.active)) this.active = kept.active;
   }
@@ -194,16 +213,18 @@ export default class FileEditor extends View {
       if (show) { this.active = id; this.found(); this.focus(); this.look(d, cx); this.head(d, cx); reveal(d); }
       return;
     }
+    const draft = typeof o.draft === "string" ? o.draft : null;
     d = {
       id, n: ++this.serial, path: o.path, on: o.on ?? null, name: base(o.path), markdown: MARKDOWN.test(o.path),
       state: null, // Herdr's editor for it, once read
-      base: null, // the file's text as last read or saved: what a save must still find there. null: no file
-      text: "", prev: "", // the editor's text now, and before the last change
-      dirty: false, readonly: null, // or why, as the pane says it
+      base: o.base ?? null, // the file's text as last read or saved: what a save must still find there. null: no file
+      text: draft ?? "", prev: draft ?? "", // preserve a restored draft even before the file is read
+      dirty: draft !== null && draft !== (o.base ?? null), readonly: null, // or why, as the pane says it
       preview: Boolean(o.preview), error: null,
       wrap: o.wrap !== false, // long lines wrapped (the default), or scrolled sideways
+      pinned: Boolean(o.pinned),
       place: null, picked: "", // the preview's last selection: its range in the text, and what it says
-      notice: null, // "changed": on disk under unsaved text (`disk` has it); "gone"; "closing": asked to close unsaved
+      notice: null, // "changed": on disk under unsaved text (`disk` has it); "gone": deleted on disk
       disk: null, saving: false, looking: false,
       head: null, oid: null, // the file as the last commit has it, and git's name for that. null: git has none
       diff: NO_MARKS, drawn: "", // the lines that differ from `head` (diff.js), and the same as drawn
@@ -215,7 +236,6 @@ export default class FileEditor extends View {
       try {
         const text = await readTextFile(d.path, { on: d.on });
         if (!this.docs.includes(d)) return;
-        const draft = typeof o.draft === "string" ? o.draft : null;
         if (text === null && draft === null) { d.error = "This file is no longer there"; return; }
         if (text?.includes("\0")) { d.error = "A binary file: there is no text to show"; return; }
         const long = (text?.length ?? 0) > MOST;
@@ -446,8 +466,7 @@ export default class FileEditor extends View {
     this.travel(d, [at(line + AROUND), at(line - AROUND), sel], cx);
   }
 
-  // `then`: what a save that went through is followed by.
-  save(d, cx, then) {
+  save(d, cx) {
     if (!d?.state || d.readonly || d.saving || !d.dirty) return;
     const text = d.state.value();
     d.saving = true;
@@ -458,28 +477,76 @@ export default class FileEditor extends View {
         d.dirty = d.state.value() !== text;
         d.notice = null; d.disk = null;
         this.store();
-        then?.(cx);
       } catch (e) {
         // Refused: the file is not what was read. See what it is now, and ask.
         const disk = await readTextFile(d.path, { on: d.on }).catch(() => undefined);
         if (disk === null) { d.base = null; d.notice = "gone"; }
         else if (typeof disk === "string" && disk !== d.base) { d.notice = "changed"; d.disk = disk; }
         else notify({ title: `Couldn't save “${d.name}”`, body: String(e?.message ?? e), level: "error" });
-      } finally { d.saving = false; cx.notify(); }
+      } finally {
+        d.saving = false;
+        if (!d.dirty && this.closing?.files.includes(d)) this.advanceClose();
+        cx.notify();
+      }
     });
   }
 
-  // Closes a file's tab. Unsaved text is asked about first.
-  shut(d, cx, sure = false) {
-    if (!d) return;
-    if (d.dirty && !sure) { d.notice = "closing"; this.active = d.id; return; }
-    const at = this.docs.indexOf(d);
-    this.docs.splice(at, 1);
-    d.state?.release();
-    if (this.active === d.id) { this.active = (this.docs[at] ?? this.docs[at - 1])?.id ?? null; this.focus(); }
-    this.find.matches = []; this.find.at = -1;
-    if (this.find.open) this.search(false);
+  // Clean tabs close together. Ask about each remaining file before closing it.
+  closeFiles(files, preferred, bulk) {
+    if (!files.length) return;
+    const active = this.doc();
+    this.closing = { files, bulk, back: files.includes(active) ? preferred : active };
+    this.advanceClose();
+  }
+
+  advanceClose(discard = null) {
+    const closing = this.closing;
+    const drop = new Set(closing.files.filter(d => !d.saving && (!d.dirty || d === discard)));
+    const active = this.doc();
+    if (drop.has(active)) {
+      const at = this.docs.indexOf(active);
+      const next = closing.back ?? this.docs.slice(at + 1).find(d => !drop.has(d))
+        ?? this.docs.slice(0, at).reverse().find(d => !drop.has(d));
+      this.active = next?.id ?? null;
+    }
+    this.docs = this.docs.filter(d => !drop.has(d));
+    closing.files = closing.files.filter(d => !drop.has(d));
+    for (const d of drop) d.state?.release();
+    if (closing.files.length) this.active = closing.files[0].id;
+    else this.closing = null;
+    if (this.doc() !== active) { this.found(); this.focus(); }
     this.store();
+  }
+
+  cancelClose() {
+    this.closing = null;
+    this.focus();
+  }
+
+  closeTargets(action, d) {
+    if (action === "close") return d ? [d] : [];
+    if (action === "close-all") return this.docs.filter(o => !o.pinned);
+    if (action === "close-others") return this.docs.filter(o => !o.pinned && o !== d);
+    if (action === "close-right") return this.docs.slice(this.docs.indexOf(d) + 1).filter(o => !o.pinned);
+    return [];
+  }
+
+  tabAction(action, d) {
+    if (!d) return;
+    if (action === "toggle-pin") {
+      d.pinned = !d.pinned;
+      this.docs.splice(this.docs.indexOf(d), 1);
+      const at = this.docs.findIndex(o => !o.pinned);
+      this.docs.splice(at < 0 ? this.docs.length : at, 0, d);
+      if (d.pinned && this.closing?.bulk && this.closing.files.includes(d)) {
+        this.closing.files = this.closing.files.filter(o => o !== d);
+        this.advanceClose();
+        return;
+      }
+      this.store();
+      return;
+    }
+    this.closeFiles(this.closeTargets(action, d), action === "close-others" || action === "close-right" ? d : null, action !== "close");
   }
 
   // Back from the preview to the text, at `range` when there is one: selected and in sight. The
@@ -601,8 +668,12 @@ export default class FileEditor extends View {
     if (name === "replace") return this.openFind(true);
     if (name === "find-next") return this.step(1);
     if (name === "find-prev") return this.step(-1);
-    if (name === "escape") { if (d?.notice === "closing") d.notice = null; else if (this.find.open) this.closeFind(); return; }
-    if (name === "close") return this.shut(d, cx);
+    if (name === "escape") {
+      if (d && this.closing?.files[0] === d) this.cancelClose();
+      else if (this.find.open) this.closeFind();
+      return;
+    }
+    if (name === "toggle-pin" || Object.hasOwn(TAB_ACTIONS, name)) return this.tabAction(name, d);
     if (name === "next-change") return this.change(1, null, cx);
     if (name === "prev-change") return this.change(-1, null, cx);
     if (name === "search-project") {
@@ -645,6 +716,16 @@ export default class FileEditor extends View {
 
   // What the Files panel left in shared state, for this tab's editor.
   requests(cx) {
+    if (shared(TAB_ACTION)?.editor === this.editor) {
+      cx.spawn(async cx => {
+        await null;
+        const action = shared(TAB_ACTION);
+        if (action?.editor !== this.editor) return;
+        setShared(TAB_ACTION, null);
+        this.tabAction(action.name, this.docs.find(d => d.n === action.tab));
+        cx.notify();
+      });
+    }
     const o = shared(OPEN);
     if (o && o.tab === this.tab && o.at !== this.seen.open && typeof o.path === "string") {
       this.seen.open = o.at;
@@ -692,9 +773,9 @@ export default class FileEditor extends View {
     if (!me) return;
     const want = d?.name ?? TITLE, has = me.name ?? "";
     const ours = !has || has === TITLE || has === this.named || this.docs.some(o => o.name === has);
-    if (has === want || !ours) return;
+    if (!ours) return;
     this.named = want;
-    run("pane.rename", { pane: me.pane, name: want });
+    if (has !== want) run("pane.rename", { pane: me.pane, name: want });
   }
 
   say(d) {
@@ -714,6 +795,42 @@ export default class FileEditor extends View {
   cycle(by, cx) {
     const at = this.docs.findIndex(d => d.id === this.active), o = this.docs[at + by];
     if (at >= 0 && o) this.show(o, cx);
+  }
+
+  openTabMenu(d) {
+    const enabled = Object.keys(TAB_ACTIONS).filter(action => this.closeTargets(action, d).length > 0);
+    openOverlay({ mod: MOD, kind: "popup", width: 184, height: 154,
+      props: { tabMenu: { editor: this.editor, tab: d.n, pinned: d.pinned, enabled } } });
+  }
+
+  renderTabMenu() {
+    const t = theme();
+    const { editor, tab, pinned, enabled } = this.menu;
+    const items = Object.entries(TAB_ACTIONS);
+    items.splice(1, 0, ["toggle-pin", pinned ? "Unpin" : "Pin"]);
+    const available = name => name === "toggle-pin" || enabled.includes(name);
+    const choose = name => {
+      if (!available(name)) return;
+      closeOverlay(props().overlay);
+      setShared(TAB_ACTION, { editor, tab, name });
+    };
+    return v_flex().id("fe-tab-menu").w_full().p(5).bg(t.popover).text_size(12.5).track_focus(this.handle)
+      .on_key_down((e, cx) => {
+        if (e.key === "enter") choose(items[this.menuAt][0]);
+        else if (e.key === "escape") closeOverlay(props().overlay);
+        else if (e.key === "up" || e.key === "down") {
+          const by = e.key === "up" ? -1 : 1;
+          do { this.menuAt = (this.menuAt + by + items.length) % items.length; }
+          while (!available(items[this.menuAt][0]));
+          cx.notify();
+        } else return;
+        cx.stop_propagation();
+      })
+      .children(items.map(([name, label], i) => h_flex().id(`fe-menu-${name}`).h(28).px(9).items_center().rounded(5)
+        .text_color(available(name) ? t.foreground : t.dim)
+        .when(i === this.menuAt, el => el.bg(t.selected))
+        .when(available(name), el => el.cursor_pointer().hover(s => s.bg(t.hover)).on_click(() => choose(name)))
+        .child(label)));
   }
 
   button(t, id, label, tip, action, o = {}) {
@@ -740,14 +857,16 @@ export default class FileEditor extends View {
             .text_size(12.5).text_color(on ? t.foreground : t.muted)
             .when(on, el => el.bg(t.selected))
             .when(!on, el => el.hover(s => s.bg(t.hover)))
-            .tooltip(o.on ? `${o.on}: ${o.path}` : o.path)
+            .tooltip(`${o.pinned ? "Pinned · " : ""}${o.on ? `${o.on}: ${o.path}` : o.path}`)
             .on_click((_e, cx) => { this.show(o, cx); cx.notify(); })
+            .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.openTabMenu(o); })
+            .when(o.pinned, el => el.child(svg("mods/workspace-chrome/pin.svg").size(12).flex_none().text_color(t.accent)))
             .child(div().min_w(0).truncate().child(o.name))
             .child(h_flex().id(`fe-shut-${o.n}`).size(18).flex_none().items_center().justify_center().rounded(5)
               .text_size(o.dirty ? 9 : 13).text_color(o.dirty ? t.foreground : t.dim)
               .hover(s => s.bg(t.raised).text_color(t.foreground))
               .tooltip(o.dirty ? "Unsaved · close" : "Close")
-              .on_click((_e, cx) => { cx.stop_propagation(); this.shut(o, cx); cx.notify(); })
+              .on_click((_e, cx) => { cx.stop_propagation(); this.tabAction("close", o); cx.notify(); })
               .child(o.dirty ? "●" : "×"));
         })))
       .when(Boolean(d?.state), el => el
@@ -858,19 +977,26 @@ export default class FileEditor extends View {
     return view;
   }
 
-  // A line that asks: a file changed under unsaved text, gone, or closing with unsaved text.
-  notice(t, d) {
+  // A line that asks about a disk change or a pending close.
+  notice(t, d, closing = false) {
     const act = (id, label, action, primary) => h_flex().id(id).h(24).px(10).flex_none().items_center().rounded(6).cursor_pointer()
       .border_1().border_color(primary ? t.solid : t.input).bg(primary ? t.solid : t.raised).text_color(primary ? t.solid_foreground : t.foreground)
       .text_size(12).hover(s => s.opacity(0.88)).on_click((_e, cx) => { action(cx); cx.notify(); }).child(label);
-    const row = (text, ...actions) => h_flex().id("fe-notice").flex_none().min_h(38).px(12).py(6).gap(8).items_center().border_b(1).border_color(t.border).bg(t.surface)
+    const row = (text, ...actions) => h_flex().id(closing ? "fe-close-notice" : "fe-notice").flex_none().min_h(38).px(12).py(6).gap(8).items_center().border_b(1).border_color(t.border).bg(t.surface)
       .child(div().flex_1().min_w(0).text_size(12.5).text_color(t.foreground).child(text)).children(actions);
-    if (d.notice === "closing") return row(`“${d.name}” has unsaved changes.`,
-      act("fe-n-cancel", "Cancel", () => { d.notice = null; this.focus(); }),
-      act("fe-n-discard", "Discard", cx => this.shut(d, cx, true)),
-      act("fe-n-save", "Save", cx => { d.notice = null; this.save(d, cx, cx => this.shut(d, cx)); }, true));
+    if (closing) {
+      const cancel = act("fe-n-cancel", "Cancel", () => this.cancelClose());
+      if (d.saving) return row(`Saving “${d.name}”…`, cancel);
+      if (!d.dirty) return row(`Close “${d.name}”?`, cancel, act("fe-n-close", "Close", () => this.advanceClose(), true));
+      const discard = act("fe-n-discard", "Discard", () => this.advanceClose(d));
+      if (!d.state || d.readonly || d.notice === "changed") return row(`“${d.name}” has unsaved changes.`, cancel, discard);
+      return row(`“${d.name}” has unsaved changes.`, cancel, discard, act("fe-n-save", "Save", cx => this.save(d, cx), true));
+    }
     if (d.notice === "changed") return row("This file changed on disk while it was being edited here.",
-      act("fe-n-theirs", "Load the file", () => this.take(d, d.disk)),
+      act("fe-n-theirs", "Load the file", () => {
+        this.take(d, d.disk);
+        if (!d.dirty && this.closing?.files.includes(d)) this.advanceClose();
+      }),
       // What is on disk now is what a save may replace.
       act("fe-n-mine", "Keep my text", () => { d.base = d.disk; d.disk = null; d.notice = null; d.dirty = d.text !== d.base; this.store(); this.focus(); }, true));
     if (d.notice === "gone") return row("This file is no longer on disk: it was moved or deleted. Saving writes it again.",
@@ -901,6 +1027,7 @@ export default class FileEditor extends View {
   }
 
   render(cx) {
+    if (this.menu) return this.renderTabMenu();
     fieldKeys.watch(MOD, cx);
     this.requests(cx);
     this.arrived(cx);
@@ -917,6 +1044,7 @@ export default class FileEditor extends View {
       .when(Boolean(d?.state && d.markdown && !d.preview && !d.readonly), el => el.child(this.tools(t)))
       .when(Boolean(d?.state && this.find.open), el => el.child(this.finder(t, d)))
       .when(Boolean(d?.state && d.notice), el => el.child(this.notice(t, d)))
+      .when(Boolean(d && this.closing?.files[0] === d), el => el.child(this.notice(t, d, true)))
       .when(Boolean(d?.state && d.readonly), el => el.child(div().flex_none().px(12).py(5).border_b(1).border_color(t.border).text_size(11.5).text_color(t.dim).child(d.readonly)))
       .child(!d ? empty("Click a file in the Files panel to open it here")
         : !d.state ? empty(d.error ?? "Loading…")
