@@ -10,7 +10,7 @@
 //   table()     draws them, side by side or one under the other
 //   mark()      a file as viewed; a mark goes when the file changes again
 //
-// It only reads. Nothing here changes the repository.
+// Only the explicit hunk actions in a working-tree diff change the Git index.
 //
 // Keys, while the pane has the keyboard: J/K or ↓/↑ the next and the previous file, V viewed
 // (and on to the next one not viewed), S side by side or not, W the whole file, O the editor.
@@ -21,6 +21,9 @@ import { v_flex, h_flex, Scrollbar, v_virtual_list, VirtualListScrollHandle } fr
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, openOverlay, run, shared, setShared, nextCommand, checking, window as app } from "herdr";
 import * as diff from "./diff.js";
 import * as review from "./review.js";
+import * as syntax from "./syntax.js";
+import { guard } from "./git-guard.js";
+import FilePicker, { FILE_PICK } from "./file-picker.js";
 import ReviewNotes from "./notes.js";
 
 const MOD = "git-diff";
@@ -34,6 +37,13 @@ const CHROME = (name) => `mods/workspace-chrome/${name}.svg`;
 // no other: without `--literal-pathspecs` git reads `*`, `[` and a first `:` as a pattern.
 const READ = ["--no-optional-locks", "--literal-pathspecs", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 const DIFF = ["diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames"];
+const PATCH = [...DIFF, "--full-index", "--src-prefix=a/", "--dst-prefix=b/", "--line-prefix=", "--submodule=short"];
+const patchArgs = (range, context, path) => [...PATCH, `-U${context}`, ...range, "--", path];
+// These scripts take data as arguments on the checkout's machine.
+const APPLY = 'patch=$1; shift; printf "%s" "$patch" | git -c apply.ignoreWhitespace=no apply --cached --whitespace=nowarn "$@" -';
+const READ_CONTEXT = `git cat-file blob "$1" | LC_ALL=C awk -v first="$2" -v last="$3" 'NR >= first {print substr($0, 1, 8004)} NR == last {exit}'`;
+const INDEX_CHANGED = "git-panel.index-changed";
+const staging = new Set();
 // A request older than this was left by a window that closed before taking it.
 const FRESH = 10000;
 // The text: its size, a character's width at that size, a row's height, a line number's room.
@@ -54,8 +64,10 @@ const LIST = 250, FILES = 500, NARROW = 700;
 const WIDE = 900;
 // Lines around a change, and "all of them" for the whole file.
 const CONTEXT = 3, WHOLE = 100000;
+const GAP_LINES = 80, EXPANDED_LINES = 640;
 // How much comparing of words one file gets (the lengths of two lines, multiplied, summed).
 const WORDS = 6000000;
+const COLOR_CHARS = 18000;
 // Uncommitted files are read again when the folder changes, at most this often, and on a
 // timer on another machine, whose folder can't be watched.
 const TICK = 2000, THERE_EVERY = 8000;
@@ -64,6 +76,8 @@ const VIEWED_MOST = 800;
 const base = (path) => path.slice(path.lastIndexOf("/") + 1);
 const parent = (path) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
 const markColor = (t, mark) => (mark === "A" || mark === "U" ? t.ansi2 : mark === "D" || mark === "!" ? t.ansi1 : t.blocked);
+const toneColor = { keyword: "ansi5", string: "ansi2", number: "ansi6", comment: "muted" };
+const lineKey = (line) => line.pair == null ? line.text : `${line.text}\0${line.pair}`;
 // A space the text element can't drop at the start or the end of a piece of a line.
 const hard = (text) => text.replace(/ /g, " ");
 const sourceKey = (s) => (s.kind === "work" ? "work" : s.sha);
@@ -74,6 +88,11 @@ export default class GitDiff extends View {
     if (p.reviewNotes) {
       this.notes = new ReviewNotes();
       this.notes.init(p, (args) => this.gitOf(p.reviewNotes, args), cx);
+      return;
+    }
+    if (p.filePicker) {
+      this.picker = new FilePicker();
+      this.picker.init(p, cx);
       return;
     }
     this.tab = p.tab ?? null;
@@ -127,6 +146,7 @@ export default class GitDiff extends View {
     const same = o.source.kind !== "branch" && this.req && this.req.root === o.root && (this.req.on ?? null) === (o.on ?? null) && sourceKey(this.req.source) === sourceKey(o.source);
     this.req = { root: o.root, on: o.on ?? null, source: o.source };
     this.scope = o.scope ?? "auto"; this.range = null; this.error = null;
+    this.actionError = null;
     this.reviewKey = o.source.kind === "branch" ? review.storeKey(this.req) : null;
     this.want = { path: o.path ?? null, group: o.group ?? null };
     this.remember("last", JSON.stringify({ ...this.req, path: o.path ?? null, group: o.group ?? null }));
@@ -191,12 +211,16 @@ export default class GitDiff extends View {
       // do), `--name-status` also names files that were only touched.
       return { id, label, files: diff.parseNameStatus(names.stdout).filter((f) => counts[f.path] || f.mark === "U").map((f) => ({ ...f, mark: f.mark === "U" ? "!" : f.mark, ...(counts[f.path] ?? {}) })) };
     };
-    let groups, from = null, range = null;
+    let groups, from = null, range = null, head = null;
     if (s.kind === "work") {
-      const [staged, unstaged, fresh] = await Promise.all([
+      const [staged, unstaged, fresh, branch, tip] = await Promise.all([
         files("Staged", "staged", ["--cached"]), files("Not staged", "unstaged", []),
         this.gitOf(req, ["ls-files", "--others", "--exclude-standard", "-z"]),
+        this.gitOf(req, ["symbolic-ref", "-q", "HEAD"]),
+        this.gitOf(req, ["rev-parse", "-q", "--verify", "HEAD"]),
       ]);
+      head = { branch: branch.code === 0 ? branch.stdout.trim().replace(/^refs\/heads\//, "") : null,
+        refs: [["HEAD", tip.code === 0 ? tip.stdout.trim() : null]] };
       for (const path of fresh.stdout.split("\0").filter(Boolean)) unstaged.files.push({ path, mark: "U" });
       if (!staged.files.length) unstaged.label = "Changes";
       groups = [staged, unstaged];
@@ -228,7 +252,7 @@ export default class GitDiff extends View {
       }
     }
     if (this.req !== req) return;
-    this.from = from; this.range = range;
+    this.from = from; this.range = range; this.workHead = head;
     groups = groups.filter((g) => g.files.length);
     this.groups = groups; this.error = null; this.loaded = true;
     this.prune();
@@ -258,7 +282,9 @@ export default class GitDiff extends View {
   async open(cx, fresh) {
     const req = this.req, s = req.source, cur = this.cur, f = this.file(), from = this.from;
     if (!f) return;
-    const context = `-U${this.whole ? WHOLE : CONTEXT}`;
+    const turn = this.opening = (this.opening ?? 0) + 1;
+    const whole = this.whole, expect = this.workHead;
+    const editable = s.kind === "work" && !whole && f.mark !== "U" && f.mark !== "!";
     let parsed, raw;
     try {
       if (s.kind === "work" && f.mark === "U") {
@@ -270,44 +296,135 @@ export default class GitDiff extends View {
         parsed = r.code !== 0 ? { note: "This file can't be read" } : raw.includes("\0") ? { binary: true, hunks: [] } : diff.added(raw);
       } else {
         const range = s.kind === "work" ? (cur.group === "staged" ? ["--cached"] : []) : [from, this.range?.tip ?? s.sha];
-        const r = await this.gitOf(req, [...DIFF, context, ...range, "--", f.path]);
+        const r = await this.gitOf(req, patchArgs(range, whole ? WHOLE : CONTEXT, f.path));
         if (r.code !== 0) throw new Error(r.stderr.trim() || "git diff failed");
         raw = r.stdout;
-        parsed = diff.parse(raw, s.kind === "branch");
+        parsed = diff.parse(raw, s.kind === "branch", editable);
         if (parsed.conflict) parsed = { note: "This file is in conflict: open it in the editor to resolve it" };
       }
     } catch (e) {
       parsed = { note: `This diff can't be shown: ${String(e?.message ?? e)}` };
     }
-    if (this.req !== req || this.cur !== cur) return;
+    if (this.req !== req || this.cur !== cur || this.opening !== turn || this.whole !== whole) return;
     // `sum` is of what changed, the same with three lines around it or the whole file: a
     // tick is kept with it. `raw` is of everything read: the rows are made again when it moves.
     const sum = diff.changes(parsed), text = diff.hash(raw ?? "");
     // A file marked as viewed that changed since is to be looked at again.
     const key = this.key(f), seen = this.viewed[key];
     if (seen && s.kind === "work" && seen.h !== sum) { delete this.viewed[key]; this.keep(); }
-    if (this.doc && !fresh && this.doc.text === text && this.doc.whole === this.whole) return;
+    const state = JSON.stringify(expect);
+    if (this.doc && !fresh && this.doc.text === text && this.doc.whole === whole && this.doc.state === state) return;
     const hunks = parsed.hunks ?? [];
-    const doc = { sum, text, whole: this.whole, binary: Boolean(parsed.binary), cut: Boolean(parsed.cut), note: parsed.note ?? null,
-      unified: diff.unified({ hunks }), split: diff.split({ hunks }), widest: diff.widest({ hunks }), marks: new Map() };
+    const doc = { sum, text, whole, state, binary: Boolean(parsed.binary), cut: Boolean(parsed.cut), note: parsed.note ?? null,
+      hunks, oldBlob: parsed.oldBlob, expanded: new Map(), baseWidth: diff.widest({ hunks }), styles: new Map(),
+      oneSided: f.mark === "A" || f.mark === "D" || f.mark === "U",
+      grammar: syntax.language(f.path), colorLeft: COLOR_CHARS };
+    const patches = editable ? hunks.map((_, i) => diff.hunkPatch(parsed, i)) : [];
+    if (expect && patches.some(Boolean)) doc.stage = { patches, raw, expect, staged: cur.group === "staged" };
+    this.buildRows(doc);
     // Which words changed, for the lines that replaced others: worked out here, not while
     // drawing, and only as far as the budget goes. Past it a changed line is all one color.
-    let spent = 0;
-    for (const row of doc.unified) {
-      if (row.kind === "gap" || row.pair === null || row.pair === undefined) continue;
-      spent += Math.min(row.text.length, 600) * Math.min(row.pair.length, 600);
-      if (spent > WORDS) break;
-      const id = `${row.text}\0${row.pair}`;
-      if (!doc.marks.has(id)) doc.marks.set(id, diff.pieces(row.text, diff.words(row.text, row.pair)));
-    }
+    this.styleRows(doc);
     if (s.kind === "branch") doc.anchors = review.anchors({ hunks });
     this.doc = doc;
     if (fresh) this.scroll.scroll_to_item(0, "top");
   }
 
+  buildRows(doc) {
+    doc.unified = diff.unified(doc, doc.expanded);
+    doc.split = diff.split(doc, doc.expanded);
+    doc.widest = doc.baseWidth;
+    for (const lines of doc.expanded.values()) {
+      for (const line of lines) doc.widest = Math.max(doc.widest, line.length);
+    }
+  }
+
+  styleRows(doc) {
+    let spent = 0;
+    for (const row of doc.unified) {
+      if (typeof row.text !== "string" || doc.styles.has(lineKey(row))) continue;
+      let marks = null, colors = [];
+      if (row.pair != null) {
+        spent += Math.min(row.text.length, 600) * Math.min(row.pair.length, 600);
+        if (spent <= WORDS) marks = diff.words(row.text, row.pair);
+      }
+      if (doc.grammar && row.text.length <= 400 && row.text.length <= doc.colorLeft) {
+        doc.colorLeft -= row.text.length;
+        colors = syntax.spans(row.text, doc.grammar);
+      }
+      doc.styles.set(lineKey(row), syntax.colorPieces(row.text, marks, colors));
+    }
+  }
+
+  expand(doc, row, cx) {
+    if (this.doc !== doc || !doc.oldBlob || this.gapBusy) return;
+    this.actionError = null;
+    const rebuild = () => {
+      this.buildRows(doc);
+      this.styleRows(doc);
+      const rows = this.layout() === "split" ? doc.split : doc.unified;
+      const index = rows.findIndex((item) => item.kind === "gap" && item.hunk === row.hunk);
+      if (index >= 0) this.scroll.scroll_to_item(index);
+      cx.notify();
+    };
+    if (row.action === "hide") { doc.expanded.delete(row.hunk); rebuild(); return; }
+    const visible = doc.expanded.get(row.hunk) ?? [];
+    const used = [...doc.expanded.values()].reduce((total, lines) => total + lines.length, 0);
+    const count = Math.min(row.count - visible.length, GAP_LINES, EXPANDED_LINES - used);
+    if (count <= 0) { this.actionError = "Collapse an expanded gap to show more context."; cx.notify(); return; }
+    const last = row.old + row.count - visible.length - 1, first = last - count + 1, req = this.req;
+    this.gapBusy = { doc, hunk: row.hunk };
+    cx.spawn(async (cx) => {
+      try {
+        const result = await exec("sh", ["-c", READ_CONTEXT, "git-diff-context", doc.oldBlob, String(first), String(last)], { cwd: req.root, on: req.on });
+        const lines = result.stdout.replace(/\n$/, "").split("\n");
+        if (result.code !== 0 || lines.length !== count) throw new Error("Could not read the unchanged lines from Git.");
+        if (this.doc !== doc || this.req !== req) return;
+        doc.expanded.set(row.hunk, [...lines.map((line) => diff.showLine(line.replace(/\r$/, ""))), ...visible]);
+        rebuild();
+      } catch (e) {
+        if (this.doc === doc && this.req === req) this.actionError = String(e?.message ?? e);
+      } finally {
+        this.gapBusy = null;
+        cx.notify();
+      }
+    });
+  }
+
+  stageHunk(doc, index, cx) {
+    const req = this.req, cur = this.cur, stage = doc.stage, patch = stage?.patches[index];
+    if (this.doc !== doc || this.whole || req?.source.kind !== "work" || !patch || this.hunkBusy) return;
+    const key = JSON.stringify([req.on, req.root]);
+    if (staging.has(key)) { this.actionError = "A hunk is already being staged in this checkout."; cx.notify(); return; }
+    const staged = cur.group === "staged";
+    const git = (args) => this.gitOf(req, args);
+    this.actionError = null;
+    this.hunkBusy = { doc, index };
+    staging.add(key);
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        const why = await guard(req.root, req.on, git, stage.expect);
+        if (why) throw new Error(why);
+        const now = await git(patchArgs(staged ? ["--cached"] : [], CONTEXT, cur.path));
+        if (now.code !== 0 || now.stdout !== stage.raw) throw new Error("The file changed. Review the refreshed diff and try again.");
+        const result = await exec("sh", ["-c", APPLY, "git-diff-apply", patch, ...(staged ? ["--reverse"] : [])], { cwd: req.root, on: req.on });
+        if (result.code !== 0) throw new Error(result.stderr.trim() || "Git could not apply the hunk to the index.");
+        setShared(INDEX_CHANGED, { root: req.root, on: req.on, at: Date.now() });
+      } catch (e) {
+        if (this.req === req && this.cur === cur) this.actionError = String(e?.message ?? e);
+      } finally {
+        this.hunkBusy = null;
+        staging.delete(key);
+        if (this.req === req) this.lists(cx);
+        cx.notify();
+      }
+    });
+  }
+
   select(f, cx) {
     if (!f || (this.cur && this.cur.path === f.path && this.cur.group === f.group)) return;
-    this.cur = { group: f.group, path: f.path }; this.whole = false; this.doc = null;
+    this.cur = { group: f.group, path: f.path }; this.whole = false; this.doc = null; this.actionError = null;
     this.remember("last", JSON.stringify({ ...this.req, path: f.path, group: f.group }));
     cx.spawn(async (cx) => { await this.open(cx, true); cx.notify(); });
   }
@@ -429,7 +546,7 @@ export default class GitDiff extends View {
   layout() {
     if (this.mode !== "auto") return this.mode;
     const room = this.width() - (this.narrow() ? 0 : LIST);
-    return room >= WIDE && this.doc && (this.doc.widest + 1) * CHAR + NUMBER + 12 <= room / 2 ? "split" : "unified";
+    return room >= WIDE && this.doc && !this.doc.oneSided && (this.doc.widest + 1) * CHAR + NUMBER + 12 <= room / 2 ? "split" : "unified";
   }
 
   // The pane's width in its own pixels: the size comes in the window's, which at a zoom are
@@ -448,14 +565,37 @@ export default class GitDiff extends View {
     else if (name === "next") this.step(1, cx);
     else if (name === "prev") this.step(-1, cx);
     else if (name === "viewed") this.mark(cx);
-    else if (name === "mode") {
-      this.mode = this.layout() === "split" ? "unified" : "split";
+    else if (name === "files") this.pickFile();
+    else if (["mode", "unified", "split", "auto"].includes(name)) {
+      this.mode = name === "mode" ? (this.layout() === "split" ? "unified" : "split") : name;
       this.remember("mode", this.mode);
     } else if (name === "whole") {
       if (!this.cur) return;
       this.whole = !this.whole;
       cx.spawn(async (cx) => { await this.open(cx, false); cx.notify(); });
     } else if (name === "edit") this.edit();
+  }
+
+  pickFile() {
+    const files = this.groups.flatMap((g) => g.files.map((f) => ({ path: f.path, group: g.id, label: g.id === "files" ? "" : g.label })));
+    if (!files.length) return;
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    this.fileChoice = { id, req: this.req };
+    openOverlay({ mod: MOD, kind: "dialog", width: 500, height: 386, props: {
+      filePicker: { id, files, current: this.cur },
+    } });
+  }
+
+  filePicked(cx) {
+    const choice = this.fileChoice, result = choice && shared(FILE_PICK);
+    if (!result || result.target !== choice.id) return;
+    this.fileChoice = null;
+    cx.spawn(async (cx) => {
+      await null;
+      if (shared(FILE_PICK)?.target === choice.id) setShared(FILE_PICK, null);
+      if (choice.req === this.req) this.select(this.all().find((file) => file.path === result.path && file.group === result.group), cx);
+      cx.notify();
+    });
   }
 
   // The file as it is now, in the tab's editor, at the first line that changed.
@@ -519,14 +659,19 @@ export default class GitDiff extends View {
     const s = this.req?.source, all = this.all(), seen = all.filter((f) => this.isViewed(f)).length;
     const title = !s ? "Diff" : s.kind === "work" ? "Uncommitted changes" : s.kind === "branch" ? review.branchName(s.branch) : s.title || s.sha.slice(0, 7);
     const sub = !s ? "" : s.kind === "work" ? base(this.req.root) : s.kind === "branch" ? "against " + review.branchName(s.base) : s.sub ?? "";
-    const side = this.layout() === "split";
+    const side = this.layout() === "split", compact = this.width() < 490;
     return h_flex().flex_none().h(40).px(12).gap(8).items_center().border_b(1).border_color(t.border)
       .child(div().flex_none().max_w("55%").truncate().font_semibold().child(title))
       .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(sub))
       .when(all.length > 0, (e) => e
-        .child(div().flex_none().text_size(11).text_color(seen === all.length ? t.ansi2 : t.dim).child(`${seen} / ${all.length} viewed`))
-        .child(this.button(t, "gd-mode", ICON(side ? "split" : "unified"), side ? "Side by side: click for one column (S)" : "One column: click for side by side (S)", "mode"))
-        .child(this.button(t, "gd-whole", ICON("whole"), this.whole ? "The whole file: click for the changes only (W)" : "Show the whole file (W)", "whole", { on: this.whole })));
+        .when(!compact, (x) => x.child(div().flex_none().text_size(11).text_color(seen === all.length ? t.ansi2 : t.dim).child(`${seen} / ${all.length} viewed`)))
+        .child(compact
+          ? this.button(t, "gd-mode", ICON(side ? "split" : "unified"), "Switch diff layout (S)", "mode", { label: side ? "Split" : "Unified", on: true })
+          : h_flex().flex_none().rounded(7).gap(1).p(2).bg(t.raised)
+            .child(this.button(t, "gd-unified", ICON("unified"), "Show one column (S)", "unified", { label: "Unified", on: !side }))
+            .child(this.button(t, "gd-split", ICON("split"), "Show side by side (S)", "split", { label: "Split", on: side }))
+            .when(this.mode !== "auto", (x) => x.child(this.button(t, "gd-auto", null, "Choose the layout to fit the pane", "auto", { label: "Auto" }))))
+        .child(this.button(t, "gd-whole", compact ? null : ICON("whole"), this.whole ? "Show changes only (W)" : "Show the whole file (W)", "whole", { label: "Whole file", on: this.whole })));
   }
 
   reviewBar(t) {
@@ -553,13 +698,14 @@ export default class GitDiff extends View {
       for (const f of g.files) {
         if (++n > FILES) break;
         const file = { ...f, group: g.id }, on = this.cur?.path === f.path && this.cur?.group === g.id, viewed = this.isViewed(file);
-        out.push(h_flex().id(`gd-f-${g.id}-${n}`).h(25).flex_none().px(8).gap(6).items_center().rounded(6).cursor_pointer()
+        out.push(h_flex().id(`gd-f-${g.id}-${n}`).h(25).flex_none().px(8).gap(6).items_center().rounded(6).cursor_pointer().tooltip(f.path)
           .when(on, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
           .on_click((_e, cx) => { this.select(file, cx); this.handle.focus(); cx.notify(); })
           .child(viewed ? svg(CHROME("check")).size(11).flex_none().text_color(t.ansi2) : div().w(11).flex_none())
           .child(div().w(10).flex_none().text_size(11).text_color(markColor(t, f.mark)).child(f.mark))
           .child(div().flex_none().max_w(150).truncate().text_color(viewed ? t.muted : t.foreground).child(base(f.path)))
-          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(parent(f.path))));
+          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(parent(f.path)))
+          .child(this.counts(t, f)));
       }
     }
     if (n > FILES) out.push(div().px(8).h(22).text_size(11).text_color(t.dim).child(`and ${n - FILES} more`));
@@ -568,19 +714,29 @@ export default class GitDiff extends View {
       .child(Scrollbar.vertical("gd-files").absolute().inset_0());
   }
 
+  counts(t, file) {
+    return h_flex().flex_none().gap(4).items_center().text_size(11)
+      .when(file.add > 0, (e) => e.child(div().text_color(t.ansi2).child(`+${file.add}`)))
+      .when(file.del > 0, (e) => e.child(div().text_color(t.ansi1).child(`−${file.del}`)));
+  }
+
   // The bar over a file's diff: which file, how much changed, and what can be done with it.
   bar(t) {
     const f = this.file(), all = this.all();
     if (!f) return div();
     const at = all.findIndex((x) => x.path === f.path && x.group === f.group), viewed = this.isViewed(f), dir = parent(f.path);
+    const narrow = this.narrow(), compact = this.width() < 490;
     return h_flex().flex_none().h(34).px(10).gap(7).items_center().border_b(1).border_color(t.border).bg(t.surface)
       .child(div().flex_none().text_size(11).text_color(markColor(t, f.mark)).child(f.mark))
-      .child(div().flex_none().max_w("45%").truncate().font_medium().child(base(f.path)))
-      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(dir))
-      .when(f.add > 0, (e) => e.child(div().flex_none().text_size(11).text_color(t.ansi2).child(`+${f.add}`)))
-      .when(f.del > 0, (e) => e.child(div().flex_none().text_size(11).text_color(t.ansi1).child(`−${f.del}`)))
-      .when(all.length > 1, (e) => e
-        .child(div().flex_none().text_size(11).text_color(t.dim).child(`${at + 1} / ${all.length}`))
+      .child(h_flex().id("gd-current-file").flex_1().min_w(0).h(25).gap(5).items_center()
+        .when(narrow, (e) => e.px(4).rounded(5).cursor_pointer().hover((x) => x.bg(t.hover))
+          .tooltip(`Choose a changed file (F) · ${f.path}`).on_click(() => this.pickFile()))
+        .child(div().flex_none().max_w(narrow ? "85%" : "45%").truncate().font_medium().child(base(f.path)))
+        .when(!narrow, (e) => e.child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(dir)))
+        .when(narrow, (e) => e.child(svg(CHROME("chevron-down")).size(10).flex_none().text_color(t.muted))))
+      .child(this.counts(t, f))
+      .when(all.length > 1, (e) => e.child(div().flex_none().text_size(11).text_color(t.dim).child(`${at + 1} / ${all.length}`)))
+      .when(all.length > 1 && !compact, (e) => e
         .child(this.button(t, "gd-prev", CHROME("chevron-left"), "The previous file (K)", "prev"))
         .child(this.button(t, "gd-next", CHROME("chevron-right"), "The next file (J)", "next")))
       .when(f.mark !== "D", (e) => e.child(this.button(t, "gd-edit", ICON("edit"), "Open the file in the editor (O)", "edit")))
@@ -590,16 +746,34 @@ export default class GitDiff extends View {
   // The text of one line: in pieces where words changed, so those are colored stronger.
   text(doc, line, t) {
     const strong = line.kind === "+" ? t.ansi2 + "50" : t.ansi1 + "50";
-    const pieces = line.pair !== null && line.pair !== undefined ? doc.marks.get(`${line.text}\0${line.pair}`) : null;
-    if (!pieces || pieces.length < 2) return div().flex_none().whitespace_nowrap().child(hard(line.text) || " ");
-    return h_flex().flex_none().children(pieces.map((p) => div().flex_none().whitespace_nowrap().when(p.marked, (e) => e.bg(strong).rounded(2)).child(hard(p.text))));
+    const pieces = doc.styles.get(lineKey(line));
+    if (!pieces) return div().flex_none().whitespace_nowrap().child(hard(line.text) || " ");
+    return h_flex().flex_none().children(pieces.map((p) => div().flex_none().whitespace_nowrap()
+      .when(Boolean(p.tone), (e) => e.text_color(t[toneColor[p.tone]]))
+      .when(p.marked, (e) => e.bg(strong).rounded(2)).child(hard(p.text))));
   }
 
-  gap(row, t) {
-    const words = row.count > 0 ? `${row.count} unchanged line${row.count === 1 ? "" : "s"}` : "";
-    return h_flex().w_full().h(ROW).flex_none().px(12).gap(10).items_center().bg(t.raised).text_color(t.dim).whitespace_nowrap()
-      .child(div().flex_none().child(words ? `⋯  ${words}` : "⋯"))
-      .child(div().flex_1().min_w(0).truncate().child(hard(row.note ?? "")));
+  gap(doc, row, t) {
+    const hide = row.action === "hide", remaining = row.count - row.showing;
+    const count = hide ? row.showing : Math.min(remaining, GAP_LINES);
+    const words = `${count}${!hide && count < remaining ? ` of ${remaining}` : ""} unchanged line${count === 1 ? "" : "s"}`;
+    const reading = !hide && this.gapBusy?.doc === doc && this.gapBusy.hunk === row.hunk;
+    return h_flex().w_full().h(ROW).flex_none().px(10).gap(5).items_center().bg(t.surface)
+      .font_family(".SystemUIFont").text_size(11).text_color(doc.oldBlob ? t.accent : t.dim)
+      .when(Boolean(doc.oldBlob), (e) => e.cursor_pointer())
+      .child(div().flex_none().child(hide ? "▴" : "▾"))
+      .child(div().min_w(0).truncate().child(doc.oldBlob ? (reading ? "Reading context…" : `${hide ? "Hide" : "Show"} ${words}`) : words));
+  }
+
+  hunk(doc, row, t) {
+    const action = doc.stage?.patches[row.hunk];
+    const busy = this.hunkBusy?.doc === doc && this.hunkBusy.index === row.hunk;
+    return h_flex().w_full().h(ROW).flex_none().px(10).gap(8).items_center().bg(t.raised).border_t(1).border_color(t.border)
+      .text_size(11).when(Boolean(action && !this.hunkBusy), (e) => e.cursor_pointer())
+      .when(Boolean(action), (e) => e.child(div().flex_none().px(7).rounded(4).bg(t.surface).font_family(".SystemUIFont")
+        .text_color(busy ? t.muted : t.foreground).child(busy ? "Updating index…" : doc.stage.staged ? "Unstage hunk" : "Stage hunk")))
+      .child(div().flex_none().text_color(t.dim).child(`@@ ${row.old} → ${row.next}`))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(hard(row.note || "")));
   }
 
   tint(kind, t) { return kind === "+" ? t.ansi2 + "1c" : kind === "-" ? t.ansi1 + "1c" : null; }
@@ -609,7 +783,8 @@ export default class GitDiff extends View {
   }
 
   unifiedRow(doc, row, t) {
-    if (row.kind === "gap") return this.gap(row, t);
+    if (row.kind === "gap") return this.gap(doc, row, t);
+    if (row.kind === "hunk") return this.hunk(doc, row, t);
     const bg = this.tint(row.kind, t);
     return h_flex().w_full().h(ROW).flex_none().items_center().when(Boolean(bg), (e) => e.bg(bg))
       .child(this.number(row.old, t)).child(this.number(row.next, t))
@@ -618,7 +793,8 @@ export default class GitDiff extends View {
   }
 
   splitRow(doc, row, t) {
-    if (row.kind === "gap") return this.gap(row, t);
+    if (row.kind === "gap") return this.gap(doc, row, t);
+    if (row.kind === "hunk") return this.hunk(doc, row, t);
     const half = (side) => {
       const el = h_flex().flex_1().flex_basis(0).min_w(0).h_full().overflow_hidden().items_center();
       if (!side) return el.bg(t.raised + "70");
@@ -642,8 +818,13 @@ export default class GitDiff extends View {
       for (let i = range.start; i < range.end; i++) out.push(side ? this.splitRow(doc, rows[i], t) : this.unifiedRow(doc, rows[i], t));
       return out;
     }).track_scroll(this.scroll).size_full()
-      // A click on what is left out between two changes shows the whole file.
-      .on_item_click((key, cx) => { if (rows[Number(key)]?.kind === "gap" && !this.whole) { this.command("whole", cx); cx.notify(); } else this.noteLine(rows[Number(key)], side); });
+      .on_item_click((key, cx) => {
+        if (doc !== this.doc) return;
+        const row = rows[Number(key)];
+        if (row?.kind === "gap") this.expand(doc, row, cx);
+        else if (row?.kind === "hunk") this.stageHunk(doc, row.hunk, cx);
+        else this.noteLine(row, side);
+      });
     return div().size_full().relative().font_family(settings().font_family ?? "JetBrains Mono").text_size(SIZE)
       .child(side ? lines : div().id("gd-x").size_full().overflow_x_scrollbar().child(div().w_full().min_w(width).h_full().child(lines)))
       .child(Scrollbar.vertical("gd-rows").viewport_from_layout().absolute().inset_0())
@@ -651,6 +832,7 @@ export default class GitDiff extends View {
   }
 
   render(cx) {
+    if (this.picker) return this.picker.render(cx);
     if (this.notes) return this.notes.render(cx);
     this.reviewState = this.reviewKey ? shared(this.reviewKey) : null;
     fit();
@@ -658,6 +840,7 @@ export default class GitDiff extends View {
     for (const [name, value] of Object.entries(this.pending)) localStorage.setItem(name, value);
     this.pending = {};
     this.requests(cx);
+    this.filePicked(cx);
     this.arrived(cx);
     const t = theme();
     return v_flex().id("git-diff").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(12.5)
@@ -669,7 +852,7 @@ export default class GitDiff extends View {
       .on_key_down((e, cx) => {
         const m = e.modifiers ?? {};
         if (m.control || m.alt || m.platform) return;
-        const name = { j: "next", down: "next", k: "prev", up: "prev", v: "viewed", s: "mode", w: "whole", o: "edit" }[e.key];
+        const name = { j: "next", down: "next", k: "prev", up: "prev", v: "viewed", s: "mode", w: "whole", o: "edit", f: "files" }[e.key];
         if (!name) return;
         this.command(name, cx);
         cx.stop_propagation();
@@ -681,6 +864,10 @@ export default class GitDiff extends View {
         .when(!this.narrow() && this.groups.length > 0, (e) => e.child(this.list(t)))
         .child(v_flex().flex_1().min_w(0).min_h(0)
           .child(this.bar(t))
+          .when(Boolean(this.actionError), (e) => e.child(h_flex().flex_none().px(10).py(5).gap(6).items_center().bg(t.surface)
+            .child(div().flex_1().min_w(0).text_size(11).text_color(t.ansi1).child(this.actionError))
+            .child(div().id("gd-dismiss-error").cursor_pointer().text_color(t.muted).tooltip("Dismiss")
+              .on_click((_e, cx) => { this.actionError = null; cx.notify(); }).child("×"))))
           .child(div().flex_1().min_h(0).child(this.table(t)))));
   }
 }

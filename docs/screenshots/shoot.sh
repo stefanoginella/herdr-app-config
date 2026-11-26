@@ -17,9 +17,7 @@ s_diff() {
   local pane; pane=$(herdr-app do pane.split "{\"direction\":\"right\",\"mod\":\"git-diff\",\"props\":{\"tab\":\"$T1\"}}" | py -c 'import json, sys; print(json.load(sys.stdin).get("pane", ""))')
   nap 1.5; h pane.zoom "{\"pane\":\"$pane\"}"; draw 3
   req "[{\"shared\":[\"git-diff.open\",{\"tab\":\"$T1\",\"root\":\"$R\",\"on\":null,\"source\":{\"kind\":\"work\"},\"path\":\"mods/git-panel/lanes.js\",\"group\":\"staged\",\"at\":\"now\"}]}]" 6
-  # The pane chooses side by side only when the lines fit, and these don't: its switch does it. It is
-  # a switch, and the pane remembers it: in a sandbox where this step ran before, take this line out.
-  h git-diff.mode
+  h git-diff.split
   h git-diff.viewed; nap 1; draw 5
   shot diff
   h pane.close "{\"pane\":\"$pane\"}"; nap 1.5

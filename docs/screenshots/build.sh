@@ -101,7 +101,7 @@ X
 # 2220x1410 on a display of one pixel a point: pictures.json's boxes are in that window's pixels.
 # It opens with only its corner on screen, at the desktop's bottom right, out of the pointer's way:
 # a pointer over the window leaves hover marks in the shots. (scene.sh then minimizes it.)
-at=$(/usr/bin/osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null | awk -F', ' 'NF == 4 { print $3 - 120 ".0," $4 - 90 ".0" }')
+at=$(/usr/bin/osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null | awk -F', ' 'NF == 4 { print $3 - 120 ".0," $4 - 90 ".0" }' || true)
 printf '{"state":"windowed","bounds":[%s,2220.0,1410.0]}\n' "${at:-60.0,40.0}" > "$A/window.json"
 # The mods read nothing while Herdr is not the active app, and the sandbox never is one for long:
 # its copies are told that it is.
@@ -307,9 +307,10 @@ git tag herdr-0.1.17 "HEAD~$n"
 
 # a branch that was merged: a curve in the graph
 git checkout -q -b fix/search-escape HEAD~4
-printf '\n// Escape from the list gives the keyboard back to the pane it came from.\n' >> mods/project-search/ops.js
+# Use a fixture file to keep this merge independent of edits to the real project-search code.
+printf 'Escape from the list gives the keyboard back to the pane it came from.\n' > docs/search-escape-demo.txt
 commit 55 "Jun Park" "fix(project-search): give the keyboard back on Escape"
-printf '// Tried with a remote project too.\n' >> mods/project-search/ops.js
+printf 'Tried with a remote project too.\n' >> docs/search-escape-demo.txt
 commit 53 "Jun Park" "test(project-search): cover Escape on another machine"
 git checkout -q main
 t=$((now - 6 * 60)); GIT_AUTHOR_DATE="@$t" GIT_COMMITTER_DATE="@$t" git merge -q --no-ff fix/search-escape -m "Merge branch 'fix/search-escape'"

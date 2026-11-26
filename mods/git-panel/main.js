@@ -18,7 +18,7 @@ import { v_flex, h_flex, TextareaState, Textarea, Scrollbar, v_virtual_list, Vir
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, props, openOverlay, nextCommand, run, shared, setShared, layout, checking, window as app } from "herdr";
 import Menu, { any, height } from "./menu.js";
 import Naming from "./naming.js";
-import ReviewBase from "./review-base.js";
+import BranchPicker from "./review-base.js";
 import Confirm from "./confirm.js";
 import Failure from "./failure.js";
 import * as ops from "./ops.js";
@@ -125,7 +125,7 @@ export default class GitPanel extends View {
   init(_props, cx) {
     // Opened by itself as a popup or a dialog: the menu, the name prompt, the question.
     const p = props();
-    const Other = p?.reviewBase ? ReviewBase : p?.failure ? Failure : p?.menu ? Menu : p?.naming ? Naming : p?.confirm ? Confirm : null;
+    const Other = p?.reviewBase || p?.branchPicker ? BranchPicker : p?.failure ? Failure : p?.menu ? Menu : p?.naming ? Naming : p?.confirm ? Confirm : null;
     if (Other) {
       this.other = new Other();
       this.other.init(cx);
@@ -174,6 +174,7 @@ export default class GitPanel extends View {
         else if (c === "pull") this.pull(cx);
         else if (c === "push") this.push(cx);
         else if (c === "write") this.generate(cx);
+        else if (c === "branches") this.branches();
         cx.notify();
       }
     });
@@ -506,20 +507,13 @@ export default class GitPanel extends View {
     if (r.op === "copy") { cx.write_to_clipboard(String(r.text ?? "")); this.say("Copied"); return; }
     if (r.op === "url") { if (/^https:\/\//.test(r.url ?? "")) cx.open_url(r.url); return; }
     if (r.op === "edit") { this.edit(r.path); return; }
-    if (r.op === "choose-review-base") {
-      const refs = [...this.heads.map((h) => "refs/heads/" + h.name), ...this.remotes.map((h) => "refs/remotes/" + h.name)];
-      const preferred = ["refs/remotes/origin/main", "refs/heads/main", "refs/remotes/origin/master", "refs/heads/master"];
-      const choices = [...new Set([...preferred.filter((ref) => refs.includes(ref)), ...refs])];
-      openOverlay({ mod: MOD, kind: "dialog", width: 430, height: 360, props: { reviewBase: {
-        root: r.root, on: r.on, tab: r.tab, branch: r.branch, refs: choices,
-      } } });
-      return;
-    }
+    if (r.op === "choose-review-base") { this.branches(r); return; }
     if (r.op === "review-branch") {
       this.pane(DIFF, { root: this.root, source: { kind: "branch", branch: r.branch, base: r.base } }, r.tab);
       return;
     }
     if (r.op === "show") { this.go(r.sha, true); return; }
+    if (r.op === "pick-branch") { await this.pickBranch(r, cx); return; }
     if (r.op === "repo") { this.choose(r.to); this.refresh(cx); return; }
     if (r.op === "open-checkout") { await this.openCheckout(r, cx); return; }
     if (r.op === "writer") { this.writer = write.writer(r.id).id; this.remember("writer", this.writer); return; }
@@ -545,6 +539,51 @@ export default class GitPanel extends View {
   say(text) { this.note = { text, at: Date.now() }; }
 
   current() { return this.heads.find((h) => h.name === this.status.branch) ?? null; }
+
+  branches(review = null) {
+    if (!this.root) return;
+    const { root, on, branch } = this.about();
+    const local = this.heads.map((h) => ({ ...h, ref: "refs/heads/" + h.name, current: h.name === branch, remote: false }));
+    const tracks = new Map(local.filter((h) => h.upstream).map((h) => [h.upstream, h]));
+    const remote = this.remotes.map((h) => {
+      const tracking = tracks.get(h.name);
+      return { ...h, ref: "refs/remotes/" + h.name, remote: true, checkedOut: Boolean(tracking?.checkedOut && !tracking.current), ahead: tracking?.ahead, behind: tracking?.behind };
+    });
+    const recent = (a, b) => Number(Boolean(b.current)) - Number(Boolean(a.current)) || b.time - a.time || a.name.localeCompare(b.name);
+    const refs = [...local.sort(recent), ...remote.sort(recent)];
+    const target = { root, on, branch, refs };
+    if (review) {
+      const preferred = ["refs/remotes/origin/main", "refs/heads/main", "refs/remotes/origin/master", "refs/heads/master"];
+      const rank = (ref) => preferred.includes(ref) ? preferred.indexOf(ref) : preferred.length;
+      target.refs = refs.sort((a, b) => rank(a.ref) - rank(b.ref));
+      target.tab = review.tab;
+      target.branch = review.branch;
+    }
+    openOverlay({ mod: MOD, kind: "dialog", width: 540, height: 430, props: {
+      [review ? "reviewBase" : "branchPicker"]: target,
+    } });
+  }
+
+  async pickBranch(r, cx) {
+    const row = r.row;
+    const local = row.remote
+      ? this.heads.find((h) => h.upstream === row.name && h.name === row.branch)
+        ?? this.heads.find((h) => h.upstream === row.name)
+      : this.heads.find((h) => h.name === row.name);
+    if (local?.name === this.status.branch) return;
+    if (local?.checkedOut) {
+      await this.openCheckout({ ...r, branch: local.name }, cx);
+      return;
+    }
+    if (row.remote && !local && this.heads.some((h) => h.name === row.branch)) {
+      this.note = { error: `Local branch “${row.branch}” already exists with a different upstream.`, at: Date.now() };
+      return;
+    }
+    const expect = local && row.remote ? { ...r.expect, refs: [...r.expect.refs, ["refs/heads/" + local.name, local.sha]] } : r.expect;
+    await this.act(row.remote && !local
+      ? { ...r, op: "track", name: row.ref, expect }
+      : { ...r, op: "switch", branch: local?.name ?? row.name, expect }, cx);
+  }
 
   async openCheckout(r, cx) {
     const tab = focused()?.tab, key = this.key();
@@ -863,9 +902,12 @@ export default class GitPanel extends View {
             { off: !to, label: st.ahead ? String(st.ahead) : null, spin: this.busy === "push" }))))
       .when(strip, (e) => e.child(h_flex().flex_wrap().px(12).pb(6).gap(4).children(repos.map((r, i) => this.chip(t, r, i, states[r.root])))))
       .when(Boolean(this.root), (e) => e.child(h_flex().h(32).px(12).pb(6).gap(8).items_center()
-        .child(h_flex().flex_1().min_w(0).gap(5).items_center().text_size(12).text_color(t.muted)
+        .child(h_flex().id("git-branch-picker-button").flex_1().min_w(0).h(24).px(4).gap(5).items_center().rounded(6)
+          .text_size(12).text_color(t.muted).tooltip("Switch branch…").cursor_pointer()
+          .hover((e) => e.bg(t.hover)).on_click(() => this.branches())
           .child(svg(CHROME("git-branch")).size(12).flex_none())
           .child(div().min_w(0).truncate().text_color(t.foreground).child(branch))
+          .child(svg(CHROME("chevron-down")).size(10).flex_none())
           .when(Boolean(h?.gone), (x) => x.child(div().flex_none().text_size(10.5).text_color(t.ansi1).child("upstream gone"))))
         .child(h_flex().flex_none().p(2).gap(2).rounded(8).bg(t.raised).child(tab("graph", "Graph")).child(tab("refs", "Refs")))))
       .when(Boolean(this.state), (e) => e.child(div().px(14).py(5).text_size(11.5).bg(t.blocked + "22").text_color(t.foreground).child(`${this.state} in progress: finish or abort it in a terminal. Actions wait until then.`)))
@@ -1005,6 +1047,8 @@ export default class GitPanel extends View {
   work(t) {
     const st = this.status, here = { branch: st.branch };
     const total = st.staged.length + st.unstaged.length;
+    const count = st.staged.length || st.unstaged.length;
+    const commitLabel = st.staged.length ? `Commit ${count} file${count === 1 ? "" : "s"}` : count ? `Commit all (${count})` : "Commit";
     const enabled = Boolean(this.message.trim() && total && !this.busy && !this.state);
     // Just committed, with no new message typed: the button pushes. Only once the graph shows
     // the commit (the push checks the branch is still on what was read).
@@ -1060,7 +1104,7 @@ export default class GitPanel extends View {
           : div().id("git-commit").h(32).px(12).flex().flex_none().items_center().rounded(8).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12)
             .tooltip("Commit (Cmd+Enter in the message)")
             .when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => { this.commit(cx); cx.notify(); })
-            .child(this.busy === "commit" ? "Committing…" : st.staged.length ? "Commit" : "Commit all")));
+            .child(this.busy === "commit" ? "Committing…" : commitLabel)));
   }
 
   // The files of a commit or a stash, under what is said about it.
@@ -1163,6 +1207,11 @@ export default class GitPanel extends View {
     this.pending = {};
     const shown = this.shows();
     if (shown && this.key() !== this.context) this.after(cx, async (cx) => { if (this.key() !== this.context) this.refresh(cx); });
+    const index = shown && shared("git-panel.index-changed");
+    if (index && index.at !== this.indexChange && index.root === this.root && (index.on ?? null) === this.on) {
+      this.indexChange = index.at;
+      this.after(cx, async (cx) => { this.stale = true; this.refresh(cx); });
+    }
     // A menu or a dialog left something to do. Taken in a task: only one copy gets it.
     if (ops.waiting()) this.after(cx, async (cx) => {
       const r = ops.take((r) => r.root === this.root && (r.on ?? null) === (this.on ?? null));

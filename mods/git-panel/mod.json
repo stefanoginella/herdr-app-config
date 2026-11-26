@@ -3,6 +3,12 @@
   "title": "Git Panel",
   "palette": [
     {
+      "title": "Git: Switch Branch",
+      "command": "git-panel.branches",
+      "group": "Git",
+      "words": "checkout refs find"
+    },
+    {
       "title": "Git: Fetch",
       "command": "git-panel.fetch",
       "group": "Git",

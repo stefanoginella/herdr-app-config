@@ -85,7 +85,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 ![The diff pane: a change side by side, with the changed words marked and one file ticked as viewed](docs/images/git-diff.webp)
 
-<kbd>J</kbd> and <kbd>K</kbd> walk the files, <kbd>V</kbd> ticks one as viewed and moves on, <kbd>S</kbd> switches between side by side and one column. Choose **Review branch…** to review a branch against its base, copy feedback from changed lines and return to the changes since your last review. [Everything about the diff pane](docs/git-diff.md)
+<kbd>J</kbd> and <kbd>K</kbd> walk the files, <kbd>V</kbd> marks one as viewed and moves on, and <kbd>S</kbd> switches between Split and Unified. Expand a gap for more context or stage an individual hunk. Choose **Review branch…** to compare against a base, save feedback on changed lines and return to the changes since your last review. [Everything about the diff pane](docs/git-diff.md)
 
 ### File Editor
 

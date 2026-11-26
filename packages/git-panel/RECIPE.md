@@ -10,7 +10,7 @@ Put the graph above a resizable detail area in the right panel. Draw branch lane
 
 ## How it behaves
 
-Follow the focused pane's repository, with a chooser for repositories inside it or enclosing it. Page history in groups of 1,000. Click to inspect, double-click a branch to switch, and right-click for actions on that exact reference or file. Stage with +, unstage with −, and commit with Cmd+Enter. With nothing staged, the commit includes all changes. Discard saves a recoverable stash. The message writer fills an editable field.
+Follow the focused pane's repository, with a chooser for repositories inside it or enclosing it. Page history in groups of 1,000. Click to inspect, double-click a branch to switch, and right-click for actions on that exact reference or file. The current branch and the **Git: Switch Branch** palette entry open a picker with a name filter, tip subjects and tracking counts. Arrow keys move the selection and Enter switches or goes to the branch's open checkout. Stage with +, unstage with −, and commit with Cmd+Enter. Show the number of files on the commit button. With nothing staged, **Commit all** includes all changes. Discard saves a recoverable stash. The message writer fills an editable field.
 
 Open a failed commit run or PR check on request. For GitHub Actions, show the failed jobs, step names and a bounded log with Copy log. Offer the original URL when GitHub cannot supply the log or the provider hosts its own check.
 

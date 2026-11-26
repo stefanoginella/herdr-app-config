@@ -33,6 +33,8 @@
 
 import { exec, shared, setShared, home } from "herdr";
 import { READ } from "./git.js";
+import { guard } from "./git-guard.js";
+export { probe } from "./git-guard.js";
 
 const KEY = "git-panel.request";
 // A request older than this was left by a window that closed before taking it.
@@ -55,24 +57,6 @@ export function take(mine) {
   if (fresh && !mine(r)) return null;
   setShared(KEY, null);
   return fresh ? r : null;
-}
-
-// Where a repository is, and what it is in the middle of. Prints the top folder, git's own
-// folder, the one a worktree shares with its repository, and then a line for each thing under
-// way. The script has no values in it: the folder is where it runs.
-const PROBE = 'top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 3; dir=$(git rev-parse --absolute-git-dir) || exit 3; '
-  + 'common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P) || exit 3; printf "%s\\n%s\\n%s\\n" "$top" "$dir" "$common"; '
-  + 'for f in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG; do if [ -e "$dir/$f" ]; then echo "$f"; fi; done';
-const UNDER_WAY = { "rebase-merge": "Rebase", "rebase-apply": "Rebase", MERGE_HEAD: "Merge", CHERRY_PICK_HEAD: "Cherry-pick", REVERT_HEAD: "Revert", BISECT_LOG: "Bisect" };
-
-// { root, dir, common, state } for the repository `cwd` is in, or null when it is in none.
-// `state` names what is under way ("Rebase", "Merge"…), or is null.
-export async function probe(cwd, on) {
-  const r = await exec("sh", ["-c", PROBE], { cwd, on });
-  if (r.code !== 0) return null;
-  const [root, dir, common, ...rest] = r.stdout.split("\n");
-  if (!root) return null;
-  return { root, dir, common, state: UNDER_WAY[rest.find((l) => UNDER_WAY[l])] ?? null };
 }
 
 // The repositories under a folder: the folders that hold a `.git`, as deep as $2 says, without
@@ -113,28 +97,13 @@ const HARMLESS = new Set(["fetch"]);
 
 // Why a request can't run now: a message, or null.
 async function refused(r, git) {
-  if (!HARMLESS.has(r.op)) {
-    const at = await probe(r.root, r.on);
-    if (!at) return "This is no longer a git repository";
-    if (at.state) return `${at.state} in progress: finish or abort it in a terminal first`;
-  }
+  const reason = await guard(r.root, r.on, git, r.expect, !HARMLESS.has(r.op));
+  if (reason) return reason;
   // A stash applied over other changes leaves files in conflict with nothing "under way":
   // staging or committing everything would commit the conflict marks.
   if ((r.op === "commit" && r.all) || (r.op === "stage" && !r.paths?.length)) {
     const unmerged = await git(["ls-files", "--unmerged"]);
     if (unmerged.stdout.trim()) return "Some files are in conflict: resolve them, and stage each one, first";
-  }
-  const e = r.expect;
-  if (!e) return null;
-  if ("branch" in e) {
-    // The whole name, cut here: `--short` says "heads/main" when a tag is called main too.
-    const head = await git(["symbolic-ref", "-q", "HEAD"]);
-    const branch = head.code === 0 ? head.stdout.trim().replace(/^refs\/heads\//, "") : null;
-    if (branch !== (e.branch ?? null)) return `The branch changed (now ${branch ?? "no branch"}): nothing was done`;
-  }
-  for (const [name, sha] of e.refs ?? []) {
-    const now = await git(["rev-parse", "-q", "--verify", name]);
-    if (now.code !== 0 || now.stdout.trim() !== sha) return `${name} is not what it was a moment ago: nothing was done`;
   }
   return null;
 }

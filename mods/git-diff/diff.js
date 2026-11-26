@@ -9,12 +9,13 @@ export const MOST = 6000, LONG = 2000;
 
 // Text draws a tab as nothing: each is padded to the next 4-column stop.
 export const untab = (text) => (text.includes("\t") ? text.replace(/[^\t]*\t/g, (s) => s.slice(0, -1).padEnd((s.length - 1) - (s.length - 1) % 4 + 4)) : text);
+export const showLine = (text) => untab(text.length > LONG ? `${text.slice(0, LONG)}…` : text);
 
 // A file's diff as git prints it: { hunks, binary, cut }. A hunk is { old, next (the line
 // numbers it starts at), note (what git says after the @@), lines: [{ kind: " " | "+" | "-",
 // text }] }. `cut`: the diff was longer than MOST lines.
-export function parse(text, originals = false) {
-  const out = { hunks: [], binary: false, cut: false, conflict: false };
+export function parse(text, originals = false, capture = false) {
+  const out = { hunks: [], binary: false, cut: false, conflict: false, oldBlob: null, header: [] };
   let hunk = null, count = 0;
   for (const line of text.split("\n")) {
     // A file with Windows line ends: the \r is not something to show.
@@ -22,22 +23,28 @@ export function parse(text, originals = false) {
     // A file in conflict is compared with both sides at once: not a diff this can draw.
     if (raw.startsWith("@@@")) { out.conflict = true; continue; }
     if (raw.startsWith("@@")) {
-      const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@ ?(.*)$/.exec(raw);
+      const m = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/.exec(raw);
       if (!m) continue;
-      hunk = { old: Number(m[1]), next: Number(m[2]), note: m[3], lines: [] };
+      hunk = { old: Number(m[1]), oldCount: Number(m[2] ?? 1), next: Number(m[3]), nextCount: Number(m[4] ?? 1), note: m[5], lines: [] };
+      if (capture) hunk.patch = [line];
       out.hunks.push(hunk);
       continue;
     }
     if (!hunk) {
       if (raw.startsWith("Binary files ") || raw.startsWith("GIT binary patch")) out.binary = true;
+      const index = /^index ([a-f0-9]+)\.\.[a-f0-9]+/.exec(raw);
+      if (index && /[1-9a-f]/.test(index[1])) out.oldBlob = index[1];
+      if (capture && line) out.header.push(line);
       continue;
     }
     const kind = raw[0];
     // "\ No newline at end of file" is about the line before it, and is not a line.
+    if (line === "\\ No newline at end of file") hunk.patch?.push(line);
     if (kind !== " " && kind !== "+" && kind !== "-") continue;
     if (++count > MOST) { out.cut = true; break; }
     const body = raw.slice(1);
-    hunk.lines.push({ kind, text: untab(body.length > LONG ? `${body.slice(0, LONG)}…` : body), ...(originals && body.length <= LONG ? { original: body } : {}) });
+    hunk.patch?.push(line);
+    hunk.lines.push({ kind, text: showLine(body), ...(originals && body.length <= LONG ? { original: body } : {}) });
   }
   return out;
 }
@@ -45,8 +52,25 @@ export function parse(text, originals = false) {
 // A file git doesn't have yet, as one hunk of added lines.
 export function added(text) {
   const all = text.replace(/\r?\n$/, "").split(/\r?\n/);
-  const lines = all.slice(0, MOST).map((l) => ({ kind: "+", text: untab(l.length > LONG ? `${l.slice(0, LONG)}…` : l) }));
-  return { hunks: text ? [{ old: 0, next: 1, note: "", lines }] : [], binary: false, cut: all.length > MOST };
+  const lines = all.slice(0, MOST).map((l) => ({ kind: "+", text: showLine(l) }));
+  return { hunks: text ? [{ old: 0, oldCount: 0, next: 1, nextCount: all.length, note: "", lines }] : [], binary: false, cut: all.length > MOST };
+}
+
+// Use the patch Git printed, including tabs, CRLF and the missing-newline marker.
+// For a modification, carry only the text headers so chmod stays a separate change.
+export function hunkPatch(parsed, index) {
+  const { hunks, cut, binary, conflict, header } = parsed;
+  const hunk = hunks[index];
+  if (cut || binary || conflict || !hunk?.patch?.length || !header[0]?.startsWith("diff --git ")) return null;
+  const modes = header.flatMap((line) => /^(?:(?:old|new|new file|deleted file) mode |index [a-f0-9]+\.\.[a-f0-9]+ )(\d{6})$/.exec(line)?.slice(1) ?? []);
+  if (!modes.length || modes.some((mode) => mode !== "100644" && mode !== "100755")) return null;
+  const fileMode = header.find((line) => /^(new|deleted) file mode /.test(line));
+  if (fileMode && (hunks.length !== 1 || (hunk.oldCount && hunk.nextCount))) return null;
+  const paths = header.filter((line) => line.startsWith("--- ") || line.startsWith("+++ "));
+  if (paths.length !== 2) return null;
+  const patch = [header[0], ...(fileMode ? [fileMode] : []), ...paths, ...hunk.patch].join("\n") + "\n";
+  // exec has no stdin. A shell on the checkout's machine pipes this one argument to Git.
+  return patch.length <= 20000 && !/[\0\ufffd]/.test(patch) ? patch : null;
 }
 
 // The lines of a hunk in groups: runs of unchanged lines, and changes as the lines taken out
@@ -69,25 +93,40 @@ function groups(hunk) {
   return out;
 }
 
-// How many lines are left out between two hunks (or before the first one).
-const skipped = (hunks, i) => (i === 0 ? hunks[0].old - 1 : hunks[i].old - (hunks[i - 1].old + hunks[i - 1].lines.filter((l) => l.kind !== "+").length));
-
-// The row that stands for what is left out before a hunk. Not when nothing is: a new file
-// starts at its first line.
-function gap(rows, hunks, i) {
-  const count = Math.max(0, skipped(hunks, i));
-  if (count || hunks[i].note) rows.push({ kind: "gap", count, note: hunks[i].note });
+// A range of unchanged lines immediately before a hunk, in both revisions.
+function gap(hunks, i) {
+  const hunk = hunks[i], before = hunks[i - 1];
+  const old = before ? before.old + Math.max(1, before.oldCount) : 1;
+  const next = before ? before.next + Math.max(1, before.nextCount) : 1;
+  const count = Math.min(hunk.old + Number(hunk.oldCount === 0) - old, hunk.next + Number(hunk.nextCount === 0) - next);
+  return count > 0 ? { kind: "gap", hunk: i, old, next, count } : null;
 }
 
-// Rows, one under the other: { kind: "gap", count, note } between hunks, and { kind: " " |
+function heading(rows, hunks, i, expanded, same) {
+  const area = gap(hunks, i);
+  if (area) {
+    const lines = expanded?.get(i) ?? [];
+    if (lines.length < area.count) rows.push({ ...area, action: "show", showing: lines.length });
+    if (lines.length) rows.push({ ...area, action: "hide", showing: lines.length });
+    const skipped = area.count - lines.length;
+    lines.forEach((text, j) => rows.push(same({ text, old: area.old + skipped + j, next: area.next + skipped + j })));
+  }
+  const { old, next, note } = hunks[i];
+  rows.push({ kind: "hunk", hunk: i, old, next, note });
+}
+
+const unifiedSame = (line) => ({ kind: " ", ...line });
+const splitSame = (line) => ({ left: { n: line.old, text: line.text, kind: " " }, right: { n: line.next, text: line.text, kind: " " } });
+
+// Rows, one under the other: hunk and gap headers, and { kind: " " |
 // "+" | "-", old?, next?, text, pair? }. `pair` is the text of the line this one replaced or
 // was replaced by: what words() compares it with.
-export function unified(d) {
+export function unified(d, expanded) {
   const rows = [];
   d.hunks.forEach((hunk, i) => {
-    gap(rows, d.hunks, i);
+    heading(rows, d.hunks, i, expanded, unifiedSame);
     for (const g of groups(hunk)) {
-      if (g.same) { rows.push({ kind: " ", old: g.same.old, next: g.same.next, text: g.same.text }); continue; }
+      if (g.same) { rows.push(unifiedSame(g.same)); continue; }
       g.del.forEach((l, k) => rows.push({ kind: "-", old: l.n, text: l.text, pair: g.add[k]?.text ?? null }));
       g.add.forEach((l, k) => rows.push({ kind: "+", next: l.n, text: l.text, pair: g.del[k]?.text ?? null }));
     }
@@ -95,14 +134,14 @@ export function unified(d) {
   return rows;
 }
 
-// Rows, side by side: { kind: "gap", count, note }, and { left, right }, each { n, text, kind,
+// Rows, side by side: hunk and gap headers, and { left, right }, each { n, text, kind,
 // pair } or null where that side has no line.
-export function split(d) {
+export function split(d, expanded) {
   const rows = [];
   d.hunks.forEach((hunk, i) => {
-    gap(rows, d.hunks, i);
+    heading(rows, d.hunks, i, expanded, splitSame);
     for (const g of groups(hunk)) {
-      if (g.same) { rows.push({ left: { n: g.same.old, text: g.same.text, kind: " " }, right: { n: g.same.next, text: g.same.text, kind: " " } }); continue; }
+      if (g.same) { rows.push(splitSame(g.same)); continue; }
       for (let k = 0; k < Math.max(g.del.length, g.add.length); k++) {
         const a = g.del[k], b = g.add[k];
         rows.push({
@@ -156,20 +195,6 @@ export function words(text, other) {
   }
   // Too little in common: the marks would be most of the line, and say nothing.
   if (!total || kept / total < 0.3) return null;
-  return out;
-}
-
-// A line cut at the marks: [{ text, marked }].
-export function pieces(text, marks) {
-  if (!marks?.length) return [{ text, marked: false }];
-  const out = [];
-  let at = 0;
-  for (const [from, to] of marks) {
-    if (from > at) out.push({ text: text.slice(at, from), marked: false });
-    out.push({ text: text.slice(from, to), marked: true });
-    at = to;
-  }
-  if (at < text.length) out.push({ text: text.slice(at), marked: false });
   return out;
 }
 

@@ -6,11 +6,11 @@ Review a branch, commit, stash or working tree beside the terminal. Mark a file 
 
 ## What you see
 
-Put a file list on the left and the patch on the right in the terminal's font size. Split working-tree files into staged and unstaged groups. Highlight inserted and removed lines, then color the changed words more strongly. At sufficient width use two columns if the text fits. In a narrow pane use one scrolling column with both line numbers.
+Put a file list with addition and deletion counts on the left and the patch on the right in the terminal's font size. Split working-tree files into staged and unstaged groups. Use syntax colors and distinct backgrounds for changed lines and words. Label the Unified, Split and Whole file controls. Auto chooses two columns when the text fits and the file exists on both sides. Unified scrolls horizontally and shows both line numbers.
 
 ## How it behaves
 
-Click a file in the **Git Panel** to open or reuse the current tab's diff pane. J and K move through files, V marks viewed, S changes columns, and W expands the unchanged lines between hunks. O opens the current file in **File Editor**. Remember review progress across restarts and clear a working-tree tick when that file changes again.
+Click a file in the **Git Panel** to open or reuse the current tab's diff pane. J and K move through files, V marks viewed, S changes columns, W shows the whole file, and F opens the searchable file picker. In a narrow pane the filename opens the picker too. O opens the current file in **File Editor**. Show the hunk's line numbers and the function name Git supplies. Click a gap to expand its unchanged lines in groups of up to 80 and click Hide to collapse it. For uncommitted text changes, show **Stage hunk** or **Unstage hunk** in each eligible hunk's heading. Remember review progress across restarts and clear a working-tree tick when that file changes again.
 
 A branch review compares the common ancestor of a chosen base with the branch tip. Mark the displayed revision reviewed to open only follow-up commits on the next visit. Keep the whole-branch view available, preserve still-identical file ticks, and show the whole comparison with an explanation after a history rewrite. Click a changed line for a saved note. Show its original revision and excerpt, retain outdated notes, and copy the selected, verified notes as a single message.
 
@@ -20,8 +20,8 @@ Install `mods/git-diff/` alongside the **Git Panel** package, which opens this v
 
 ## Watch out
 
-Keep the viewer read-only. Limit the diff to 6,000 lines and bound the work spent matching words. Save the source, mode and non-branch viewed marks in local storage. Share branch checkpoints, viewed blob pairs and notes by machine, checkout, branch and base. Key working-tree marks to changed content so switching context display does not clear them.
+Keep commit, branch and stash comparisons read-only. Check the checkout and exact patch before piping a single hunk to Git on the checkout's machine with `git apply --cached`. Keep mode changes separate from content edits. Limit the diff to 6,000 lines and bound word and syntax processing. Save the source, mode and non-branch viewed marks in local storage. Share branch checkpoints, viewed blob pairs and notes by machine, checkout, branch and base. Key working-tree marks to changed content so switching context display does not clear them.
 
 ## Done when
 
-Review two files, mark one viewed, and change it again from the terminal. Its tick clears. Switching between unified and split view or revealing unchanged lines preserves ticks on the other files.
+Review two files, mark one viewed, and change it again from the terminal. Its tick clears. Switching between Unified and Split or revealing unchanged lines preserves ticks on the other files. Stage one of two hunks in a file, then unstage it. The working file stays intact.
