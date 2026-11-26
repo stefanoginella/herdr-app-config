@@ -29,6 +29,7 @@ The diff pane, beside the terminals. It is not a clone. One a tab (props `{ tab 
 - `tick()` reads nothing while Herdr is not the active app (`away`); the first active tick marks the lists stale. It starts no reading sooner than four times as long as the last one took (`cost`, measured from `listedAt` in `lists()`). Neither applies to `take()`: a request from the Git panel, or the restore at start, reads at once.
 - A tick is kept with a number made from the added and removed lines only (`diff.changes()`), not from the whole diff: that one changes with the lines shown around a change, and the whole-file view would take every tick away.
 - Word and syntax spans are computed before drawing. `WORDS` bounds word comparisons and `COLOR_CHARS` bounds syntax scans. A long line, unknown file type or exhausted budget falls back to the available highlights. Syntax scanning uses the displayed line and carries no state across omitted lines.
+- Unified and Split use the same theme-derived green and red line backgrounds at 25% opacity. Changed words get a second tint over the line background.
 - Unified scrolls horizontally. Auto chooses Split when both columns fit and the file exists on both sides. An explicit mode stays selected until it is changed or Auto is selected again.
 - A space in the text is drawn as a no-break space (`hard()`): a line is drawn in pieces, and a piece would lose the spaces at its ends.
 - `on_size_change` reports the window's pixels: `width()` divides by the zoom before comparing with the pane's own lengths.

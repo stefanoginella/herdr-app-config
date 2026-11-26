@@ -7,7 +7,7 @@ A pane beside the terminals for reading a change, opened by clicking a file in t
 *An uncommitted change side by side, with the changed words marked and one file ticked as viewed. The names in the pictures are made up.*
 
 - **Unified and Split.** Use the header or press `S` to switch. Auto uses Split when both columns fit and Unified for new or deleted files. Unified shows both line numbers and scrolls horizontally.
-- **Code and word highlights.** Syntax colors identify keywords, strings, comments and numbers in common code formats. The exact words changed still get their own background.
+- **Code and word highlights.** Added lines have a green background and removed lines have a red one. The exact words changed get a stronger tint. Syntax colors identify keywords, strings, comments and numbers in common code formats.
 - **Hunks and context.** Each hunk shows its starting line numbers and function name when Git provides one. Click a gap to show its unchanged lines in groups of up to 80. Click **Hide** to collapse that gap. Press `W` or click **Whole file** to see the whole diff with context.
 - **Files.** The list shows additions and deletions per file and groups uncommitted changes into staged and unstaged. Click the filename in a narrow pane or press `F` to search the changed files. `J` and `K`, the arrows, and the mouse's forward and back buttons move between files.
 - **Stage or unstage a hunk.** In the uncommitted changes view, click **Stage hunk** or **Unstage hunk** in its header. Git updates the index and keeps your working file as it is. Return to the changes view to stage individual hunks after looking at the whole file. Use the Git panel to stage an untracked or binary file.

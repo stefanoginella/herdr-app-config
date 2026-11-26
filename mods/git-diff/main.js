@@ -776,7 +776,7 @@ export default class GitDiff extends View {
       .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(hard(row.note || "")));
   }
 
-  tint(kind, t) { return kind === "+" ? t.ansi2 + "1c" : kind === "-" ? t.ansi1 + "1c" : null; }
+  tint(kind, t) { return kind === "+" ? t.ansi2 + "40" : kind === "-" ? t.ansi1 + "40" : null; }
 
   number(n, t) {
     return div().w(NUMBER).flex_none().pr(8).text_right().text_color(t.dim).child(n === undefined || n === null ? "" : String(n));
