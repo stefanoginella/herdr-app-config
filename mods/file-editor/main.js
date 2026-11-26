@@ -28,7 +28,7 @@
 // bold, italic, code, strike, link, bullets, numbers, tasks, comment,
 // line-up, line-down, duplicate, next-same, next-change, prev-change, search-project.
 import { View, div, svg, image } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextView, v_virtual_list, Scrollbar } from "gpui-base";
+import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextareaState, Textarea, TextView, v_virtual_list, VirtualListScrollHandle, Scrollbar } from "gpui-base";
 import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, run, openOverlay, closeOverlay, window as app } from "herdr";
 import * as edit from "./edit.js";
 import * as diff from "./diff.js";
@@ -48,7 +48,7 @@ const TAB_ACTIONS = {
   "close-all": "Close All",
 };
 // The Search panel (`project-search`), and what it reads in shared state (its header).
-const SEARCH = "project-search", ASK = "project-search.ask";
+const SEARCH = "project-search", ASK = "project-search.toggle-ask";
 // A request older than this was left by a window that closed before it was taken.
 const FRESH = 10000;
 // More text than this is shown cut short, and read-only.
@@ -77,6 +77,15 @@ const AROUND = 3, MOVE_AFTER = 40;
 const GOAL_FOR = 3000;
 const STORE = "state";
 const REFOCUS = 300, REFOCUS_SOON = 60;
+const CSV_WIDTH = 150, CSV_MIN_WIDTH = 64, CSV_MAX_WIDTH = 800, CSV_GUTTER = 52;
+const CSV_ROW = 27, CSV_EDIT_ROW = 76;
+const csvWidth = width => Math.max(CSV_MIN_WIDTH, Math.min(CSV_MAX_WIDTH, width));
+const linkModifier = e => (app()?.platform === "macos" ? e.modifiers?.platform : e.modifiers?.control)
+  && !e.modifiers?.alt && !e.modifiers?.shift;
+function openWeb(url, cx) {
+  try { cx.open_url(url); }
+  catch { notify({ title: "This is not a valid web link", level: "info" }); }
+}
 // At most this many of the find bar's matches are lit in the preview: each is a call in render().
 const LIT_MOST = 300;
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", cjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html", markdown: "md", mdx: "md" };
@@ -123,7 +132,7 @@ export default class FileEditor extends View {
     // The pane's own place for the keyboard, for when no text can take it (the preview, no
     // file): the keys in `mod:file-editor` count only while the keyboard is in this pane.
     this.handle = cx.focus_handle();
-    // Cmd+F and Cmd+Shift+F in the text (keys.json, `mod:file-editor > Input`): see fieldkeys.js.
+    // Keys that need to win inside native text fields: see fieldkeys.js.
     fieldKeys.bind(MOD, cx);
     this.find = { open: false, replacing: false, cs: false, regex: false, matches: [], at: -1, error: null, focused: null };
     this.query = InputState.new({ placeholder: "Find" });
@@ -182,7 +191,13 @@ export default class FileEditor extends View {
     try {
       localStorage.setItem(STORE, JSON.stringify({
         active: this.active,
-        open: this.docs.map(d => ({ path: d.path, on: d.on, preview: d.preview, wrap: d.wrap, pinned: d.pinned, ...(d.dirty ? { draft: d.text, base: d.base } : {}) })),
+        open: this.docs.map(d => {
+          const cell = this.csvReplacement(d);
+          const draft = cell ? d.text.slice(0, cell.range.start) + cell.insert + d.text.slice(cell.range.end) : d.text;
+          return { path: d.path, on: d.on, preview: d.preview, wrap: d.wrap, pinned: d.pinned,
+            ...(d.csvWidths ? { csvWidths: d.csvWidths } : {}),
+            ...(d.dirty || Boolean(cell) ? { draft, base: d.base } : {}) };
+        }),
       }));
     } catch (e) { console.log(`${MOD}: could not keep the open files: ${e}`); }
   }
@@ -215,6 +230,7 @@ export default class FileEditor extends View {
     // What a search found is gone to a moment later: once the text is drawn, and after
     // Herdr has focused the pane, which takes the keyboard (and so the selection) from it.
     const reveal = d => { if (show && o.select) cx.timer.after(REFOCUS_SOON, cx => { if (this.active === d.id) this.reveal(d, o.select, cx); }); };
+    if (show && (this.doc()?.id !== id || o.select)) this.finishCsv(this.doc(), cx);
     if (d) {
       if (show) { this.active = id; this.found(); this.focus(); this.look(d, cx); this.head(d, cx); reveal(d); }
       return;
@@ -228,6 +244,7 @@ export default class FileEditor extends View {
       dirty: draft !== null && draft !== (o.base ?? null), readonly: null, // or why, as the pane says it
       preview: Boolean(o.preview), error: null,
       info: null, stats: null, media: null, mediaError: null, page: 1, csvPage: 0, csvColumnPage: 0,
+      csvWidths: o.csvWidths && typeof o.csvWidths === "object" ? o.csvWidths : null,
       wrap: o.wrap !== false, // long lines wrapped (the default), or scrolled sideways
       pinned: Boolean(o.pinned),
       place: null, picked: "", // the preview's last selection: its range in the text, and what it says
@@ -298,7 +315,9 @@ export default class FileEditor extends View {
   // The keyboard comes here: to the text, or to the pane itself when there is none to type in.
   focus() {
     const d = this.doc();
-    if (d?.state && !d.preview) d.state.focus(); else this.handle.focus();
+    if (d?.csvEdit) d.csvEdit.state.focus();
+    else if (d?.state && !d.preview) d.state.focus();
+    else this.handle.focus();
   }
 
   // The text changed, by typing or by a command.
@@ -348,13 +367,13 @@ export default class FileEditor extends View {
     if (previews.binary(d.kind)) return this.refreshPreview(d, cx);
     this.measure(d, cx);
     if (d.preview && this.doc() === d) this.refreshPreview(d, cx);
-    if (!d.state || d.looking || d.saving || d.notice === "changed") return;
+    if (!d.state || d.looking || d.saving || d.csvEdit || d.notice === "changed") return;
     const path = d.path;
     d.looking = true;
     cx.spawn(async cx => {
       try {
         const text = await readTextFile(path, { on: d.on });
-        if (!this.docs.includes(d) || d.path !== path || d.saving) return;
+        if (!this.docs.includes(d) || d.path !== path || d.saving || d.csvEdit) return;
         if (text === null) {
           if (d.base !== null && !d.readonly) { d.base = null; d.dirty = true; d.notice = "gone"; this.store(); cx.notify(); }
           return;
@@ -398,14 +417,33 @@ export default class FileEditor extends View {
     const { kind, path, on, text } = d, binary = previews.binary(kind);
     if (!this.docs.includes(d) || (!binary && (!d.preview || !d.state))) return;
     if (kind === "csv") { this.loadCsv(d); return; }
+    if (kind === "markdown") {
+      if (d.markdownSource !== text) {
+        d.markdownSource = text;
+        d.markdownLinks = edit.markdownLinks(text);
+      }
+      return;
+    }
     if (!binary && kind !== "svg" && kind !== "html") return;
     if (d.previewJob) {
-      if (force || path !== d.previewJob.path || (!binary && text !== d.previewJob.text)) d.previewAgain = true;
+      if ((force && kind !== "image") || path !== d.previewJob.path || kind !== d.previewJob.kind || (!binary && text !== d.previewJob.text)) d.previewAgain = true;
       return;
     }
     if (!binary && !force && d.media?.text === text && d.media.path === path) return;
-    const job = d.previewJob = { text, path }, old = d.media;
-    const current = () => this.docs.includes(d) && d.path === path && d.kind === kind && (binary || d.text === text);
+    const job = d.previewJob = { text, path, kind }, old = d.media;
+    const current = () => d.previewJob === job && this.docs.includes(d) && d.path === path && d.kind === kind && (binary || d.text === text);
+    if (force) d.mediaError = null;
+    if (kind === "image") cx.timer.after(on ? 45000 : 20000, cx => {
+      if (d.previewJob !== job) return;
+      const wasCurrent = current();
+      d.previewJob = null;
+      if (wasCurrent) {
+        d.mediaError = "Image preview timed out";
+        d.imageFailed = { path, key: job.key };
+      }
+      if (d.previewAgain) { d.previewAgain = false; this.refreshPreview(d, cx, true); }
+      cx.notify();
+    });
     cx.spawn(async cx => {
       let result;
       try {
@@ -413,6 +451,8 @@ export default class FileEditor extends View {
           const info = await previews.stamp(path, on);
           if (!current()) return;
           d.info = info;
+          job.key = info?.key ?? null;
+          if (kind === "image" && !force && d.imageFailed?.path === path && d.imageFailed.key === job.key) return;
           result = await previews.readMedia(path, on, kind, info, force ? null : old, d.page);
         } else {
           if (d.readonly) throw new Error(d.readonly);
@@ -425,11 +465,15 @@ export default class FileEditor extends View {
         }
         d.media = binary ? result : { ...result, text, path };
         d.mediaError = null;
+        d.imageFailed = null;
         if (result.page) d.page = result.page;
         if (old?.dir && old.dir !== result.dir) await previews.discard(old.dir);
         else if (old?.file && old.file !== result.file) await previews.removePage(old.file);
       } catch (e) {
-        if (current()) d.mediaError = String(e.message ?? e);
+        if (current()) {
+          d.mediaError = String(e.message ?? e);
+          if (kind === "image") d.imageFailed = { path, key: job.key };
+        }
       } finally {
         if (d.previewJob === job) {
           d.previewJob = null;
@@ -444,10 +488,12 @@ export default class FileEditor extends View {
     d.stats = previews.textInfo(text);
     if (d.kind === "svg") d.stats.dimensions = previews.svgDimensions(text);
     if (d.kind === "csv") this.loadCsv(d);
+    if (d.kind === "html" || d.kind === "svg") d.sourceLinks = edit.sourceUrls(text);
   }
 
   loadCsv(d) {
     if (d.readonly || (d.csv?.text === d.text && d.csv.page === d.csvPage && d.csv.columnPage === d.csvColumnPage)) return;
+    d.csvScroll ??= VirtualListScrollHandle.new();
     let result = previews.csv(d.text, d.csvPage, d.csvColumnPage);
     const lastRowPage = Math.max(0, Math.ceil(result.rowCount / previews.CSV_ROWS) - 1);
     const lastColumnPage = Math.max(0, Math.ceil(result.columns / previews.CSV_COLS) - 1);
@@ -456,7 +502,51 @@ export default class FileEditor extends View {
       d.csvColumnPage = Math.min(d.csvColumnPage, lastColumnPage);
       result = previews.csv(d.text, d.csvPage, d.csvColumnPage);
     }
+    for (const row of result.rows) for (const cell of row.cells) {
+      cell.link = Boolean(edit.firstUrl(cell.display));
+      cell.label = cell.display.replace(/\r\n|\r|\n/g, " ↵ ");
+    }
     d.csv = { ...result, text: d.text, page: d.csvPage, columnPage: d.csvColumnPage };
+  }
+
+  startCsv(d, rowIndex, column, cx) {
+    if (this.doc() !== d || !d.preview || d.readonly || d.csv?.unclosed || this.closing) return;
+    if (d.csvEdit?.rowIndex === rowIndex && d.csvEdit.column === column) return;
+    this.finishCsv(d, cx);
+    const result = d.csv, row = result.rows[rowIndex], cell = row?.cells[column - result.columnPage * previews.CSV_COLS];
+    if (!row || column >= result.columns) return;
+    const value = cell ? previews.csvValue(d.text.slice(cell.start, cell.end)) : "";
+    const state = TextareaState.new({ value, rows: 2 });
+    const editing = d.csvEdit = { state, row, cell, rowIndex, column, separator: result.separator, text: d.text, initial: state.value(), changed: false };
+    state.on("change", (_e, cx) => {
+      if (d.csvEdit !== editing) return;
+      const changed = state.value() !== editing.initial;
+      if (changed !== editing.changed) { editing.changed = changed; cx.notify(); }
+      this.stash(cx);
+    });
+    cx.timer.after(REFOCUS_SOON, () => { if (d.csvEdit === editing && this.doc() === d) state.focus(); });
+  }
+
+  csvReplacement(d) {
+    const e = d?.csvEdit;
+    if (!e || e.text !== d.text) return null;
+    const value = e.state.value();
+    return value === e.initial ? null : previews.csvEdit(d.text, e.row, e.cell, e.column, e.separator, value);
+  }
+
+  finishCsv(d, cx, cancel = false) {
+    if (!d?.csvEdit) return;
+    const replacement = cancel ? null : this.csvReplacement(d);
+    const { state } = d.csvEdit;
+    d.csvEdit = null;
+    if (this.doc() === d) this.handle.focus();
+    state.release();
+    if (this.apply(d, replacement)) {
+      this.changed(d, cx);
+      if (d.kind === "csv") this.loadCsv(d);
+    }
+    this.store();
+    if (cancel) this.look(d, cx);
   }
 
   previewPage(d, step, cx) {
@@ -466,12 +556,14 @@ export default class FileEditor extends View {
       if (d.page !== d.media.page) this.refreshPreview(d, cx);
     }
     if (d.kind === "csv" && d.preview && d.csv) {
+      this.finishCsv(d, cx);
       d.csvPage = Math.max(0, Math.min(Math.ceil(d.csv.rowCount / previews.CSV_ROWS) - 1, d.csvPage + step));
       this.loadCsv(d);
     }
   }
 
-  csvColumns(d, step) {
+  csvColumns(d, step, cx) {
+    this.finishCsv(d, cx);
     const last = Math.max(0, Math.ceil(d.csv.columns / previews.CSV_COLS) - 1);
     d.csvColumnPage = Math.max(0, Math.min(last, d.csvColumnPage + step));
     this.loadCsv(d);
@@ -605,6 +697,7 @@ export default class FileEditor extends View {
   }
 
   save(d, cx) {
+    this.finishCsv(d, cx);
     if (!d?.state || d.readonly || d.saving || !d.dirty) return;
     const text = d.state.value();
     d.saving = true;
@@ -652,6 +745,7 @@ export default class FileEditor extends View {
     closing.files = closing.files.filter(d => !drop.has(d));
     for (const d of drop) {
       d.state?.release();
+      d.csvScroll?.release();
       previews.discard(d.media?.dir);
     }
     if (closing.files.length) this.active = closing.files[0].id;
@@ -677,7 +771,7 @@ export default class FileEditor extends View {
     return [];
   }
 
-  tabAction(action, d) {
+  tabAction(action, d, cx) {
     if (!d) return;
     if (action === "toggle-pin") {
       d.pinned = !d.pinned;
@@ -692,6 +786,7 @@ export default class FileEditor extends View {
       this.store();
       return;
     }
+    this.finishCsv(this.doc(), cx);
     this.closeFiles(this.closeTargets(action, d), action === "close-others" || action === "close-right" ? d : null, action !== "close");
   }
 
@@ -699,6 +794,7 @@ export default class FileEditor extends View {
   // editor is not drawn yet, so that waits a moment (it also has to be drawn to scroll).
   unpreview(d, range, cx) {
     if (!d?.preview) return;
+    this.finishCsv(d, cx);
     d.preview = false; d.place = null;
     this.store();
     this.focus();
@@ -821,16 +917,23 @@ export default class FileEditor extends View {
         catch (e) { notify({ title: "Couldn't open the HTML file", body: String(e.message ?? e), level: "error" }); }
       });
     }
+    if (name === "open-link" && d?.state && !d.preview) {
+      const url = edit.urlAt(d.text, d.state.selected_range());
+      if (url) openWeb(url, cx);
+      else notify({ title: "No web link at the cursor", level: "info" });
+      return;
+    }
     if (name === "refresh-preview" && d) return this.refreshPreview(d, cx, true);
     if (name === "page-next" || name === "page-prev") return this.previewPage(d, name === "page-next" ? 1 : -1, cx);
     if (name === "find-next") return this.step(1);
     if (name === "find-prev") return this.step(-1);
     if (name === "escape") {
-      if (d && this.closing?.files[0] === d) this.cancelClose();
+      if (d?.csvEdit) this.finishCsv(d, cx, true);
+      else if (d && this.closing?.files[0] === d) this.cancelClose();
       else if (this.find.open) this.closeFind();
       return;
     }
-    if (name === "toggle-pin" || Object.hasOwn(TAB_ACTIONS, name)) return this.tabAction(name, d);
+    if (name === "toggle-pin" || Object.hasOwn(TAB_ACTIONS, name)) return this.tabAction(name, d, cx);
     if (name === "next-change") return this.change(1, null, cx);
     if (name === "prev-change") return this.change(-1, null, cx);
     if (name === "search-project") {
@@ -838,7 +941,7 @@ export default class FileEditor extends View {
       const sel = d?.state && !d.preview ? d.state.selected_range() : null;
       const picked = sel && sel.end > sel.start ? d.text.slice(sel.start, sel.end) : "";
       setShared(ASK, { ...(picked && !picked.includes("\n") ? { query: picked } : {}), at: Date.now() });
-      return void run(`${SEARCH}.open`);
+      return void run(`${SEARCH}.toggle`);
     }
     if (name === "preview") {
       if (!d?.kind || !d.state) return;
@@ -881,7 +984,7 @@ export default class FileEditor extends View {
         const action = shared(TAB_ACTION);
         if (action?.editor !== this.editor) return;
         setShared(TAB_ACTION, null);
-        this.tabAction(action.name, this.docs.find(d => d.n === action.tab));
+        this.tabAction(action.name, this.docs.find(d => d.n === action.tab), cx);
         cx.notify();
       });
     }
@@ -906,6 +1009,14 @@ export default class FileEditor extends View {
         d.path = m.to + d.path.slice(m.from.length); d.name = base(d.path); d.id = idOf(d.path, d.on);
         const kind = previews.format(d.path);
         if (previews.binary(kind) === previews.binary(d.kind)) {
+          if (d.csvEdit && kind !== d.kind) {
+            const editing = d.csvEdit;
+            cx.spawn(async cx => {
+              await null;
+              if (this.docs.includes(d) && d.csvEdit === editing) this.finishCsv(d, cx);
+              cx.notify();
+            });
+          }
           d.kind = kind; d.markdown = kind === "markdown";
           if (!kind) d.preview = false;
         }
@@ -951,6 +1062,7 @@ export default class FileEditor extends View {
 
   // Shows the open file `o`: a tab of the strip clicked, or a mouse's back or forward button.
   show(o, cx) {
+    if (this.doc() !== o) this.finishCsv(this.doc(), cx);
     this.active = o.id;
     this.found();
     this.focus(); this.look(o, cx); this.head(o, cx); this.store();
@@ -1018,6 +1130,7 @@ export default class FileEditor extends View {
       .child(h_flex().id("fe-tabs").flex_1().min_w(0).h_full().gap(2).items_center().overflow_x_scroll()
         .children(this.docs.map(o => {
           const on = o.id === this.active;
+          const dirty = o.dirty || o.csvEdit?.changed;
           return h_flex().id(`fe-tab-${o.n}`).h(26).flex_none().max_w(220).pl(9).pr(4).gap(6).items_center().rounded(7).cursor_pointer()
             .text_size(12.5).text_color(on ? t.foreground : t.muted)
             .when(on, el => el.bg(t.selected))
@@ -1028,11 +1141,11 @@ export default class FileEditor extends View {
             .when(o.pinned, el => el.child(svg("mods/workspace-chrome/pin.svg").size(12).flex_none().text_color(t.accent)))
             .child(div().min_w(0).truncate().child(o.name))
             .child(h_flex().id(`fe-shut-${o.n}`).size(18).flex_none().items_center().justify_center().rounded(5)
-              .text_size(o.dirty ? 9 : 13).text_color(o.dirty ? t.foreground : t.dim)
+              .text_size(dirty ? 9 : 13).text_color(dirty ? t.foreground : t.dim)
               .hover(s => s.bg(t.raised).text_color(t.foreground))
-              .tooltip(o.dirty ? "Unsaved · close" : "Close")
-              .on_click((_e, cx) => { cx.stop_propagation(); this.tabAction("close", o); cx.notify(); })
-              .child(o.dirty ? "●" : "×"));
+              .tooltip(hint(dirty ? "Unsaved · close" : "Close", "close"))
+              .on_click((_e, cx) => { cx.stop_propagation(); this.tabAction("close", o, cx); cx.notify(); })
+              .child(dirty ? "●" : "×"));
         })))
       .when(Boolean(d?.state), el => el
         .when(!d.preview, el => el.child(this.button(t, "fe-wrap", "Wrap", hint(d.wrap ? "Long lines wrap: scroll them sideways instead" : "Long lines scroll sideways: wrap them instead", "wrap"), cx => this.command("wrap", cx), { on: d.wrap })))
@@ -1040,9 +1153,14 @@ export default class FileEditor extends View {
         .when(d.diff.marks.length > 0 && !d.preview, el => el.child(this.button(t, "fe-changes", `±${d.diff.marks.length}`,
           hint(`${d.diff.marks.length === 1 ? "1 change" : `${d.diff.marks.length} changes`} since the last commit: go to the next`, "next-change"), cx => this.command("next-change", cx))))
         .child(this.button(t, "fe-find", "Find", hint("Find in this file", "find"), cx => this.command("find", cx), { on: this.find.open }))
-        .when(!d.readonly, el => el.child(this.button(t, "fe-save", d.saving ? "Saving…" : "Save", hint(d.dirty ? "Save" : "Nothing to save", "save"), cx => this.command("save", cx), { off: !d.dirty }))))
+        .when(!d.readonly, el => {
+          const dirty = d.dirty || d.csvEdit?.changed;
+          return el.child(this.button(t, "fe-save", d.saving ? "Saving…" : "Save", hint(dirty ? "Save" : "Nothing to save", "save"), cx => this.command("save", cx), { off: !dirty }));
+        }))
       .when(d?.kind === "html", el => el.child(this.button(t, "fe-browser", "Open in Browser",
-        "Open the saved HTML file and its project assets in your browser", cx => this.command("open-browser", cx))));
+        "Open the saved HTML file and its project assets in your browser", cx => this.command("open-browser", cx))))
+      .when(d?.kind === "image" && Boolean(d?.media) && !d?.mediaError, el => el.child(this.button(t, "fe-reload-image", "Reload",
+        "Reload this image", cx => this.refreshPreview(d, cx, true), { off: Boolean(d.previewJob) })));
   }
 
   // Markdown's own row: what the shortcuts do, as buttons.
@@ -1129,18 +1247,23 @@ export default class FileEditor extends View {
   // are lit, the one it is at in the theme's yellow: no more than LIT_MOST of them, and found
   // by search(), never here.
   page(t, d) {
-    let view = TextView.markdown(`fe-md-${d.n}`, d.text).raw_html(false).selectable(true)
+    const links = d.markdownSource === d.text ? d.markdownLinks : null;
+    let view = TextView.markdown(`fe-md-${d.n}`, links?.text ?? d.text).raw_html(false).selectable(true)
       .on_selection_change(s => {
         if (!this.docs.includes(d)) return;
-        d.place = s?.range ? { start: s.range.start, end: s.range.end } : null;
+        d.place = s?.range ? { start: links?.source(s.range.start) ?? s.range.start, end: links?.source(s.range.end) ?? s.range.end } : null;
         d.picked = s?.text ?? "";
       });
     const f = this.find;
     if (!f.open || f.error || !this.query.value()) return view;
     const n = Math.min(f.matches.length, LIT_MOST);
-    for (let i = 0; i < n; i++) if (i !== f.at) view = view.highlight_range(f.matches[i].start, f.matches[i].end, t.selection);
+    const light = (m, color) => {
+      const start = links?.start(m.start) ?? m.start, end = links?.end(m.end) ?? m.end;
+      if (end > start) view = view.highlight_range(start, end, color);
+    };
+    for (let i = 0; i < n; i++) if (i !== f.at) light(f.matches[i], t.selection);
     const m = f.matches[f.at];
-    if (m) view = view.highlight_range(m.start, m.end, tint(t.ansi3, "66"));
+    if (m) light(m, tint(t.ansi3, "66"));
     return view;
   }
 
@@ -1157,46 +1280,122 @@ export default class FileEditor extends View {
     const result = d.csv;
     if (!result?.rowCount) return empty("This CSV file is empty");
     const firstCol = result.columnPage * previews.CSV_COLS;
-    const cols = Math.min(result.columns - firstCol, previews.CSV_COLS), cellWidth = 150, gutter = 52;
+    const cols = Math.min(result.columns - firstCol, previews.CSV_COLS);
     const id = `fe-csv-${d.n}-${result.page}-${result.columnPage}`, first = result.page * previews.CSV_ROWS;
-    const cell = (value, width, muted = false) => div().w(width).flex_none().px(8).truncate()
-      .border_r(1).border_color(t.border).text_color(muted ? t.dim : t.foreground).child(value);
-    const row = (values, index, header = false) => h_flex().h(27).items_center().border_b(1).border_color(t.border)
-      .bg(header ? t.raised : index % 2 ? t.surface : t.background)
-      .child(cell(header ? "#" : String(first + index + 1), gutter, true))
-      .children(values.map(value => cell(value, cellWidth, header)));
-    return v_flex().flex_1().min_h(0)
+    const widths = Array.from({ length: cols }, (_, i) => {
+      const width = d.csvWidths?.[firstCol + i];
+      return Number.isFinite(width) ? csvWidth(width) : CSV_WIDTH;
+    });
+    const editing = d.csvEdit;
+    const sizes = editing ? result.rows.map((_, i) => i === editing.rowIndex ? CSV_EDIT_ROW : CSV_ROW) : null;
+    const cell = width => div().w(width).h_full().flex_none().flex().items_center().px(8).border_r(1).border_color(t.border);
+    const label = (value, color) => div().min_w(0).truncate().text_color(color).child(value);
+    const gutter = value => cell(CSV_GUTTER).child(label(value, t.dim));
+    const row = (record, index) => h_flex().h(editing?.rowIndex === index ? CSV_EDIT_ROW : CSV_ROW)
+      .items_center().border_b(1).border_color(t.border).bg(index % 2 ? t.surface : t.background)
+      .child(gutter(String(first + index + 1)))
+      .children(widths.map((width, i) => {
+        const value = record.cells[i];
+        if (editing?.rowIndex === index && editing.column === firstCol + i) {
+          return cell(width).px(3).child(Textarea.new(editing.state).w_full().h(CSV_EDIT_ROW - 8).p(4).rounded(4)
+            .bg(t.background).border(1).border_color(t.accent).text_size(12));
+        }
+        return cell(width).child(label(value?.label ?? "", value?.link ? t.accent : t.foreground));
+      }));
+    const header = h_flex().h(CSV_ROW).flex_none().items_center().border_b(1).border_color(t.border).bg(t.raised)
+      .child(gutter("#")).children(widths.map((width, i) => {
+        const col = firstCol + i;
+        return cell(width).relative().child(label(String(col + 1), t.dim))
+          .child(div().id(`fe-csv-grip-${col}`).absolute().right(0).top(0).bottom(0).w(8).cursor_col_resize()
+            .when(this.csvDrag?.doc === d && this.csvDrag.col === col, el => el.bg(t.accent))
+            .hover(s => s.bg(t.accent)).tooltip("Drag to resize column")
+            .on_mouse_down("left", (e, cx) => {
+              cx.stop_propagation();
+              if (e.click_count === 2) {
+                if (d.csvWidths) delete d.csvWidths[col];
+                this.csvDrag = null;
+                this.store();
+              } else this.csvDrag = { doc: d, col, x: e.position.x, width };
+              cx.notify();
+            }));
+      }));
+    const hitCell = (e, cx) => {
+      if (!e.local_position || (!linkModifier(e) && e.click_count !== 2)) return;
+      const zoom = settings().zoom || 1;
+      let x = e.local_position.x / zoom - CSV_GUTTER;
+      if (x < 0) return;
+      let y = e.local_position.y / zoom + d.csvScroll.offset().y;
+      let index = 0;
+      while (index < result.rows.length && y >= (sizes?.[index] ?? CSV_ROW)) {
+        y -= sizes?.[index] ?? CSV_ROW;
+        index++;
+      }
+      if (y < 0 || index >= result.rows.length) return;
+      let col = 0;
+      while (col < cols && x >= widths[col]) x -= widths[col++];
+      if (col >= cols || (editing?.rowIndex === index && editing.column === firstCol + col)) return;
+      if (linkModifier(e)) {
+        const field = result.rows[index].cells[col];
+        const url = field && edit.firstUrl(previews.csvValue(d.text.slice(field.start, field.end)));
+        if (url) { cx.stop_propagation(); openWeb(url, cx); }
+      } else {
+        cx.stop_propagation();
+        this.startCsv(d, index, firstCol + col, cx);
+        cx.notify();
+      }
+    };
+    return v_flex().id(`fe-csv-${d.n}`).flex_1().min_h(0)
+      .on_window_mouse_move((e, cx) => {
+        const drag = this.csvDrag;
+        if (drag?.doc !== d) return;
+        if (e.pressed_button !== "left") { this.csvDrag = null; this.store(); cx.notify(); return; }
+        const width = csvWidth(Math.round(drag.width + (e.position.x - drag.x) / (settings().zoom || 1)));
+        if (width === (d.csvWidths?.[drag.col] ?? CSV_WIDTH)) return;
+        (d.csvWidths ??= {})[drag.col] = width;
+        cx.notify();
+      })
+      .on_window_mouse_up("left", (_e, cx) => {
+        if (this.csvDrag?.doc !== d) return;
+        this.csvDrag = null;
+        this.store();
+        cx.notify();
+      })
       .child(this.pager(t, d, `Rows ${first + 1}–${first + result.rows.length} of ${result.rowCount}`,
         first > 0, first + result.rows.length < result.rowCount))
       .when(result.columns > previews.CSV_COLS, el => el.child(h_flex().h(30).flex_none().gap(6).items_center().justify_center()
         .text_size(11).text_color(t.muted).border_b(1).border_color(t.border)
-        .child(this.button(t, "fe-prev-col", "‹", "Previous columns", () => this.csvColumns(d, -1), { off: !firstCol }))
+        .child(this.button(t, "fe-prev-col", "‹", "Previous columns", cx => this.csvColumns(d, -1, cx), { off: !firstCol }))
         .child(`Columns ${firstCol + 1}–${firstCol + cols} of ${result.columns}`)
-        .child(this.button(t, "fe-next-col", "›", "Next columns", () => this.csvColumns(d, 1), { off: firstCol + cols >= result.columns }))))
+        .child(this.button(t, "fe-next-col", "›", "Next columns", cx => this.csvColumns(d, 1, cx), { off: firstCol + cols >= result.columns }))))
       .when(result.clipped || result.unclosed, el => el.child(div().px(8).py(4).flex_none().text_size(11).text_color(t.muted)
-        .child([result.clipped ? "Long cells shortened" : "", result.unclosed ? "Unclosed quote" : ""].filter(Boolean).join(" · "))))
+        .child([result.clipped ? "Long cells shortened in the grid" : "", result.unclosed ? "Fix the unclosed quote in source to edit cells" : ""].filter(Boolean).join(" · "))))
       .child(div().id(`fe-csv-scroll-${d.n}`).flex_1().min_h(0).min_w(0).overflow_x_scrollbar()
-        .child(v_flex().w(gutter + cellWidth * cols).h_full().min_h(0)
-          .child(row(Array.from({ length: cols }, (_, i) => String(firstCol + i + 1)), 0, true).flex_none())
-          .child(v_flex().relative().flex_1().min_h(0)
-            .child(v_virtual_list(id, result.rows.length, 27, i => String(first + i),
-              range => result.rows.slice(range.start, range.end).map((values, i) =>
-                row(Array.from({ length: cols }, (_, col) => (values[col] ?? "").replace(/\r\n|\r|\n/g, " ↵ ")), i + range.start)))
-              .flex_1().min_h(0))
-            .child(Scrollbar.vertical(id).absolute().inset_0()))));
+        .child(v_flex().w(CSV_GUTTER + widths.reduce((sum, width) => sum + width, 0)).h_full().min_h(0)
+          .child(header)
+          .child(v_flex().id(`${id}-body`).relative().flex_1().min_h(0).on_mouse_down("left", hitCell)
+            .child(v_virtual_list(id, result.rows.length, sizes ?? CSV_ROW,
+              i => String(first + i),
+              range => result.rows.slice(range.start, range.end).map((record, i) => row(record, i + range.start)))
+              .track_scroll(d.csvScroll).flex_1().min_h(0))
+            .child(Scrollbar.vertical(id).absolute().inset_0()))))
+      .child(h_flex().h(29).flex_none().items_center().px(8).gap(6).border_t(1).border_color(t.border).text_size(11).text_color(t.muted)
+        .child(div().flex_1().min_w(0).truncate().child(editing ? "Editing cell · changes are saved with the file" : "Double-click a cell to edit · drag a column edge to resize"))
+        .when(Boolean(editing), el => el
+          .child(this.button(t, "fe-csv-cancel", "Cancel", "Discard typing in this cell", cx => this.finishCsv(d, cx, true)))
+          .child(this.button(t, "fe-csv-apply", "Apply cell", "Apply to the unsaved CSV draft", cx => this.finishCsv(d, cx), { on: true }))));
   }
 
   previewContent(t, d, empty) {
     if (d.kind === "csv") return this.csvTable(t, d, empty);
     const media = d.media;
-    const message = d.previewJob ? "Loading preview…" : d.mediaError;
+    const message = d.mediaError ?? "Loading preview…";
     if (!media || d.mediaError) return v_flex().flex_1().min_h(0)
-      .child(empty(message ?? "Loading preview…"))
+      .child(empty(message))
       .when(!d.previewJob && Boolean(d.mediaError), el => el.child(h_flex().justify_center().pb(16)
         .child(this.button(t, "fe-retry", "Retry", "Try the preview again", cx => this.refreshPreview(d, cx, true)))));
     const shown = image(media.asset);
     const viewport = this.mediaSize ?? { width: 360, height: 360 };
-    const width = media.width || 300, height = media.height || 150;
+    const width = media.displayWidth || media.width || 300, height = media.displayHeight || media.height || 150;
     const scale = Math.min((viewport.width - 24) / width, (viewport.height - 24) / height);
     const htmlWidth = Math.min(1080, Math.max(20, viewport.width - 26));
     const isHtml = d.kind === "html";
@@ -1217,6 +1416,12 @@ export default class FileEditor extends View {
         .border_b(1).border_color(t.border).bg(t.surface)
         .child(this.button(t, "fe-refresh", d.previewJob ? "Rendering…" : "Refresh", "Refresh this HTML snapshot",
           cx => this.refreshPreview(d, cx, true), { off: Boolean(d.previewJob) }))))
+      .when(Boolean(d.sourceLinks?.length), el => el.child(h_flex().id(`fe-source-links-${d.n}`).h(30).flex_none().min_w(0).gap(8).px(8)
+        .items_center().overflow_x_scroll().border_b(1).border_color(t.border).text_size(11)
+        .child(div().flex_none().text_color(t.muted).child("Source links"))
+        .children(d.sourceLinks.map((url, i) => div().id(`fe-source-link-${d.n}-${i}`).max_w(240).flex_none().truncate()
+          .text_color(t.accent).cursor_pointer().tooltip(url)
+          .on_click((_e, cx) => openWeb(d.kind === "html" ? url.replace(/&amp;/gi, "&") : url, cx)).child(url)))))
       .child(body);
   }
 
@@ -1236,7 +1441,7 @@ export default class FileEditor extends View {
       items.push([`${dimensions.width} × ${dimensions.height}${dimensions.viewBox ? " viewBox" : " px"}`]);
     }
     if (d.kind === "csv" && d.csv) items.push([`${d.csv.rowCount.toLocaleString()} rows × ${d.csv.columns.toLocaleString()} cols`]);
-    if (d.dirty) items.push(["Unsaved"]);
+    if (d.dirty || d.csvEdit?.changed) items.push(["Unsaved"]);
     else if (d.readonly) items.push(["Read-only"]);
     if (d.on) items.push(["SSH", "Remote file"]);
     return h_flex().id("fe-status").h(24).flex_none().min_w(0).px(10).gap(12).items_center().overflow_x_scroll()
@@ -1294,6 +1499,22 @@ export default class FileEditor extends View {
     cx.notify();
   }
 
+  // Herdr does the native hit test and places the caret, including on wrapped
+  // lines. Read it after the mouse dispatch instead of guessing from pixels.
+  sourceLink(d, e, cx) {
+    const press = this.linkPress;
+    this.linkPress = null;
+    if (press?.doc !== d || !linkModifier(e) || Math.hypot(e.position.x - press.x, e.position.y - press.y) > 5) return;
+    cx.spawn(async cx => {
+      await null;
+      if (this.doc() !== d || d.preview || !d.state) return;
+      const selection = d.state.selected_range();
+      if (selection.start !== selection.end) return; // a drag is not a link click
+      const url = edit.urlAt(d.text, selection);
+      if (url) openWeb(url, cx);
+    });
+  }
+
   render(cx) {
     if (this.menu) return this.renderTabMenu();
     fieldKeys.watch(MOD, cx);
@@ -1301,6 +1522,7 @@ export default class FileEditor extends View {
     this.arrived(cx);
     this.tell(cx);
     const t = theme(), d = this.doc();
+    if (this.csvDrag && (this.csvDrag.doc !== d || d.kind !== "csv" || !d.preview)) this.csvDrag = null;
     if (d?.needsLook) {
       d.needsLook = false;
       cx.spawn(async cx => { await null; this.look(d, cx); this.head(d, cx); });
@@ -1326,6 +1548,10 @@ export default class FileEditor extends View {
             .child(div().w_full().max_w(820).child(this.page(t, d)))
         : h_flex().flex_1().min_h(0).items_stretch()
             .child(v_flex().id(`fe-text-${d.n}`).flex_1().min_w(0).min_h(0).on_key_down((e, cx) => this.typed(e, cx))
+              .on_mouse_down("left", e => {
+                this.linkPress = linkModifier(e) && e.click_count === 1 ? { doc: d, x: e.position.x, y: e.position.y } : null;
+              })
+              .on_mouse_up("left", (e, cx) => this.sourceLink(d, e, cx))
               .child(Editor.new(d.state).font_family(settings().font_family).text_size(textSize()).flex_1().min_h(0)))
             .when(d.head !== null, el => el.child(this.ruler(t, d))))
       .when(Boolean(d), el => el.child(this.statusBar(t, d)));

@@ -16,6 +16,12 @@
       "words": "html preview interactive"
     },
     {
+      "title": "Editor: Open Link at Cursor",
+      "command": "file-editor.open-link",
+      "group": "Editor",
+      "words": "url browser website"
+    },
+    {
       "title": "Editor: Toggle Line Wrap",
       "command": "file-editor.wrap",
       "group": "Editor",

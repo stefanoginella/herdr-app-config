@@ -102,7 +102,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 ### Project Search
 
-**Search and replace across the project.** <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> searches every file as you type, with [ripgrep](https://github.com/BurntSushi/ripgrep). Open the replace row and every match shows what it becomes.
+**Search and replace across the project.** <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> switches between Search and Files. Search runs as you type in a repository. Open the replace row and every match shows what it becomes. [Powered by ripgrep](https://github.com/BurntSushi/ripgrep)
 
 ![The search panel beside the editor: matches grouped by file, each showing its replacement](docs/images/project-search.webp)
 
@@ -240,7 +240,7 @@ What needs what:
 - `go-to-file` and the `agent-usage` dialog are in no layout: their keys open them.
 - The three hide names mods, `space-folders`, `mark-agents-unread` and `agent-usage` share the mode: with only some of them, only those hide their names. `hide-names` holds the command that switches it.
 
-For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "mark-agents-unread" }` in the `agents` block, `{ "mod": "file-explorer" }` in the `files` block, `{ "mod": "git-panel" }` in the `changes` block, or a block 62 px tall with `{ "mod": "agent-usage", "props": { "role": "side" } }` for the usage widget. `project-search` needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`, which takes Cmd+Shift+F while the panel is hidden and shows it. Herdr's shipped layouts are read-only, so clone one first:
+For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "mark-agents-unread" }` in the `agents` block, `{ "mod": "file-explorer" }` in the `files` block, `{ "mod": "git-panel" }` in the `changes` block, or a block 62 px tall with `{ "mod": "agent-usage", "props": { "role": "side" } }` for the usage widget. `project-search` needs two blocks, as in `main-folders.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`. That block handles Cmd+Shift+F, switching between Search and Files. Herdr's shipped layouts are read-only, so clone one first:
 
 ```sh
 herdr-app do layout.clone '{"name":"main","as":"my-layout"}'

@@ -1,12 +1,14 @@
 {
   "mod:file-editor": {
     "cmd-s": "file-editor.save",
+    "ctrl-w": "file-editor.close",
     "cmd-f": "file-editor.find",
     "cmd-alt-f": "file-editor.replace",
     "cmd-g": "file-editor.find-next",
     "cmd-shift-g": "file-editor.find-prev",
     "escape": "file-editor.escape",
     "cmd-shift-v": "file-editor.preview",
+    "ctrl-shift-v": "file-editor.preview",
     "cmd-b": "file-editor.bold",
     "cmd-i": "file-editor.italic",
     "cmd-e": "file-editor.code",
@@ -24,6 +26,9 @@
     "alt-shift-f3": "file-editor.prev-change"
   },
   "mod:file-editor > Input": {
-    "cmd-f": "file-editor.find"
+    "cmd-f": "file-editor.find",
+    "ctrl-w": "file-editor.close",
+    "cmd-shift-v": "file-editor.preview",
+    "ctrl-shift-v": "file-editor.preview"
   }
 }

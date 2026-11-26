@@ -1,6 +1,6 @@
 {
   "global": {
-    "cmd-shift-f": "project-search.open",
+    "cmd-shift-f": "project-search.toggle",
     "f4": "project-search.next",
     "shift-f4": "project-search.prev"
   },
@@ -15,6 +15,7 @@
     "alt-down": "project-search.newer"
   },
   "mod:project-search > Input": {
+    "cmd-shift-f": "project-search.toggle",
     "down": "project-search.list",
     "tab": "project-search.tab",
     "shift-tab": "project-search.back-tab"

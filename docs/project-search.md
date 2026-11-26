@@ -1,6 +1,6 @@
 # Project Search
 
-Search every file of the project, and replace, in a panel that takes the place of Files and Changes: what Cmd+Shift+F is in VS Code. The searching is [ripgrep](https://github.com/BurntSushi/ripgrep)'s, which must be installed (`brew install ripgrep`).
+Search and replace across the project in the sidebar. Cmd+Shift+F switches between Project Search and Files. Esc gives the keyboard back to the editor or terminal without switching the sidebar. Search uses [ripgrep](https://github.com/BurntSushi/ripgrep), which must be installed (`brew install ripgrep`).
 
 ![The search panel listing matches by file, each with its replacement](images/project-search.webp)
 
@@ -23,7 +23,7 @@ The search reads the files on disk: unsaved text in the editor is not searched. 
 
 A project on another machine is searched and edited there. The machine running the search needs ripgrep and the Unix shell tools used by the search command. Desktop actions apply to local results.
 
-The keys are in `keys.json`: Cmd+Shift+F, F4 and Shift+F4 under `global`, Cmd+Shift+F again in the two `mod:file-editor` sections (Herdr's editor keeps that key for itself), and the panel's own under `mod:project-search` and `mod:project-search > Input`. One more command can be bound: `project-search.undo`. "Search in Project" is also in the command palette.
+The keys are in `keys.json`. Cmd+Shift+F, F4 and Shift+F4 are under `global`. Cmd+Shift+F is also in both editor sections and the Project Search text-field section so it still works when a native text field has focus. `project-search.undo` can also be bound. “Search in Project” in the command palette always opens or focuses Search.
 
 ---
 

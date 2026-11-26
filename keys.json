@@ -38,7 +38,7 @@
     "f2": "tab.rename",
     "shift-f2": "space.rename",
     "cmd-z": "file-explorer.undo",
-    "cmd-shift-f": "project-search.open",
+    "cmd-shift-f": "project-search.toggle",
     "f4": "project-search.next",
     "shift-f4": "project-search.prev",
     "cmd-/": "app.help",
@@ -91,12 +91,14 @@
   },
   "mod:file-editor": {
     "cmd-s": "file-editor.save",
+    "ctrl-w": "file-editor.close",
     "cmd-f": "file-editor.find",
     "cmd-alt-f": "file-editor.replace",
     "cmd-g": "file-editor.find-next",
     "cmd-shift-g": "file-editor.find-prev",
     "escape": "file-editor.escape",
     "cmd-shift-v": "file-editor.preview",
+    "ctrl-shift-v": "file-editor.preview",
     "cmd-b": "file-editor.bold",
     "cmd-i": "file-editor.italic",
     "cmd-e": "file-editor.code",
@@ -116,13 +118,17 @@
   },
   "mod:file-editor > Input": {
     "cmd-f": "file-editor.find",
-    "cmd-shift-f": "file-editor.search-project"
+    "cmd-shift-f": "file-editor.search-project",
+    "ctrl-w": "file-editor.close",
+    "cmd-shift-v": "file-editor.preview",
+    "ctrl-shift-v": "file-editor.preview"
   },
   "mod:project-search": {
     "alt-up": "project-search.older",
     "alt-down": "project-search.newer"
   },
   "mod:project-search > Input": {
+    "cmd-shift-f": "project-search.toggle",
     "down": "project-search.list",
     "tab": "project-search.tab",
     "shift-tab": "project-search.back-tab"

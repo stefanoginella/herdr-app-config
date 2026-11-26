@@ -19,11 +19,11 @@
 // The panel's own props: { back: { stack, child } }, what its header's Files button shows, and
 // { root, on }: a folder to search whatever pane has the focus.
 //
-// Key commands (keys.json): open, next, prev (to the next result, from anywhere), undo (the
+// Key commands (keys.json): toggle, open, next, prev (to the next result, from anywhere), undo (the
 // last replace), and for the panel's own keys: list, tab, back-tab, older, newer.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, ScrollHandle } from "gpui-base";
-import { spaces, panes, focused, exec, theme, settings, props, openOverlay, notify, nextCommand, run, shared, setShared, home, checking } from "herdr";
+import { spaces, panes, focused, exec, theme, settings, props, openOverlay, notify, nextCommand, run, shared, setShared, home, checking, layout } from "herdr";
 import Menu from "./menu.js";
 import Confirm from "./confirm.js";
 import * as search from "./search.js";
@@ -35,6 +35,7 @@ const MOD = "project-search";
 // The mod that shows a file, one pane a tab, and what it reads in shared state (its header).
 const EDITOR = "file-editor";
 const ASK = "project-search.ask";
+const TOGGLE_ASK = "project-search.toggle-ask";
 // Herdr's own: the panels its tab bar counts as enabled (ids of the layout's panel stack).
 const PANELS = "workspace.panels";
 // An ask older than this was left by a window that closed before it was taken.
@@ -68,6 +69,15 @@ const clip = (s, most = 60) => (s.length > most ? `${s.slice(0, most)}…` : s);
 const tint = (color, alpha) => (/^#[0-9a-f]{6}$/i.test(color ?? "") ? color + alpha : color);
 const fileKey = (path) => `\n${path}`;
 const placeKey = ({ on, cwd }) => `${on ?? ""}\n${cwd ?? ""}`;
+function findBlock(node, id) {
+  if (!node || !id) return null;
+  if (node.id === id) return node;
+  for (const child of node.children ?? []) {
+    const match = findBlock(child, id);
+    if (match) return match;
+  }
+  return null;
+}
 
 export default class ProjectSearch extends View {
   init(_props, cx) {
@@ -84,12 +94,16 @@ export default class ProjectSearch extends View {
     // The copy that only listens for the key (see the header).
     if (p?.keys) {
       this.keysOnly = true;
-      cx.spawn(async () => {
+      cx.spawn(async cx => {
         // Herdr's tab bar remembers which panel each space shows, among the ones listed in
         // its own shared state: listed there, Search is still shown on coming back to a space.
         const listed = shared(PANELS);
         if (!checking() && p.show?.child && Array.isArray(listed) && !listed.includes(p.show.child)) setShared(PANELS, [...listed, p.show.child]);
-        for (;;) if ((await nextCommand()) === "open") this.summon(p.show);
+        for (;;) {
+          const name = await nextCommand();
+          if (name === "open") this.summon(p.show);
+          if (name === "toggle") this.toggle(p.show, cx);
+        }
       });
       return;
     }
@@ -155,6 +169,28 @@ export default class ProjectSearch extends View {
     if (show?.panel) run("layout.show", { id: show.panel });
     const a = shared(ASK);
     if (!a || Date.now() - (a.at ?? 0) > FRESH) setShared(ASK, { at: Date.now() });
+  }
+
+  toggle(show, cx) {
+    if (!show?.stack || !show.child) return;
+    const a = shared(TOGGLE_ASK);
+    if (a) setShared(TOGGLE_ASK, null);
+    const root = layout(), stack = findBlock(root, show.stack), panel = findBlock(root, show.panel);
+    if (stack?.active !== show.child || panel?.hidden) {
+      if (a && Date.now() - a.at < FRESH) setShared(ASK, a);
+      return this.summon(show);
+    }
+    const back = findBlock(stack, show.child)?.content?.props?.back;
+    if (back?.stack && back.child) run("layout.select", { stack: back.stack, child: back.child });
+    else if (stack.children?.some(child => child.id === "files")) run("layout.select", { stack: show.stack, child: "files" });
+    else if (show.panel) run("layout.hide", { id: show.panel });
+    const id = focused()?.pane, pane = panes().find(p => p.pane === id);
+    if (pane) {
+      run("pane.focus", { pane: id });
+      if (pane.mod === EDITOR) cx.timer.after(60, () => {
+        if (focused()?.pane === id) run(`${EDITOR}.focus`);
+      });
+    }
   }
 
   // A task begun while the panel is drawn. Its first step would run inside the draw itself,

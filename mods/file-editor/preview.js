@@ -46,7 +46,7 @@ function cacheRoot() { return `${appHome()}/data/file-editor-preview`; }
 async function directory() {
   const root = cacheRoot();
   await mkdir(root, { recursive: true });
-  return checked("mktemp", ["-d", `${root}/preview.XXXXXXXX`]);
+  return checked("mktemp", ["-d", `${root}/preview.XXXXXXXX`], { timeout: 3000 });
 }
 
 export async function discard(dir) {
@@ -71,8 +71,7 @@ async function stage(path, on, info, destination) {
   if (info.size > MAX_BYTES) throw new Error("This file exceeds the 50 MiB preview limit");
   const script = `set -e
 if [ -z "$1" ]; then
-  head -c "$4" "$2" > "$3"
-  exit
+  exec head -c "$4" "$2" > "$3"
 fi
 : > "$3"
 blocks=$((($4 + 1048575) / 1048576))
@@ -81,7 +80,7 @@ while [ "$offset" -lt "$blocks" ]; do
   hc exec --on "$1" --timeout 25 -- dd "if=$2" bs=1048576 "skip=$offset" count=4 >> "$3"
   offset=$((offset + 4))
 done`;
-  await checked("sh", ["-c", script, "preview-copy", on ?? "", path, destination, String(info.size + 1)], { timeout: 30000 });
+  await checked("sh", ["-c", script, "preview-copy", on ?? "", path, destination, String(info.size + 1)], { timeout: on ? 30000 : 10000 });
   if ((await stamp(destination, null))?.size !== info.size || (await stamp(path, on))?.key !== info.key) {
     throw new Error("The file changed while copying. Try again.");
   }
@@ -108,7 +107,7 @@ export async function readMedia(path, on, kind, info, previous, page) {
       if (!pages) throw new Error("This PDF has no pages");
       return await pdfPage({ dir, source, key: info.key, pages, kind }, page);
     }
-    const image = await raster(source, dir, extension);
+    const image = await raster(source, dir);
     return { ...image, dir, key: info.key, kind };
   } catch (error) {
     await discard(dir);
@@ -124,41 +123,47 @@ async function pdfPage(media, requested) {
   await checked("pdftoppm", ["-f", String(page), "-l", String(page), "-scale-to", "1800",
     "-singlefile", "-png", media.source, prefix]);
   const file = `${prefix}.png`;
-  const header = await checked("od", ["-An", "-tu1", "-j16", "-N8", file]);
-  const bytes = header.split(/\s+/).map(Number);
-  const size = at => bytes.slice(at, at + 4).reduce((value, byte) => 256 * value + byte, 0);
-  return { ...media, page, file, asset: asset(file), width: size(0), height: size(4) };
+  return { ...media, page, file, asset: asset(file), ...await pngSize(file) };
 }
 
-async function raster(source, dir, extension) {
-  const mac = app()?.platform === "macos";
-  let width, height, file = source;
-  if (mac) {
-    const output = await checked("sips", ["-g", "pixelWidth", "-g", "pixelHeight", source]).catch(() => "");
-    width = Number(/pixelWidth:\s*(\d+)/.exec(output)?.[1]);
-    height = Number(/pixelHeight:\s*(\d+)/.exec(output)?.[1]);
-    if (!/^(png|jpe?g|gif|webp|bmp|ico)$/.test(extension) && width && height) {
-      file = `${dir}/image.png`;
-      await checked("sips", ["-s", "format", "png", "-Z", "2400", source, "--out", file]);
-    }
+async function pngSize(file) {
+  const header = await checked("od", ["-An", "-tu1", "-N24", file], { timeout: 3000 });
+  const bytes = header.split(/\s+/).map(Number);
+  const size = at => bytes.slice(at, at + 4).reduce((value, byte) => 256 * value + byte, 0);
+  const width = size(16), height = size(20);
+  if (bytes.length !== 24 || bytes.slice(0, 8).join(",") !== "137,80,78,71,13,10,26,10" ||
+      bytes.slice(12, 16).join(",") !== "73,72,68,82" || !width || !height) {
+    throw new Error("The preview renderer did not produce a usable PNG");
   }
-  if (!width || !height) {
-    const output = await checked("magick", ["identify", "-ping", "-format", "%w %h", `${source}[0]`]).catch(() => "");
-    [width, height] = output.split(" ").map(Number);
-    if (!width || !height) throw new Error("This image could not be decoded");
-    if (!/^(png|jpe?g|gif|webp|bmp|ico)$/.test(extension)) {
-      file = `${dir}/image.png`;
-      await checked("magick", [`${source}[0]`, "-resize", "2400x2400>", file]);
-    }
+  return { width, height };
+}
+
+async function raster(source, dir) {
+  // Header-only probes can succeed for broken images. Decode to a bounded PNG before
+  // giving anything to GPUI, whose image element has no load/error callback.
+  const file = `${dir}/image.png`, first = `${source}[0]`;
+  if (app()?.platform === "macos") {
+    try {
+      const output = await checked("sips", ["-g", "pixelWidth", "-g", "pixelHeight", source], { timeout: 4000 });
+      const width = Number(/pixelWidth:\s*(\d+)/.exec(output)?.[1]);
+      const height = Number(/pixelHeight:\s*(\d+)/.exec(output)?.[1]);
+      if (width && height) {
+        await checked("sips", ["-s", "format", "png", "-Z", "2400", source, "--out", file], { timeout: 8000 });
+        const { width: displayWidth, height: displayHeight } = await pngSize(file);
+        return { file, asset: asset(file), width, height, displayWidth, displayHeight };
+      }
+    } catch { /* use ImageMagick for formats this macOS version cannot decode */ }
   }
-  if (width * height > 24000000 && file === source) {
-    file = `${dir}/image.webp`;
-    if (mac) {
-      file = `${dir}/image.png`;
-      await checked("sips", ["-s", "format", "png", "-Z", "2400", source, "--out", file]);
-    } else await checked("magick", [`${source}[0]`, "-resize", "2400x2400>", file]);
+  try {
+    const output = await checked("magick", ["identify", "-ping", "-format", "%w %h", first], { timeout: 4000 });
+    const [width, height] = output.split(/\s+/).map(Number);
+    if (!width || !height) throw new Error("Missing image dimensions");
+    await checked("magick", [first, "-resize", "2400x2400>", file], { timeout: 8000 });
+    const { width: displayWidth, height: displayHeight } = await pngSize(file);
+    return { file, asset: asset(file), width, height, displayWidth, displayHeight };
+  } catch {
+    throw new Error("This image could not be decoded");
   }
-  return { asset: asset(file), width, height };
 }
 
 export function svgDimensions(text) {
@@ -238,38 +243,66 @@ function delimiter(text) {
 export function csv(text, page, columnPage = 0) {
   const rows = [];
   const start = page * CSV_ROWS, firstColumn = columnPage * CSV_COLS;
-  const sample = text.replace(/^\uFEFF/, ""), separator = delimiter(sample);
-  let row = [], cell = "", rowCount = 0, columns = 0, col = 0;
-  let quoted = false, clipped = false, open = false, cellStart = true;
-  const shown = () => rowCount >= start && rowCount < start + CSV_ROWS && col >= firstColumn && col < firstColumn + CSV_COLS;
-  const append = ch => {
-    if (shown()) {
-      if (cell.length < 500) cell += ch;
-      else clipped = true;
+  const bom = text.charCodeAt(0) === 0xFEFF ? 1 : 0, separator = delimiter(text.slice(bom));
+  let cells = [], rowCount = 0, columns = 0, col = 0, from = bom;
+  let quoted = false, clipped = false, open = false;
+  const visible = () => rowCount >= start && rowCount < start + CSV_ROWS;
+  const endCell = end => {
+    if (visible() && col >= firstColumn && col < firstColumn + CSV_COLS) {
+      // At most twice the display length is needed even if every quote was escaped.
+      const sample = csvValue(text.slice(from, Math.min(end, from + 1004)));
+      if (sample.length > 500) clipped = true;
+      cells.push({ start: from, end, display: sample.slice(0, 500).replace(/[\uD800-\uDBFF]$/, "") });
     }
-    cellStart = false;
+    col++;
   };
-  const endCell = () => { if (shown()) row.push(cell); cell = ""; col++; cellStart = true; };
-  const endRow = () => {
-    endCell();
-    if (rowCount >= start && rowCount < start + CSV_ROWS) rows.push(row);
+  const endRow = end => {
+    endCell(end);
+    if (visible()) rows.push({ cells, end, columns: col });
     columns = Math.max(columns, col);
-    rowCount++; col = 0; row = []; open = false;
+    rowCount++; col = 0; cells = []; open = false;
   };
-  for (let i = 0; i < sample.length; i++) {
-    const ch = sample[i];
+  for (let i = bom; i < text.length; i++) {
+    const ch = text[i];
     if (quoted) {
-      if (ch !== '"') append(ch);
-      else if (sample[i + 1] === '"') { append(ch); i++; }
-      else quoted = false;
-    } else if (ch === '"' && cellStart) {
-      quoted = true; open = true; cellStart = false;
-    } else if (ch === separator) { endCell(); open = true; }
-    else if (ch === "\n" || ch === "\r") {
-      if (ch === "\r" && sample[i + 1] === "\n") i++;
-      endRow();
-    } else { append(ch); open = true; }
+      if (ch === '"') {
+        if (text[i + 1] === '"') i++;
+        else quoted = false;
+      }
+    } else if (ch === '"' && i === from) {
+      quoted = true; open = true;
+    } else if (ch === separator) {
+      endCell(i); from = i + 1; open = true;
+    } else if (ch === "\n" || ch === "\r") {
+      endRow(i);
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      from = i + 1;
+    } else open = true;
   }
-  if (open) endRow();
-  return { rows, rowCount, columns, clipped, unclosed: quoted };
+  if (open) endRow(text.length);
+  return { rows, rowCount, columns, clipped, unclosed: quoted, separator };
+}
+
+export function csvValue(raw) {
+  if (!raw.startsWith('"')) return raw;
+  // Strip only the opening quote and the first unescaped closing quote.
+  // This also shows an unclosed or nonstandard field without hiding its content.
+  let closed = false;
+  return raw.slice(1).replace(/""|"/g, match => {
+    if (closed) return match;
+    if (match === '""') return '"';
+    closed = true;
+    return "";
+  });
+}
+
+// A preview edit is a single source replacement. Do not reserialize other fields, line endings
+// or the BOM. Missing cells in a short row are added only as far as the edited column.
+export function csvEdit(text, row, cell, column, separator, value) {
+  const raw = cell ? text.slice(cell.start, cell.end) : "";
+  if (value === csvValue(raw)) return null;
+  const quoted = !value || raw.startsWith('"') || /[,;\t"\r\n]/.test(value);
+  const insert = (cell ? "" : separator.repeat(column + 1 - row.columns))
+    + (quoted ? '"' + value.replace(/"/g, '""') + '"' : value);
+  return { range: { start: cell?.start ?? row.end, end: cell?.end ?? row.end }, insert };
 }

@@ -89,6 +89,104 @@ export function link(text, sel) {
   return { range: { start, end }, insert: `[${inner}](url)`, select: { start: at, end: at + 3 } };
 }
 
+// Keep matched offsets in UTF-16, just like EditorState's selection. Do not pass
+// file paths or other schemes from file contents to the system opener.
+function* urls(text) {
+  for (const match of text.matchAll(/\bhttps?:\/\/[^\s<>"'`]+/gi)) {
+    let url = match[0].replace(/[.,:;!?*]+$/, "");
+    const balance = { ")": 0, "]": 0, "}": 0 };
+    const closes = { "(": ")", "[": "]", "{": "}" };
+    if (/[)\]}]/.test(url)) {
+      for (const ch of url) {
+        if (Object.hasOwn(balance, ch)) balance[ch]--;
+        else if (Object.hasOwn(closes, ch)) balance[closes[ch]]++;
+      }
+      while (balance[url.at(-1)] < 0) {
+        balance[url.at(-1)]++;
+        url = url.slice(0, -1).replace(/[.,:;!?*]+$/, "");
+      }
+    }
+    if (!/^https?:\/\/(?:\[[0-9a-f:.]+\]|[^/?#()[\]{}\\]+)/i.test(url)) continue;
+    yield { url, start: match.index, end: match.index + url.length };
+  }
+}
+
+export function firstUrl(text) { return urls(text).next().value?.url ?? null; }
+
+export function sourceUrls(text, limit = 12) {
+  const found = new Set();
+  for (const { url } of urls(text)) {
+    if (url === "http://www.w3.org/2000/svg" || url === "http://www.w3.org/1999/xlink") continue;
+    found.add(url);
+    if (found.size >= limit) break;
+  }
+  return [...found];
+}
+
+export function urlAt(text, selection) {
+  const { start, end } = selection;
+  const before = start > 0 ? Math.max(text.lastIndexOf("\n", start - 1), text.lastIndexOf("\r", start - 1)) + 1 : 0;
+  const line = text.slice(before, Math.min(...["\n", "\r"].map(ch => {
+    const at = text.indexOf(ch, start);
+    return at < 0 ? text.length : at;
+  })));
+  for (const link of urls(line)) {
+    if (start >= before + link.start && end <= before + link.end) return link.url;
+  }
+  return null;
+}
+
+// Give TextView native autolinks for bare Markdown URLs. The only insertions are
+// angle brackets, so selections and search marks can still use source offsets.
+export function markdownLinks(text) {
+  if (!/https?:\/\//i.test(text)) return null;
+  const positions = [];
+  let fence = null, offset = 0;
+  for (const line of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (marker) {
+      const mark = marker[1];
+      if (!fence) fence = mark;
+      else if (mark[0] === fence[0] && mark.length >= fence.length && !line.slice(marker[0].length).trim()) fence = null;
+    } else if (!fence && !/^(?: {4}|\t|\s*\[[^\]]+\]:)/.test(line)) {
+      // Keep code spans, explicit links/images and already-marked autolinks unchanged.
+      const protectedText = /`+[^`]*`+|<[^<>]*>|\[[^[\]]*\](?:\((?:[^()]|\([^()]*\))*\)|\[[^[\]]*\])?/g;
+      let span = protectedText.exec(line);
+      for (const { url, start, end } of urls(line)) {
+        while (span && span.index + span[0].length <= start) span = protectedText.exec(line);
+        if (span && span.index < end && span.index + span[0].length > start) continue;
+        // Multiline link destinations and syntax-sensitive URLs stay literal.
+        let prior = start;
+        while (prior && /\s/.test(line[prior - 1])) prior--;
+        if (line.slice(prior - 2, prior) === "](" || url.includes("\\")) continue;
+        positions.push(offset + start, offset + end);
+      }
+    }
+    offset += line.length;
+  }
+  if (!positions.length) return null;
+  const chunks = [];
+  let at = 0;
+  const inserted = positions.map((position, i) => {
+    chunks.push(text.slice(at, position), i % 2 ? ">" : "<");
+    at = position;
+    return position + i;
+  });
+  chunks.push(text.slice(at));
+  const countBefore = (array, target) => {
+    let lo = 0, hi = array.length;
+    while (lo < hi) {
+      const m = (lo + hi) >>> 1;
+      if (array[m] < target) lo = m + 1; else hi = m;
+    }
+    return lo;
+  };
+  return { text: chunks.join(""),
+    source: pos => pos - countBefore(inserted, pos),
+    start: pos => pos + countBefore(positions, pos + 1),
+    end: pos => pos + countBefore(positions, pos) };
+}
+
 const ITEM = /^([ \t]*)(?:([-*+]|\d+[.)])[ \t]+(?:(\[[ xX]\])[ \t]+)?)?(.*)$/;
 
 // Makes the selected lines a list of `kind`: "bullet", "number" or "task". Lines that all are
