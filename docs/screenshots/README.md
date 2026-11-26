@@ -16,6 +16,8 @@ It needs macOS, Herdr installed with `herdr-app` and `hc` on the `PATH`, `python
 
 Then look at what changed (`git status docs/images`) before committing: the times, the figures and the newest commits in the pictures differ from run to run.
 
+For a separate run, set `HERDR_SHOTS_DIR` to a fresh short absolute path containing `herdr-app-demo` and `HERDR_SHOTS_SESSION` to a unique short name. If the core socket path is still too long, set `HERDR_SHOTS_SOCKET` to a short path under `/tmp` and use the same environment for each script.
+
 ## One step at a time
 
 ```sh

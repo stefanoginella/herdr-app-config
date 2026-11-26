@@ -12,9 +12,13 @@ Place the query and its case, word and regex toggles above a foldable result lis
 
 Cmd+Shift+F opens the panel, using a one-line selection from the editor when available. Search as the user types in a repository, or on Enter outside one. F4 and Shift+F4 open the next and previous matches. Replace a match, a file, or all listed results with confirmation for Replace All. Undo the last replace in files that still match the written version.
 
+For a local result, offer the available external apps, the default app and the desktop file manager. Open at the match when the launcher accepts line and column arguments.
+
 ## Built from
 
 Install `mods/project-search/`, the package keys, and **File Editor** to open a match. Run ripgrep on the machine holding the project. In a personal layout put one copy in the Files/Changes stack as child `search`, with `back: {stack: "panel-body", child: "files"}` in its props. Put a second, always-present copy in a zero-height block with props `{keys: true, show: {panel: "panel", stack: "panel-body", child: "search"}}`. Substitute the actual block IDs if yours differ.
+
+Read optional `external-apps.json` beside `keys.json`. The shared `apps` array orders presets and custom launchers. Default to available VS Code and Obsidian, plus TextEdit on macOS. [Settings and examples](../../docs/external-apps.md)
 
 ## Watch out
 

@@ -9,8 +9,7 @@
 // right-click menus (menu.js) and the naming dialog (naming.js): this mod opens itself for both.
 // The real space order follows the sidebar, so space.next and space.select:N do too.
 // Keys can run `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
-// A space's menu also opens its project (the repo's top folder, else where it is) in VS Code,
-// and in Obsidian when that is in one of its vaults (open.js).
+// A space's menu also opens its local project (the repo's top folder, else where it is) in a desktop app.
 // A space whose project has DDEV projects or Docker Compose stacks shows their state at the row's
 // end, a button that starts or stops them (stacks.js); its menu does it one stack at a time. The
 // avatar carries how many agent sessions the space has, in the color of the most urgent one (an idle
@@ -21,6 +20,7 @@ import { v_flex, h_flex, ScrollHandle } from "gpui-base";
 import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, props, home, nextCommand, notify } from "herdr";
 import * as model from "./model.js";
 import * as opening from "./open.js";
+import * as external from "./external-apps.js";
 import * as stacks from "./stacks.js";
 import Menu, { naming } from "./menu.js";
 import Naming from "./naming.js";
@@ -164,9 +164,6 @@ export default class Spaces extends View {
     try { this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]")); } catch { this.folded = new Set(); }
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
-    this.vaults = []; // Obsidian's vaults: a project in one can be opened there
-    this.refreshVaults(cx);
-    cx.timer.every(60000, cx => this.refreshVaults(cx));
     this.stackLists = {}; // machine ("" here) -> { ddev, compose }: what its programs say is there
     this.listAt = {}; // machine -> when they were last asked
     this.listing = new Set(); // machines being asked now
@@ -310,15 +307,10 @@ export default class Spaces extends View {
     });
   }
 
-  refreshVaults(cx) {
-    cx.spawn(async () => { this.vaults = await opening.vaults(); });
-  }
-
-  // What a space's menu can open in an editor: { folder, vault } (its repo's top folder, else
-  // where it is; the Obsidian vault that is in), or null for a space on another machine.
+  // A local space's project, for the app actions offered by its menu.
   project(w, g) {
     const folder = g?.top ?? place(w, panes());
-    return folder && opening.possible(w.machine) ? { folder, vault: opening.vaultOf(this.vaults, folder) } : null;
+    return folder && !w.machine ? { path: folder, dir: true, on: null } : null;
   }
 
   refreshMachines(cx) {
@@ -1096,16 +1088,21 @@ export default class Spaces extends View {
     if (this.other) return this.other.render();
     // The menu left a project to open. Taken in a task: only one copy gets it.
     if (opening.waiting()) cx.spawn(async () => {
+      await null;
       const r = opening.take();
-      const done = r ? await opening.perform(r) : {};
-      if (done.error) notify({ title: `Couldn't open it in ${opening.appName(r.app)}`, body: done.error, level: "error" });
+      if (!r) return;
+      const done = await external.open(r.app, r);
+      if (done.error) notify({ title: done.title, body: done.error, level: "error" });
     });
     // The menu left a start or a stop, or a site to open.
     if (stacks.waiting()) cx.spawn(async (cx) => {
       await null;
       const r = stacks.take();
       if (!r) return;
-      if (r.op === "site") { if (r.url) exec("open", [r.url]).catch(() => {}); return; }
+      if (r.op === "site") {
+        if (!r.on && /^https?:\/\/[^/\s]+/i.test(r.url ?? "")) cx.open_url(r.url);
+        return;
+      }
       this.runStacks(r.op, r.stacks, r.on ?? null, cx);
     });
     const t = theme();

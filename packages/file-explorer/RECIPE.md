@@ -10,11 +10,13 @@ Use the Files tree in the side panel. Give files and folders Material Icon Theme
 
 ## How it behaves
 
-Click a folder to fold it, or a file to open it in **File Editor**. A tree drop moves the entry, a terminal drop pastes the quoted path and a Finder drop copies in the files. Offer New File, New Folder, Rename and Duplicate on local and remote projects. Offer Finder, apps, the clipboard and Trash for local Mac files. Cmd+Z reverses the last move, rename or Trash for five minutes in the same folder.
+Click a folder to fold it, or a file to open it in **File Editor**. A tree drop moves the entry, a terminal drop pastes the quoted path and a Finder drop copies in the files. Offer New File, New Folder, Rename and Duplicate on local and remote projects. Show available external apps and the desktop file manager for local items on macOS, Linux and Windows. Offer the Finder clipboard and Trash on macOS. Cmd+Z reverses the last move, rename or Trash for five minutes in the same folder.
 
 ## Built from
 
 Install `mods/file-explorer/` and merge its undo shortcut. Set the personal layout's existing `files` block to `file-explorer`. Install **File Editor** for opening files and **Project Search** for the lens and Find in Folder. Use Herdr file watches, `exec` on the target machine, and Git for change marks. The bundled SVGs and their license are inside the mod. Route changes requested by short-lived menus through the visible panel.
+
+Read optional `external-apps.json` beside `keys.json`. The shared `apps` array orders presets and custom launchers. Default to available VS Code and Obsidian, plus TextEdit on macOS. Use the operating system’s default app and file manager for the standard actions. [Settings and examples](../../docs/external-apps.md)
 
 ## Watch out
 

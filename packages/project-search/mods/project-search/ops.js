@@ -5,12 +5,12 @@
 // could answer. So it leaves a request in shared state, and the panel, which stays, takes it.
 // A request names a result by its file (`path`, under the folder searched) and its match (`id`):
 //   { op: "open",        path, id? }      in the tab's editor
-//   { op: "app",         app: "vscode" | "finder", path, id? }
+//   { op: "app",         app, root, on, path, id? }
 //   { op: "dismiss",     path, id? }      out of the list, until the next search
 //   { op: "replace",     path, id? }      one match, or every match listed in the file
 //   { op: "replace-all", want }           every match listed; `want`: the search they are of
 
-import { exec, shared, setShared, readTextFile, writeTextFile, window } from "herdr";
+import { exec, shared, setShared, readTextFile, writeTextFile } from "herdr";
 import * as search from "./search.js";
 import * as remote from "./remote.js";
 
@@ -36,9 +36,6 @@ export function take() {
   setShared(KEY, null);
   return Date.now() - (r.at ?? 0) < FRESH ? r : null;
 }
-
-// VS Code and Finder are this Mac's: a file on another machine has nowhere to open.
-export const canOpen = (on) => !on && window()?.platform === "macos";
 
 // ripgrep, cut short. Only what search.parse() reads is kept (KEEP): the match records, at
 // most $1 of them, and the summary, which ends a whole answer. The other records were most of
@@ -136,21 +133,4 @@ export async function restore(on, files, tick) {
     } catch (e) { missed.push({ path: f.path, why: String(e?.message ?? e) }); }
   }
   return { restored, missed };
-}
-
-// Opens a file of this Mac in VS Code, at a line when one is given, or shows it in Finder.
-// `repo`: the project's folder, which VS Code opens around the file. Resolves with {} or { error }.
-export async function openIn(app, abs, repo, at) {
-  try {
-    let done;
-    if (app === "finder") done = await exec("open", ["-R", abs]);
-    else {
-      const args = [...(repo ? [repo] : []), "--goto", at ? `${abs}:${at.line}:${at.column}` : abs];
-      try { done = await exec("code", args); }
-      catch { done = await exec("open", ["-a", "Visual Studio Code", abs]); }
-    }
-    return done.code === 0 ? {} : { error: done.stderr.trim() || "It didn't open" };
-  } catch (e) {
-    return { error: String(e?.message ?? e) };
-  }
 }

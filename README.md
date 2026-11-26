@@ -128,7 +128,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 
 - **At a glance:** each type's icon, a dot on folders with changes inside, and the file in the editor highlighted.
 - **To a terminal:** drag a file onto a terminal to paste its path, a quick way to hand it to an agent.
-- **In and out:** drop files in from Finder, or open one in VS Code, Obsidian or Finder.
+- **In and out.** Drop files in from Finder, open one in a [configured external app](docs/external-apps.md), or show it in your desktop’s file manager.
 - **Search:** the header opens Project Search, and the folder menu can narrow it to that folder.
 
 [Everything about File Explorer](docs/file-actions.md)

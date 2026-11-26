@@ -1,14 +1,13 @@
 // The panel's right-click menu, opened as a popup with props { menu: { root, on, path, dir,
-// project, repo, vault, projectVault } }. `path` (under root) is the file or folder clicked,
-// null for the project alone: the header or the room under the list. `project` is the repo's top
-// folder, else the panel's own; `repo` only the former. `vault` and `projectVault` are the ids of
-// the Obsidian vaults they are in, or null.
+// project, repo } }. `path` (under root) is the file or folder clicked, null for the header or
+// the room under the list. `project` is the repo's top folder, else the panel's own; `repo` only the former.
 // ↑/↓ move, Enter runs, Esc closes. Drawn like Herdr's own menu.
 
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { props, closeOverlay, openOverlay, theme, setShared, run } from "herdr";
 import * as ops from "./ops.js";
+import * as external from "./external-apps.js";
 
 const MOD = "file-explorer";
 // The Search panel: what it reads in shared state, and the command that shows it (its header).
@@ -22,10 +21,12 @@ const ICON = {
 };
 
 // Rows: { label, icon, act, rule? (a line above) } and { section, rule? } (a heading, not a choice).
-function rows(m) {
+function rows(m, apps) {
   const out = [];
-  const openIn = (app, target) => ({ label: `Open in ${ops.appName(app)}`, icon: "open", act: () => ops.request({ op: "open", app, repo: m.repo, ...target }) });
-  const reveal = (target) => ({ label: "Reveal in Finder", icon: "reveal", act: () => ops.request({ op: "open", app: "finder", ...target }) });
+  const opening = (target) => external.choices(apps, target).map(({ id, label }) => ({
+    label, icon: external.isReveal(id) ? "reveal" : "open",
+    act: () => ops.request({ op: "open", app: id, repo: m.repo, on: m.on, ...target }),
+  }));
   // `to`: the folder, under root, that takes what is on the clipboard ("": root itself).
   const paste = (to, rule) => ({ label: `Paste in “${ops.base(to || m.root)}”`, icon: "paste", rule, act: () => ops.request({ op: "paste", root: m.root, on: m.on, to }) });
   // The same, for files picked in the system's file picker, which the panel opens: this copy is
@@ -42,19 +43,13 @@ function rows(m) {
     setShared(`${SEARCH}.ask`, { folder: folder ? `${m.root}/${folder}` : m.root, on: m.on ?? null, at: Date.now() });
     run(`${SEARCH}.open`);
   } });
-  const apps = ops.canOpen(m.on), share = ops.canShare(m.on);
+  const share = ops.canShare(m.on);
   if (m.path) {
     const name = ops.base(m.path), abs = `${m.root}/${m.path}`;
-    const target = { path: abs, dir: m.dir, vault: m.vault };
-    out.push({ section: name });
-    if (apps) {
-      out.push(openIn("vscode", target));
-      if (m.vault || (!m.dir && ops.isNote(name))) out.push(openIn("obsidian", target));
-      if (!m.dir) out.push(openIn("textedit", target));
-      out.push(reveal(target));
-    }
+    const actions = opening({ path: abs, dir: m.dir });
+    out.push({ section: name }, ...actions);
     // In the folder clicked, or next to the file clicked.
-    out.push(...create(m.dir ? m.path : ops.parent(m.path), apps));
+    out.push(...create(m.dir ? m.path : ops.parent(m.path), actions.length > 0));
     if (m.dir) out.push(find(m.path));
     out.push({ label: "Rename…", icon: "rename", rule: true, act: () => naming({ path: m.path }) });
     out.push({ label: "Duplicate", icon: "duplicate", act: () => ops.request({ op: "copy", root: m.root, on: m.on, from: m.path, dir: m.dir }) });
@@ -73,13 +68,8 @@ function rows(m) {
       } } }),
     });
   }
-  if (apps && m.project) {
-    const target = { path: m.project, dir: true, vault: m.projectVault };
-    out.push({ section: `Project · ${ops.base(m.project)}`, rule: Boolean(m.path) });
-    out.push(openIn("vscode", target));
-    if (m.projectVault) out.push(openIn("obsidian", target));
-    out.push(reveal(target));
-  }
+  const project = m.project ? opening({ path: m.project, dir: true }) : [];
+  if (project.length) out.push({ section: `Project · ${ops.base(m.project)}`, rule: Boolean(m.path) }, ...project);
   // Nothing clicked (the header, the room under the list): the folder shown takes what is new,
   // and the paste.
   if (!m.path && m.root) {
@@ -97,12 +87,18 @@ export default class Menu {
     this.at = 0;
     this.handle = cx.focus_handle();
     this.handle.focus();
+    const menu = props()?.menu;
+    if (menu && !menu.on) cx.spawn(async (cx) => {
+      this.apps = await external.load(menu.on);
+      this.at = 0;
+      cx.notify();
+    });
   }
 
   render() {
     const t = theme();
     const p = props() ?? {};
-    const list = rows(p.menu ?? {});
+    const list = rows(p.menu ?? {}, this.apps);
     const choices = list.filter((r) => r.act);
     const choose = (r) => {
       closeOverlay(p.overlay);

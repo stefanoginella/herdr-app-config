@@ -8,6 +8,7 @@ import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { props, closeOverlay, theme } from "herdr";
 import * as ops from "./ops.js";
+import * as external from "./external-apps.js";
 
 const MOD = "project-search";
 const ROW = 31;
@@ -17,14 +18,13 @@ const ICON = {
 };
 
 // Rows: { label, icon, act(cx), rule? (a line above) } and { section } (a heading, not a choice).
-function rows(m) {
+function rows(m, apps) {
   if (!m.path) return [];
   const target = { path: m.path, id: m.id ?? null }, abs = `${m.root}/${m.path}`;
   const out = [{ section: m.id ? `${ops.base(m.path)} · line ${m.line}` : ops.base(m.path) }];
   out.push({ label: "Open in Editor", icon: "open", act: () => ops.request({ op: "open", ...target }) });
-  if (ops.canOpen(m.on)) {
-    out.push({ label: "Open in VS Code", icon: "app", act: () => ops.request({ op: "app", app: "vscode", ...target }) });
-    out.push({ label: "Reveal in Finder", icon: "reveal", act: () => ops.request({ op: "app", app: "finder", ...target }) });
+  for (const { id, label } of external.choices(apps, { path: abs })) {
+    out.push({ label, icon: external.isReveal(id) ? "reveal" : "app", act: () => ops.request({ op: "app", app: id, root: m.root, on: m.on, ...target }) });
   }
   out.push({ label: "Copy Path", icon: "copy", rule: true, act: (cx) => cx.write_to_clipboard(abs) });
   out.push({ label: "Copy Relative Path", icon: "copy", act: (cx) => cx.write_to_clipboard(m.path) });
@@ -39,12 +39,18 @@ export default class Menu {
     this.at = 0;
     this.handle = cx.focus_handle();
     this.handle.focus();
+    const menu = props()?.menu;
+    if (menu?.path && !menu.on) cx.spawn(async (cx) => {
+      this.apps = await external.load(menu.on);
+      this.at = 0;
+      cx.notify();
+    });
   }
 
   render() {
     const t = theme();
     const p = props() ?? {};
-    const list = rows(p.menu ?? {});
+    const list = rows(p.menu ?? {}, this.apps);
     const choices = list.filter((r) => r.act);
     const choose = (r, cx) => {
       closeOverlay(p.overlay);

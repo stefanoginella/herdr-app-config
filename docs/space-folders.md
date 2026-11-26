@@ -18,13 +18,13 @@ Each machine has folders of its own, drawn under its header, and a folder holds 
 A space's row also says what runs in it:
 
 - **Agents:** a number on the space's avatar counts its agents, in the color of the most urgent one (a ring when all are idle). An idle agent [marked unread](unread-agents.md) counts as done.
-- **Containers:** the DDEV projects and Docker Compose stacks of the space's project (its repo's top folder, else where it is) show as a button at the row's end: a site for DDEV, the whale for Docker, with a dot that is green when all of it runs and amber when part of it does. Click it to start or stop them; the space's menu does it one stack at a time, and opens a running DDEV site. A dev container's stack has a button of its own, so a click on the project's never touches it. Starting uses `start` for containers that exist and `up -d` only for a stack never brought up; stopping is `stop`, never `down`.
+- **Containers.** The DDEV projects and Docker Compose stacks of the space’s project show as buttons at the row’s end, with a site icon for DDEV and a whale for Docker. A green dot means everything is running and amber means part is running. Click a button to start or stop its stacks, or use the space menu for one stack at a time. **Open site** opens a running local DDEV site in the desktop’s default browser. A Compose-based dev container has its own button. Existing containers start with `start`, a stack that has never been started uses `up -d`, and stopping uses `stop`. Discovery uses `sh`, `find` and Unix-style paths, which limits native Windows support.
 
 Placement survives restarts. It is also remembered by project (the repo, else the folder), so the next space opened on a filed project lands in the same folder.
 
 The real order of spaces follows the sidebar, so `space.next`, `space.prev` and `space.select:N` match what is drawn.
 
-A space's menu also opens its project in VS Code, and in Obsidian when the project is inside one of its vaults. The project is the repo's top folder, else the folder the space is in. Both are for spaces on this Mac.
+A local space’s menu can open its project folder in an [external app](external-apps.md). It uses the repository’s top folder when the space is in a repository, and the space’s folder otherwise.
 
 Three commands can be bound in `keys.json`: `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`. They are also in the command palette (Cmd+Shift+P).
 

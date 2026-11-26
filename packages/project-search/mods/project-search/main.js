@@ -28,6 +28,7 @@ import Menu from "./menu.js";
 import Confirm from "./confirm.js";
 import * as search from "./search.js";
 import * as ops from "./ops.js";
+import * as external from "./external-apps.js";
 import * as fieldKeys from "./fieldkeys.js";
 
 const MOD = "project-search";
@@ -556,7 +557,7 @@ export default class ProjectSearch extends View {
     this.cursor = m ? m.id : fileKey(f.path);
     const replace = this.canReplace() && this.plan(f.path, m?.id).length > 0;
     // A popup is as tall as its items; height is only the most.
-    openOverlay({ mod: MOD, kind: "popup", width: 236, height: 420, props: { menu: {
+    openOverlay({ mod: MOD, kind: "popup", width: 236, height: 530, props: { menu: {
       root: r.root, on: r.on ?? null, path: f.path, id: m?.id ?? null, line: m?.line ?? null, text: m?.full ?? null, replace,
     } } });
   }
@@ -571,9 +572,12 @@ export default class ProjectSearch extends View {
     if (q.op === "open") this.open(f, m);
     else if (q.op === "dismiss") this.dismiss(f, m);
     else if (q.op === "replace") this.replace(f.path, m?.id ?? null, cx);
-    else if (q.op === "app") cx.spawn(async () => {
-      const done = await ops.openIn(q.app, `${r.root}/${f.path}`, r.repo ? r.root : null, m ? { line: m.line, column: Math.max(0, m.start) + 1 } : null);
-      if (done.error) notify({ title: q.app === "finder" ? "Couldn't show it in Finder" : "Couldn't open it in VS Code", body: done.error, level: "error" });
+    else if (q.op === "app" && q.root === r.root && !q.on && !r.on) cx.spawn(async () => {
+      const done = await external.open(q.app, {
+        path: `${r.root}/${f.path}`, repo: r.repo ? r.root : null, on: r.on,
+        line: m?.line, column: m ? Math.max(0, m.start) + 1 : null,
+      });
+      if (done.error) notify({ title: done.title, body: done.error, level: "error" });
     });
   }
 

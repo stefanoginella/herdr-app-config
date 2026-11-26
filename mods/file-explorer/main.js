@@ -27,8 +27,6 @@ const EDITOR = "file-editor";
 // The Search panel, which its own command shows.
 const SEARCH = "project-search";
 const CLEAR = "#00000000";
-// How often Obsidian's list of vaults is read again.
-const VAULTS_EVERY = 60000;
 // How far the pointer goes from where it was pressed before the press is a drag, in window
 // pixels: where Herdr's own drag begins too.
 const DRAG_FROM = 2;
@@ -45,7 +43,6 @@ const markColor = (t, mark) => (mark === "A" ? t.ansi2 : mark === "D" || mark ==
 
 // What went wrong, as a toast's title.
 function failed(r) {
-  if (r.op === "open") return r.app === "finder" ? "Couldn't show it in Finder" : `Couldn't open it in ${ops.appName(r.app)}`;
   if (r.op === "clip") return "Couldn't copy it to the clipboard";
   if (r.op === "trash") return "Couldn't move it to the Trash";
   if (r.op === "copy") return "Couldn't duplicate it";
@@ -184,7 +181,6 @@ export default class Files extends View {
     this.ignored = new Set(); // what git ignores, as absolute paths; a folder stands for all in it
     this.inIgnored = false; // the folder shown is itself inside an ignored one
     this.top = null; // the repo's top folder, null outside a repo
-    this.vaults = []; this.vaultsAt = 0; // Obsidian's vaults, and when they were read
     // The entry pressed: { path, name, dir, x, y } (where, in the window). Once the pointer has
     // left that spot it is `moving`; `out`: the pointer is outside the panel now (follow()).
     this.drag = null;
@@ -329,11 +325,6 @@ export default class Files extends View {
         } else {
           context.watchAt = Date.now();
         }
-        // Not part of the scan: Obsidian's vaults, here only, at most once a minute.
-        if (!on && Date.now() - this.vaultsAt > VAULTS_EVERY) {
-          this.vaults = await ops.vaults();
-          this.vaultsAt = Date.now();
-        }
         if (!this.current(context)) return;
         if (context.dirtyAt <= covered) context.dirtyAt = 0;
         this.marks = marks; this.changed = changed; this.ignored = ignored; this.top = root; this.error = null;
@@ -356,8 +347,6 @@ export default class Files extends View {
     const m = {
       root: this.root, on: this.on, path: entry?.path ?? null, dir: Boolean(entry?.dir),
       project, repo: this.top,
-      vault: entry ? ops.vaultOf(this.vaults, `${this.root}/${entry.path}`) : null,
-      projectVault: ops.vaultOf(this.vaults, project),
     };
     // A popup is as tall as its items; height is only the most.
     if (any(m)) openOverlay({ mod: MOD, kind: "popup", width: 236, height: 620, props: { menu: m } });
@@ -375,7 +364,7 @@ export default class Files extends View {
     cx.spawn(async cx => {
       const done = await ops.perform(r);
       if (done.error) {
-        notify({ title: failed(r), body: done.error, level: "error" });
+        notify({ title: done.title ?? failed(r), body: done.error, level: "error" });
         if (!quiet && !r.undo && turn === this.turn) this.last = before;
       }
       else if (r.op === "clip") notify({ title: `Copied “${ops.base(r.from)}”`, body: "Paste it in Finder, or in a folder here" });

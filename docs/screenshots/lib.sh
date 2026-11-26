@@ -4,8 +4,8 @@
 
 SHOTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # this folder
 REPO="$(cd "$SHOTS/../.." && pwd)"                      # the setup the pictures are of
-DEMO=/var/tmp/herdr-app-demo                            # the sandbox; a short path, for the core's socket
-PHYS=/private$DEMO                                      # the same folder under its real name, as the app sees it
+DEMO=${HERDR_SHOTS_DIR:-/var/tmp/herdr-app-demo}          # use a fresh short path for a separate run
+PHYS=$(cd "$(dirname "$DEMO")" && pwd -P)/$(basename "$DEMO")
 A=$PHYS/home/.config/herdr-app                          # the sandbox's app home
 D=$PHYS/home/Developer                                  # its fake projects
 R=$D/herdr-app                                          # the demo copy of this repository
@@ -17,9 +17,11 @@ py() { env HOME="$REAL_HOME" PATH="$REAL_PATH" python3 "$@"; }
 # may be a link in the sandbox.)
 real() { env PATH="$REAL_PATH" /usr/bin/which "$1"; }
 
-export HOME=$PHYS/home HC_SESSION=herdr-app-demo HERDR_APP_HOME=$A
+export HOME=$PHYS/home HC_SESSION=${HERDR_SHOTS_SESSION:-herdr-app-demo} HERDR_APP_HOME=$A
 export XDG_STATE_HOME=$DEMO/state XDG_CONFIG_HOME=$PHYS/home/.config
 export HERDR_APP_NO_SOUND=1 HERDR_TELEMETRY=0 DO_NOT_TRACK=1
+unset HC_SOCKET
+if [ -n "${HERDR_SHOTS_SOCKET:-}" ]; then export HC_SOCKET=$HERDR_SHOTS_SOCKET; fi
 # The stubs come first: `docker`, `ddev` and `gh` would otherwise answer with real projects.
 export PATH=$DEMO/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 unset HC_TERMINAL_SOCKET HC_TERMINAL_ID HC_SCOPE HC_RUNTIME CLAUDECODE CLAUDE_CODE_ENTRYPOINT __CFBundleIdentifier

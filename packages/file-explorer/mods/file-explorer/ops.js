@@ -14,11 +14,11 @@
 //   { op: "pick",    root, on, to }         the same, for files the person picks: the panel opens
 //                                           the system's file picker when it takes this
 //   { op: "clip",    root, on, from }       onto the clipboard, as a file Finder can paste
-//   { op: "open",    app: "vscode" | "obsidian" | "textedit" | "finder", path, dir, repo?, vault? }
-//                                           path is absolute; "finder" shows it in its folder
+//   { op: "open",    app, path, on, dir, repo? }  an external-apps.js choice for an absolute path
 // `undo: true` on a request marks the reverse of an earlier one (main.js): it only changes the toast.
 
-import { exec, shared, setShared, readTextFile, home, window } from "herdr";
+import { exec, shared, setShared, window } from "herdr";
+import * as external from "./external-apps.js";
 
 const KEY = "file-explorer.request";
 // A request older than this was left by a window that closed before taking it.
@@ -94,14 +94,9 @@ function trashedPath(out) {
   return path.startsWith("/") ? path : null;
 }
 
-const APPS = { vscode: "VS Code", obsidian: "Obsidian", textedit: "TextEdit", finder: "Finder" };
-export const appName = (app) => APPS[app];
-
-// These are this Mac's apps: a file on another machine has nowhere to open.
-export const canOpen = (on) => !on && window()?.platform === "macos";
-export const canTrash = canOpen;
-// The clipboard and Finder are this Mac's too: their files can't be another machine's.
-export const canShare = canOpen;
+// The Trash and Finder clipboard use macOS APIs.
+export const canTrash = (on) => !on && window()?.platform === "macos";
+export const canShare = canTrash;
 
 // Files on the clipboard, as Finder puts them there and takes them: `write <path>…` replaces
 // what it holds, anything else prints the paths it holds as JSON. Text is not enough for this,
@@ -126,48 +121,13 @@ export async function clipboardFiles() {
   }
 }
 
-// Obsidian's vaults: [{ id, path }]. It opens a folder only as one of these.
-export async function vaults() {
-  if (window()?.platform !== "macos") return [];
-  try {
-    const text = await readTextFile(`${home()}/Library/Application Support/obsidian/obsidian.json`);
-    return Object.entries(JSON.parse(text ?? "{}").vaults ?? {})
-      .filter(([, v]) => typeof v?.path === "string")
-      .map(([id, v]) => ({ id, path: v.path.replace(/\/+$/, "") }));
-  } catch { return []; }
-}
-
-// The id of the vault a path is in (the innermost), or null.
-export function vaultOf(list, path) {
-  return list.filter((v) => within(path, v.path)).sort((a, b) => b.path.length - a.path.length)[0]?.id ?? null;
-}
-
-// Obsidian opens these from anywhere; everything else only inside a vault.
-export const isNote = (name) => /\.(md|markdown|canvas|base)$/i.test(name);
-
-async function open(r) {
-  let result;
-  if (r.app === "vscode") {
-    // A file opens in its repo's window, so the editor has the project around it.
-    const paths = !r.dir && r.repo && r.repo !== r.path && within(r.path, r.repo) ? [r.repo, r.path] : [r.path];
-    try { result = await exec("code", paths); }
-    catch { result = await exec("open", ["-a", "Visual Studio Code", ...paths]); }
-  } else if (r.app === "obsidian") {
-    // In a vault: Obsidian's own link, to the file or (it can't show a folder) to the vault.
-    const link = r.dir ? `vault=${encodeURIComponent(r.vault)}` : `path=${encodeURIComponent(r.path)}`;
-    result = await exec("open", r.vault ? [`obsidian://open?${link}`] : ["-a", "Obsidian", r.path]);
-  } else if (r.app === "finder") result = await exec("open", ["-R", r.path]);
-  else result = await exec("open", ["-a", "TextEdit", r.path]);
-  return result.code === 0 ? {} : { error: result.stderr.trim() || `${APPS[r.app]} didn't open it` };
-}
-
 // Runs a request. Resolves with { error }, or with what it made: { name } for a copy,
 // { trashed } (where it is in the Trash, when `trash` said) for a trash, else {}.
 // "add" is run one source at a time, as { op: "add", root, on, to, source }; "paste" and "pick"
 // are the panel's to turn into that (main.js).
 export async function perform(r) {
   try {
-    if (r.op === "open") return await open(r);
+    if (r.op === "open") return await external.open(r.app, r);
     const abs = (path) => `${r.root}/${path}`;
     const taken = (path) => ({ error: `“${base(path)}” already exists in ${parent(path) || "the top folder"}` });
     if (r.op === "move") {

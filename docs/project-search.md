@@ -13,7 +13,7 @@ Search every file of the project, and replace, in a panel that takes the place o
 - **Find in Folder:** right-click a folder in the Files panel to search only there.
 - **Results:** grouped by file, foldable. Click a match to open the file in the [editor](file-editor.md) with the match selected. F4 and Shift+F4 go to the next and the previous result from anywhere. The list shows more as you scroll to its end, or with "Show more". At most 2,000 matches are listed, and 500 matched lines of one file: the panel says when there are more.
 - **Keyboard:** Down from a field goes to the list, where Up and Down move, Enter opens, Left and Right fold, and Cmd+Backspace dismisses. Tab goes through the fields, Alt+Up and Alt+Down bring back earlier queries, and Escape gives the keyboard back to the pane or the terminal.
-- **Right-click a result:** open it in the editor or in VS Code at its line, reveal it in Finder, copy its path, its path in the project or its line, replace it, or dismiss it from the list.
+- **Right-click a result.** Open it in the editor, copy its path, its path in the project or its line, replace it, or dismiss it. Local results can open in an [external app](external-apps.md) or be shown in the desktop’s file manager. An external app with line arguments opens at the match.
 - **To a terminal:** drag a result onto a terminal to paste its file's path there.
 - **Replace:** the chevron left of the query opens the replace row, and every match shows what it becomes. With a regular expression `$1` is the first group; in plain text a `$` is a dollar. Replace one match or one file from its row, or all of them with the button beside the field, which asks first. Only the matches listed are replaced.
 - **What a replace writes:** the files themselves, at once. A file that changed since the search is left alone, whole, and so is one that is not UTF-8 text or is larger than 1 MB. A file open in the editor shows its new text, or asks when it has unsaved text.
@@ -21,7 +21,7 @@ Search every file of the project, and replace, in a panel that takes the place o
 
 The search reads the files on disk: unsaved text in the editor is not searched. Results come when the search is done, not one by one.
 
-A project on another machine is searched there, where ripgrep must be installed too, and replaced there as the editor saves a file there. VS Code and Finder are for files on this Mac.
+A project on another machine is searched and edited there. The machine running the search needs ripgrep and the Unix shell tools used by the search command. Desktop actions apply to local results.
 
 The keys are in `keys.json`: Cmd+Shift+F, F4 and Shift+F4 under `global`, Cmd+Shift+F again in the two `mod:file-editor` sections (Herdr's editor keeps that key for itself), and the panel's own under `mod:project-search` and `mod:project-search > Input`. One more command can be bound: `project-search.undo`. "Search in Project" is also in the command palette.
 

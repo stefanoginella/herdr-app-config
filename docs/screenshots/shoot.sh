@@ -48,7 +48,7 @@ s_files() {
   rmdir "${R:?}/mods/zz-tmp"; cp "$DEMO/initials.test.mjs" "$R/$f"; nap 2; draw 3
   open_file "$R/mods/git-panel/git.js" 131
   # `at` is in window pixels: left of the file's row, as the menu opens when there is no room below.
-  req "[{\"overlay\":{\"mod\":\"file-explorer\",\"kind\":\"popup\",\"width\":236,\"height\":620,\"at\":{\"x\":1330,\"y\":215},\"props\":{\"menu\":{\"root\":\"$R\",\"on\":null,\"path\":\"mods/git-panel/git.js\",\"dir\":false,\"project\":\"$R\",\"repo\":\"$R\",\"vault\":null,\"projectVault\":null}}}}]" 5
+  req "[{\"overlay\":{\"mod\":\"file-explorer\",\"kind\":\"popup\",\"width\":236,\"height\":620,\"at\":{\"x\":1330,\"y\":215},\"props\":{\"menu\":{\"root\":\"$R\",\"on\":null,\"path\":\"mods/git-panel/git.js\",\"dir\":false,\"project\":\"$R\",\"repo\":\"$R\"}}}}]" 5
   shot file-actions
   h overlay.close; nap 0.8
 }

@@ -1,7 +1,7 @@
 // The sidebar's right-click menus, opened as a popup with props { menu, target, keys }:
 //   "space":  Herdr's own space items, opening its project in an editor, starting and stopping its
 //             containers, and moving it between folders. target { id, git, nested, kids,
-//             open: { folder, vault } | null, stacks: [stack + { acting }], on, local }
+//             open: { path, dir, on } | null, stacks: [stack + { acting }], on, local }
 //   "folder": new space here, rename, remove. target { id }
 //   "root":   new folder, new space, on target { machine? } (else the shown space's machine).
 // Folders are per machine: a space moves only among its own machine's folders.
@@ -12,6 +12,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, keys, spaces } from "herdr";
 import * as model from "./model.js";
 import * as opening from "./open.js";
+import * as external from "./external-apps.js";
 import * as stacks from "./stacks.js";
 import * as names from "./names.js";
 
@@ -40,7 +41,7 @@ function change(fn) {
 
 // Rows: { label, icon, act, hint?, rule? (a line above), many? (one of a list that may be long) }
 // and { section } (a heading, not a choice).
-function rows(p) {
+function rows(p, apps) {
   const tg = p.target ?? {};
   const m = model.load();
   const worktree = (action, size) => () => openOverlay({ mod: "worktree", kind: "dialog", ...size, props: { space: tg.id, action } });
@@ -51,7 +52,7 @@ function rows(p) {
     const at = model.folderOf(m, tg.id);
     const opts = { kids: tg.kids ?? [], keys: p.keys ?? {} };
     const move = (dest) => () => change((m) => model.file(m, tg.id, dest, opts));
-    const openIn = (app) => ({ label: `Open in ${opening.appName(app)}`, icon: "open", act: () => opening.request({ app, ...tg.open }) });
+    const actions = tg.open ? external.choices(apps, tg.open, { reveal: false }) : [];
     return [
       { label: "Rename", icon: "square-pen", hint: shortcut("space.rename"), act: () => run("space.rename", { id: tg.id }) },
       ...(tg.git ? [
@@ -59,9 +60,10 @@ function rows(p) {
         { label: "Open worktree", icon: "git-branch", act: worktree("open", { width: 560, height: 480 }) },
       ] : []),
       ...(tg.git === "linked" ? [{ label: "Remove worktree", icon: "git-branch", act: worktree("remove", small) }] : []),
-      // The project in an editor on this Mac; Obsidian only when it is in one of its vaults.
-      ...(tg.open ? [{ ...openIn("vscode"), rule: true }, ...(tg.open.vault ? [openIn("obsidian")] : [])] : []),
-      // Its containers, one at a time; a DDEV site that runs opens in the browser (this Mac's only).
+      ...actions.map(({ id, label }, i) => ({
+        label, icon: "open", rule: i === 0, act: () => opening.request({ app: id, ...tg.open }),
+      })),
+      // Its containers, one at a time. A running local DDEV site opens in the default browser.
       ...(tg.stacks ?? []).flatMap((s, i) => {
         const up = s.state !== "stopped";
         const name = names.stack(s);
@@ -102,12 +104,18 @@ export default class Menu {
     this.at = 0;
     this.handle = cx.focus_handle();
     this.handle.focus();
+    const p = props();
+    if (p?.menu === "space" && p.target?.open && !p.target.on) cx.spawn(async (cx) => {
+      this.apps = await external.load(p.target.on);
+      this.at = 0;
+      cx.notify();
+    });
   }
 
   render() {
     const t = theme();
     const p = props() ?? {};
-    const list = rows(p);
+    const list = rows(p, this.apps);
     const choices = list.filter((r) => r.act);
     const choose = (r) => {
       closeOverlay(p.overlay);

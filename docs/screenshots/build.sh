@@ -18,7 +18,7 @@ mkdir -p "$DEMO/bin" "$DEMO/raw" "$DEMO/gh" "$DEMO/agents" "$DEMO/state" "$A/lay
 link() { ln -sf "$(real "$1")" "$DEMO/bin/$1"; }
 link hc; link herdr-app; link node; link rg
 real herdr-core >/dev/null && link herdr-core
-for p in claude codex code open osascript trash; do
+for p in claude codex code open osascript textedit trash; do
   printf '#!/bin/sh\nprintf "%%s\\n" "$0 $*" >>%s/stub.log\nexit 1\n' "$DEMO" > "$DEMO/bin/$p"
 done
 cat > "$DEMO/bin/docker" <<X
@@ -70,6 +70,9 @@ X
 
 # ---- the app's home: this setup's own files, as they are in the working folder ----
 cp "$REPO/keys.json" "$A/keys.json"
+cat > "$A/external-apps.json" <<'X'
+{"apps":["vscode",{"id":"textedit","label":"TextEdit","targets":["file"],"launch":{"macos":{"command":"textedit","args":["{path}"]}}}]}
+X
 cp "$REPO/layouts/main-folders.json" "$A/layouts/"
 (cd "$REPO" && git ls-files -co --exclude-standard mods | rsync -a --files-from=- "$REPO/" "$A/")
 cp -R "$SHOTS/stage" "$A/mods/stage"
