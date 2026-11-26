@@ -1,4 +1,15 @@
 {
+  "power-tools": {
+    "label": "WORKSPACE LAYOUT",
+    "heading_size": 86,
+    "heading_width": 482,
+    "caption": "Manage agents, edit files, and review Git changes in one workspace.",
+    "shots": [
+      {"picture": "usage", "crop": [73, 71, 1533, 706], "at": [588, 150], "width": 676},
+      {"picture": "space-folders", "crop": [81, 186, 722, 588], "at": [570, 414], "width": 356},
+      {"picture": "git-panel", "crop": [121, 71, 686, 615], "at": [920, 466], "width": 344}
+    ]
+  },
   "agent-usage": {
     "caption": "See how long your Claude and Codex limits will last.",
     "shots": [

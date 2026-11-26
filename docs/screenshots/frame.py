@@ -16,7 +16,7 @@
 #   shadow   { "blur": N, "y": N, "alpha": 0..1 }
 import json, math, sys
 from pathlib import Path
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 SS = 4  # supersampling for the masks
 
@@ -109,13 +109,6 @@ def build(root, spec, name):
     m = {**spec.get("mat", {}), **p.get("mat", {})}
     canvas = mat(size, m)
     keep = canvas.getchannel("A")
-    if "title" in p:
-        # Cover lettering belongs to the backdrop, outside the photographed UI.
-        try:
-            face = ImageFont.truetype("Arial Bold.ttf", 96)
-        except OSError:
-            face = ImageFont.truetype("DejaVuSans-Bold.ttf", 96)
-        ImageDraw.Draw(canvas).text((66, 42), p["title"], font=face, anchor="lt", fill="#182535")
     base = spec.get("card", {})
     for c in p["cards"]:
         im, mask = card_image(root, c, base)

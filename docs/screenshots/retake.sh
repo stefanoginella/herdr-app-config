@@ -10,3 +10,4 @@ set -euo pipefail
 "$SHOTS/shoot.sh"
 quit_sandbox
 "$SHOTS/make.sh"
+py "$REPO/docs/gallery.py"

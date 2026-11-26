@@ -1,4 +1,4 @@
-"""Migrate renamed Power Tools mods in an existing Herdr home."""
+"""Migrate renamed Power Tools mods and layout in an existing Herdr home."""
 
 import argparse
 import hashlib
@@ -12,6 +12,8 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+OLD_LOOK = "main-folders"
+NEW_LOOK = "herdr-powertools"
 NAMES = {
     "usage": "agent-usage",
     "agent-inbox": "mark-agents-unread",
@@ -67,8 +69,12 @@ def action(value, names):
             result["args"] = layout(args, names)
             if cmd in {"mod.open", "mod.clone"} and args.get("name") in names:
                 result["args"]["name"] = names[args["name"]]
+            if cmd == "layout.switch" and args.get("name") == OLD_LOOK:
+                result["args"]["name"] = NEW_LOOK
         return result
     if isinstance(value, str):
+        if value == "layout.switch:" + OLD_LOOK:
+            return "layout.switch:" + NEW_LOOK
         for old, new in names.items():
             if value.startswith(old + "."):
                 return new + value[len(old):]
@@ -102,6 +108,8 @@ def keymap(value, names):
     for section, bindings in value.items():
         base, sep, suffix = section.partition(" > ")
         target = "mod:" + names[base[4:]] + sep + suffix if base.startswith("mod:") and base[4:] in names else section
+        if section == "layout:" + OLD_LOOK:
+            target = "layout:" + NEW_LOOK
         dest = result.setdefault(target, {})
         for key, original in bindings.items():
             binding = action(original, names)
@@ -109,6 +117,21 @@ def keymap(value, names):
                 raise ValueError(f"Conflicting shortcuts in {target}: {key}")
             dest[key] = binding
     return result
+
+
+def merge_layout(base, local, upstream):
+    if local == base:
+        return upstream
+    if upstream == base or local == upstream:
+        return local
+    with tempfile.TemporaryDirectory() as scratch:
+        paths = [Path(scratch) / name for name in ("local", "installed", "upstream")]
+        for path, content in zip(paths, (local, base, upstream)):
+            path.write_bytes(content)
+        result = subprocess.run(["git", "merge-file", "-p", *paths], capture_output=True)
+        if result.returncode:
+            raise ValueError(f"Local edits to {OLD_LOOK} conflict with the new layout. Reconcile them before migrating.")
+        return result.stdout
 
 
 def migrate(home, apply):
@@ -193,7 +216,51 @@ def migrate(home, apply):
             packages[new_key] = dict(rec, name=new, path=updated_path, files=expected, modified=[], commit=head)
             packages[new_key].pop("conflict", None)
 
+    old_look, new_look = (Path("layouts", name + ".json") for name in (OLD_LOOK, NEW_LOOK))
+    old_key, new_key = ("layout:" + name for name in (OLD_LOOK, NEW_LOOK))
+    rec = packages.get(old_key)
+    has_old, has_new = ((home / rel).is_file() for rel in (old_look, new_look))
+    if rec and not (has_old or has_new):
+        raise ValueError(f"The tracked layout {OLD_LOOK} is missing. Restore it before migrating.")
+    if has_old or has_new:
+        existing_new = (home / new_look).read_bytes() if has_new else None
+        current = existing_new if has_new else (home / old_look).read_bytes()
+        if has_old:
+            if has_new and (home / old_look).read_bytes() != current:
+                raise ValueError(f"Both {old_look} and {new_look} exist and differ. Reconcile them before migrating.")
+            archive.append(old_look)
+        if rec:
+            if not source or rec.get("source") not in {previous, source} or rec.get("path") != old_look.as_posix() or new_key in packages:
+                raise ValueError(f"Conflicting herdr-pkg source or destination for {OLD_LOOK}.")
+            if rec.get("pin") or rec.get("branch") or rec.get("renamed"):
+                raise ValueError(f"Review the pinned, branch-specific or renamed herdr-pkg record for {OLD_LOOK} before migrating.")
+            upstream_sha = git("rev-parse", "--verify", f"{head}:{new_look.as_posix()}").decode().strip()
+            upstream = git("cat-file", "blob", upstream_sha)
+            if not has_new:
+                base = git("show", f"{rec['commit']}:{old_look.as_posix()}")
+                current = merge_layout(base, current, upstream)
+        original = json.loads(current)
+        updated = layout(original, names)
+        if original != updated:
+            current = (json.dumps(updated, ensure_ascii=False, indent=2) + "\n").encode()
+        if current != existing_new:
+            writes[new_look] = current
+        if rec:
+            del packages[old_key]
+            packages[new_key] = dict(rec, name=NEW_LOOK, path=new_look.as_posix(),
+                                     files={new_look.name: upstream_sha}, commit=head,
+                                     modified=[new_look.name] if current != upstream else [])
+            packages[new_key].pop("conflict", None)
+        old_state, new_state = (Path("layouts", ".state", rel.name) for rel in (old_look, new_look))
+        if (home / old_state).is_file():
+            if not (home / new_state).exists():
+                writes[new_state] = (home / old_state).read_bytes()
+            archive.append(old_state)
+        change_json(Path("shared.json"), lambda obj: dict(obj, layout=NEW_LOOK) if obj.get("layout") == OLD_LOOK else obj)
+
     for path in (home / "layouts").glob("*.json"):
+        if path.name in {old_look.name, new_look.name}:
+            continue
         change_json(path.relative_to(home), lambda obj: layout(obj, names))
     change_json(Path("windows.json"), lambda obj: layout(obj, names))
     change_json(Path("keys.json"), lambda obj: keymap(obj, names))

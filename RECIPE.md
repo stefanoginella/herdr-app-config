@@ -17,7 +17,7 @@ Start with a 268 px left sidebar. Under the window chrome put a 62 px usage widg
 
 ## Built from
 
-Use `layouts/main-folders.json` and the 15 mod directories in the root `mods/`. Keep Herdr's `workspace-chrome`, its block IDs and its active-tab content. Replace the Spaces, Agents, Tabs, pane header, Status, Files and Changes mod references as shown in the layout. Add the usage block, the search child and its always-present zero-height key receiver. Register `editor-links` at the layout root. Merge the desired shortcuts from `keys.json`. The status row includes Back and forward and the Quick Actions launcher. The ten individual Power Tools recipes under `packages/` describe each part, its dependencies and its acceptance checks.
+Use `layouts/herdr-powertools.json` and the 15 mod directories in the root `mods/`. Keep Herdr's `workspace-chrome`, its block IDs and its active-tab content. Replace the Spaces, Agents, Tabs, pane header, Status, Files and Changes mod references as shown in the layout. Add the usage block, the search child and its always-present zero-height key receiver. Register `editor-links` at the layout root. Merge the desired shortcuts from `keys.json`. The status row includes Back and forward and the Quick Actions launcher. The ten individual Power Tools recipes under `packages/` describe each part, its dependencies and its acceptance checks.
 
 ## Watch out
 
@@ -25,4 +25,4 @@ Run Git and ripgrep on the machine holding the project. Agent Usage needs Node 1
 
 ## Done when
 
-Switch to `main-folders` and open Files, Git and Search from the same tab. Follow a search match to the editor, save it and review the working-tree diff beside the terminal. Mark an agent unread and revisit it. Switch name hiding on and off and confirm the same spaces and files still open. Switch back to the previous layout.
+Switch to `herdr-powertools` and open Files, Git and Search from the same tab. Follow a search match to the editor, save it and review the working-tree diff beside the terminal. Mark an agent unread and revisit it. Switch name hiding on and off and confirm the same spaces and files still open. Switch back to the previous layout.

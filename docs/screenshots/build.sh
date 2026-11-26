@@ -73,7 +73,7 @@ cp "$REPO/keys.json" "$A/keys.json"
 cat > "$A/external-apps.json" <<'X'
 {"apps":["vscode",{"id":"textedit","label":"TextEdit","targets":["file"],"launch":{"macos":{"command":"textedit","args":["{path}"]}}}]}
 X
-cp "$REPO/layouts/main-folders.json" "$A/layouts/"
+cp "$REPO/layouts/herdr-powertools.json" "$A/layouts/"
 (cd "$REPO" && git ls-files -co --exclude-standard mods | rsync -a --files-from=- "$REPO/" "$A/")
 cp -R "$SHOTS/stage" "$A/mods/stage"
 mkdir -p "$A/data"
@@ -96,7 +96,7 @@ P
 # As after a first start: without it the app says "Updated" in a corner for the whole run.
 printf '{\n  "last_run": "%s",\n  "presented": []\n}\n' "$(herdr-app --version | awk '{ print $2 }')" > "$A/update-notes.json"
 cat > "$A/shared.json" <<'X'
-{"layout":"main-folders","workspace.panels":["files","changes","search"],"frame.welcomed":"finished","agents.sort":"priority"}
+{"layout":"herdr-powertools","workspace.panels":["files","changes","search"],"frame.welcomed":"finished","agents.sort":"priority"}
 X
 # 2220x1410 on a display of one pixel a point: pictures.json's boxes are in that window's pixels.
 # It opens with only its corner on screen, at the desktop's bottom right, out of the pointer's way:

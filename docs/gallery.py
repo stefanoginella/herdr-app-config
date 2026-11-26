@@ -35,8 +35,8 @@ def wrap_text(text, face, width):
     return lines
 
 
-def gallery_card(screenshot, title, spec):
-    """Make a 16:10 gallery cover from the published demo screenshot and its recipe title."""
+def gallery_card(title, spec, picture=None):
+    """Make a 16:10 gallery cover from published demo screenshots and a recipe title."""
     size = (1280, 800)
     ramp = Image.linear_gradient("L").resize(size)
     canvas = Image.composite(Image.new("RGB", size, "#bdcde0"), Image.new("RGB", size, "#edf2f8"), ramp)
@@ -44,10 +44,12 @@ def gallery_card(screenshot, title, spec):
     draw.polygon([(860, 0), (1280, 0), (1280, 800), (530, 800)], fill=(77, 111, 156, 22))
     for shot in spec["shots"]:
         x, y, w, h = shot["crop"]
-        if x < 0 or y < 0 or x + w > screenshot.width or y + h > screenshot.height:
-            raise ValueError(f"{title} crop falls outside its screenshot")
+        source = shot.get("picture", picture)
+        with Image.open(ROOT / "docs" / "images" / (source + ".webp")) as screenshot:
+            if x < 0 or y < 0 or x + w > screenshot.width or y + h > screenshot.height:
+                raise ValueError(f"{title} crop falls outside {source}.webp")
+            panel = screenshot.crop((x, y, x + w, y + h)).convert("RGB")
         width = shot["width"]
-        panel = screenshot.crop((x, y, x + w, y + h)).convert("RGB")
         panel = panel.resize((width, round(h * width / w)), Image.Resampling.LANCZOS)
         mask = Image.new("L", panel.size)
         ImageDraw.Draw(mask).rounded_rectangle((0, 0, panel.width - 1, panel.height - 1), 10, fill=255)
@@ -59,16 +61,17 @@ def gallery_card(screenshot, title, spec):
 
     # Pillow ships this typeface with its wheel so checks use the same lettering on each OS.
     label = ImageFont.load_default(size=28)
-    heading = ImageFont.load_default(size=101)
+    heading_size = spec.get("heading_size", 101)
+    heading = ImageFont.load_default(size=heading_size)
     body = ImageFont.load_default(size=38)
     ink = "#142539"
     draw = ImageDraw.Draw(canvas)
     draw.rectangle((66, 68, 73, 93), fill="#3071a4")
-    draw.text((89, 70), "HERDR POWER TOOLS", font=label, fill=ink, anchor="lt")
+    draw.text((89, 70), spec.get("label", "HERDR POWER TOOLS"), font=label, fill=ink, anchor="lt")
 
-    titles = wrap_text(title, heading, 490)
+    titles = wrap_text(title, heading, spec.get("heading_width", 490))
     captions = wrap_text(spec["caption"], body, 456)
-    title_step, caption_step = 100, 47
+    title_step, caption_step = heading_size - 1, 47
     height = len(titles) * title_step + 20 + len(captions) * caption_step
     top = (size[1] - height) // 2 + 24
     for i, line in enumerate(titles):
@@ -125,23 +128,24 @@ def main():
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(data)
 
-    def preview(folder, name, card=None):
-        path = folder / "preview.png"
+    def put_image(path, image, format, **options):
         dest = ROOT / path
-        with Image.open(ROOT / "docs" / "images" / (name + ".webp")) as screenshot:
-            image = screenshot
-            if card:
-                title = (ROOT / folder / "RECIPE.md").read_text().splitlines()[0].removeprefix("# ")
-                image = gallery_card(screenshot, title, card)
-            if dest.is_file():
-                with Image.open(dest) as old:
-                    if old.format == "PNG" and old.size == image.size and old.mode == image.mode and old.tobytes() == image.tobytes():
-                        return
-            changed.append(path)
-            if not check:
-                image.save(dest, format="PNG")
+        if dest.is_file():
+            with Image.open(dest) as old:
+                if old.format == format and old.size == image.size and old.mode == image.mode and old.tobytes() == image.tobytes():
+                    return
+        changed.append(path)
+        if not check:
+            image.save(dest, format=format, **options)
 
-    preview(Path("."), "power-tools")
+    def preview(folder, card, picture=None):
+        title = (ROOT / folder / "RECIPE.md").read_text().splitlines()[0].removeprefix("# ")
+        image = gallery_card(title, card, picture)
+        put_image(folder / "preview.png", image, "PNG")
+        return image
+
+    cover = preview(Path("."), cards["power-tools"])
+    put_image(Path("docs/images/power-tools.webp"), cover, "WEBP", lossless=True, method=6)
     for feature, mods in FEATURES.items():
         folder = Path("packages") / feature
         sources = tracked(*["mods/" + mod for mod in mods])
@@ -154,7 +158,7 @@ def main():
         bindings = feature_keys(feature, mods, keys)
         if bindings:
             put(folder / "keys.json", (json.dumps(bindings, indent=2) + "\n").encode())
-        preview(folder, PICTURES.get(feature, feature), cards[feature])
+        preview(folder, cards[feature], PICTURES.get(feature, feature))
 
     # Only remove previously published, generated files that have lost their source.
     for path in tracked("packages/*/mods/**", "packages/*/keys.json"):

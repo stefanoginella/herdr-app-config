@@ -55,7 +55,7 @@ quit_sandbox            # close the window and stop its core
 - **The window's three buttons** are drawn back in where a card shows the window's top left corner: the system draws them, so a shot has none.
 - **Lossless WebP**, about a third of the same PNG.
 
-The Power Tools cover uses the usage forecast, the expanded Spaces list and the Git graph from the same sandbox shots. Its title sits on the backdrop. Rebuild it with `./make.sh power-tools`, then run `python3 docs/gallery.py` from the repository root to refresh the gallery's PNG previews.
+The layout gallery preview (`preview.png`) and the README cover (`docs/images/power-tools.webp`) are the same card in two formats. They use the same renderer, fonts and backdrop as the feature gallery previews, with crops from the published Usage, Space Folders and Git Panel screenshots. Run `python3 docs/gallery.py` from the repository root to rebuild the covers and gallery previews after remaking those screenshots. `retake.sh` does this for a full retake.
 
 ## Changing a picture, or adding one
 

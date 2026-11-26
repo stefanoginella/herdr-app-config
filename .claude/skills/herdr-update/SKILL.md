@@ -34,7 +34,7 @@ Done when: start, installed, and every version between them (the `## [x.y.z]` he
 ## 2. Health now
 
 - Herdr restarted into the installed version: `last_run` in `update-notes.json` is the installed version. If it isn't, report that Herdr hasn't restarted yet and skip the rest of this step.
-- `herdr-app status` shows `"layout": "main-folders"` and `"errors": []`.
+- `herdr-app status` shows `"layout": "herdr-powertools"` and `"errors": []`.
 - `find . -maxdepth 2 -name '*.error'` finds nothing (`layout.error`, `keys.error`, `settings.error`, `programs.error`: a file Herdr refused).
 - `herdr-app check mods/<name>` passes for every custom mod: the `!/mods/<name>/` lines of `.gitignore`.
 
@@ -59,7 +59,7 @@ The clones, copied from a shipped file (`grep -l cloned_from mods/*/mod.json lay
 | `tabs-names` | `defaults/mods/tabs/main.js` | `mods/tabs/main.js` |
 | `pane-names` | `defaults/mods/pane/main.js` | `mods/pane/main.js` |
 | `hide-names` | `defaults/mods/workspace-status/main.js` | `mods/workspace-status/main.js` |
-| `main-folders` | `defaults/layouts/main.json` | `layouts/main.json` |
+| `herdr-powertools` | `defaults/layouts/main.json` | `layouts/main.json` |
 
 The shipped mods that other custom mods stand in for. Nothing was copied from them, but they show what Herdr added that the custom mod lacks:
 

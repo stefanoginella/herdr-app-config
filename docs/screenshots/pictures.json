@@ -42,14 +42,6 @@
         { "src": "raw/failed-ci.png", "crop": [408, 291, 1404, 828], "at": "center" }
       ]
     },
-    "power-tools": {
-      "title": "Herdr Power Tools",
-      "cards": [
-        { "src": "raw/usage-top.png", "crop": [342, 49, 1536, 660], "at": [72, 185] },
-        { "src": "raw/side-spaces.png", "crop": [0, 272, 725, 680], "at": [45, 664] },
-        { "src": "raw/git-graph.png", "crop": [1519, 80, 688, 690], "at": [917, 632] }
-      ]
-    },
     "overview": {
       "canvas": [
         2520,

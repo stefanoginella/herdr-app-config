@@ -14,7 +14,7 @@ licensed under the Apache License, Version 2.0:
   are modified copies of Herdr's `tabs`, `pane` and `workspace-status` mods
   (version 0.1.18). They draw made-up names while names are hidden; the
   pane-names and tabs-names icons are unmodified copies of those mods' icons.
-- layouts/main-folders.json is a modified copy of Herdr's `main` layout
+- layouts/herdr-powertools.json is a modified copy of Herdr's `main` layout
   (version 0.1.18). Its Spaces block shows `space-folders` instead of `spaces`,
   its Agents block shows `mark-agents-unread` instead of `agents`, and its Files
   block shows `file-explorer` instead of `files`. Its Changes block shows

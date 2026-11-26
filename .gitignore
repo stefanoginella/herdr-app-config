@@ -45,7 +45,7 @@ __pycache__/
 # Your layouts (main, terminals and win98 are Herdr's)
 !/layouts/
 /layouts/*
-!/layouts/main-folders.json
+!/layouts/herdr-powertools.json
 
 # Your mods (the rest are Herdr's)
 !/mods/
