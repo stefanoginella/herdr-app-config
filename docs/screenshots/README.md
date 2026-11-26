@@ -49,7 +49,7 @@ quit_sandbox            # close the window and stop its core
 
 ## What a picture is
 
-- **One canvas:** 1680×1050, the README's column at two pixels a point. The overview is 2520×1575, the same shape, and the Usage page's is taller.
+- **One canvas:** 1680×1050, the README's column at two pixels a point. The overview is 2520×1575, the same shape, and the Usage and File Editor pictures are taller.
 - **One backdrop**, a gradient in the app's own grey-blue, with rounded corners.
 - **Cards:** each a part of a shot at the app's own pixels, never scaled, and cut by the canvas's edge when it is larger. A small feature is shot at a higher zoom, not enlarged.
 - **The window's three buttons** are drawn back in where a card shows the window's top left corner: the system draws them, so a shot has none.

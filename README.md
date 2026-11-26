@@ -21,7 +21,7 @@ Each feature has a page with everything it does: every key, limit and edge case.
 | [Mark Agents Unread](docs/unread-agents.md) | Flag idle agents to come back to later | `mark-agents-unread` |
 | [Git Panel](docs/git-panel.md) | Commit history, refs, branch review and everyday Git actions | `git-panel` |
 | [Git Diff](docs/git-diff.md) | A diff pane, side by side, with the changed words marked | `git-diff` |
-| [File Editor](docs/file-editor.md) | A text editor in a pane, also from a path Cmd-clicked in a terminal | `file-editor`, `editor-links` |
+| [File Editor](docs/file-editor.md) | Edit and preview files in a pane, also from a path Cmd-clicked in a terminal | `file-editor`, `editor-links` |
 | [Project Search](docs/project-search.md) | Search and replace in every file of the project | `project-search` |
 | [Back and Forward](docs/back-forward.md) | Return to the tab and pane you left | `back-and-forward` |
 | [Quick Actions](docs/quick-actions.md) | Run saved commands for the current project | `quick-actions` |
@@ -94,7 +94,7 @@ Also here: `layouts/main-folders.json`, Herdr's default layout showing all of th
 ![A Markdown file in the editor, and its rendered preview](docs/images/file-editor.webp)
 
 - **From a terminal:** Cmd-click `src/app.ts:42:7` and it opens at that line and column.
-- **Markdown:** shortcuts, a toolbar and a rendered preview.
+- **Previews:** Markdown, images, PDF, CSV, SVG and HTML, with file details in the footer.
 - **Since the last commit:** a strip beside the text marks the lines added, changed and deleted.
 - **The usual tools:** find and replace, several cursors, line and comment commands.
 

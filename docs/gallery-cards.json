@@ -33,7 +33,7 @@
     ]
   },
   "file-editor": {
-    "caption": "Edit a file beside the terminal that opened it.",
+    "caption": "Edit and preview files beside the terminal.",
     "shots": [
       {"crop": [61, 71, 749, 835], "at": [588, 117], "width": 541},
       {"crop": [814, 151, 804, 704], "at": [848, 389], "width": 448}

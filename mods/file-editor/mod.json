@@ -4,10 +4,16 @@
   "focusable": true,
   "palette": [
     {
-      "title": "Editor: Markdown Preview",
+      "title": "Editor: Toggle Preview",
       "command": "file-editor.preview",
       "group": "Editor",
-      "words": "markdown render toggle"
+      "words": "markdown csv svg html render toggle"
+    },
+    {
+      "title": "Editor: Open HTML in Browser",
+      "command": "file-editor.open-browser",
+      "group": "Editor",
+      "words": "html preview interactive"
     },
     {
       "title": "Editor: Toggle Line Wrap",

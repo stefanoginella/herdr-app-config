@@ -27,13 +27,14 @@
 // escape, preview, wrap, close, close-all, close-others, close-right, toggle-pin,
 // bold, italic, code, strike, link, bullets, numbers, tasks, comment,
 // line-up, line-down, duplicate, next-same, next-change, prev-change, search-project.
-import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextView } from "gpui-base";
+import { View, div, svg, image } from "gpui-kit";
+import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextView, v_virtual_list, Scrollbar } from "gpui-base";
 import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, run, openOverlay, closeOverlay, window as app } from "herdr";
 import * as edit from "./edit.js";
 import * as diff from "./diff.js";
 import * as remote from "./remote.js";
 import * as fieldKeys from "./fieldkeys.js";
+import * as previews from "./preview.js";
 
 const MOD = "file-editor";
 // The pane's name while it shows no file.
@@ -79,7 +80,7 @@ const REFOCUS = 300, REFOCUS_SOON = 60;
 // At most this many of the find bar's matches are lit in the preview: each is a call in render().
 const LIT_MOST = 300;
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", cjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html", markdown: "md", mdx: "md" };
-const MARKDOWN = /\.(md|markdown|mdx)$/i;
+
 
 const base = path => path.slice(path.lastIndexOf("/") + 1);
 const same = (a, b) => Boolean(a && b) && a.start === b.start && a.end === b.end;
@@ -139,7 +140,10 @@ export default class FileEditor extends View {
       for (;;) { const command = await nextCommand(); this.command(command, cx); cx.notify(); }
     });
     // A file on another machine is read again when its tab is shown, not on a timer.
-    if (!checking()) cx.timer.every(LOOK_TICK, cx => this.poll(cx));
+    if (!checking()) {
+      previews.prune();
+      cx.timer.every(LOOK_TICK, cx => this.poll(cx));
+    }
   }
 
   // The timed look at the file shown. Not while Herdr is not the active app; the first tick
@@ -160,6 +164,7 @@ export default class FileEditor extends View {
     if (this.menu) return;
     this.store();
     if (this.tab) this.say(null);
+    await Promise.all(this.docs.map(d => previews.discard(d.media?.dir)));
   }
 
   doc() {
@@ -196,6 +201,7 @@ export default class FileEditor extends View {
       if (typeof o?.path === "string") this.load(o, cx, false);
     }
     if (this.docs.some(d => d.id === kept?.active)) this.active = kept.active;
+    if (previews.binary(this.doc()?.kind)) this.refreshPreview(this.doc(), cx);
   }
 
   // Opens `path`, or shows it when it is open already. `kept`: what was unsaved the last time
@@ -215,12 +221,13 @@ export default class FileEditor extends View {
     }
     const draft = typeof o.draft === "string" ? o.draft : null;
     d = {
-      id, n: ++this.serial, path: o.path, on: o.on ?? null, name: base(o.path), markdown: MARKDOWN.test(o.path),
+      id, n: ++this.serial, path: o.path, on: o.on ?? null, name: base(o.path), kind: previews.format(o.path),
       state: null, // Herdr's editor for it, once read
       base: o.base ?? null, // the file's text as last read or saved: what a save must still find there. null: no file
       text: draft ?? "", prev: draft ?? "", // preserve a restored draft even before the file is read
       dirty: draft !== null && draft !== (o.base ?? null), readonly: null, // or why, as the pane says it
       preview: Boolean(o.preview), error: null,
+      info: null, stats: null, media: null, mediaError: null, page: 1, csvPage: 0, csvColumnPage: 0,
       wrap: o.wrap !== false, // long lines wrapped (the default), or scrolled sideways
       pinned: Boolean(o.pinned),
       place: null, picked: "", // the preview's last selection: its range in the text, and what it says
@@ -230,8 +237,16 @@ export default class FileEditor extends View {
       diff: NO_MARKS, drawn: "", // the lines that differ from `head` (diff.js), and the same as drawn
       stale: false, marking: false, cost: 0, heading: false, headAt: 0,
     };
+    d.markdown = d.kind === "markdown";
+    d.preview = Boolean(d.kind && !previews.binary(d.kind) && d.preview);
     this.docs.push(d);
     if (show || !this.active) { this.active = id; this.found(); }
+    if (previews.binary(d.kind)) {
+      if (show || this.active === id) this.refreshPreview(d, cx);
+      if (show) this.store();
+      return;
+    }
+    this.measure(d, cx);
     cx.spawn(async cx => {
       try {
         const text = await readTextFile(d.path, { on: d.on });
@@ -246,6 +261,7 @@ export default class FileEditor extends View {
         const shown = draft ?? (long ? text.slice(0, MOST) + "\n… (cut short)" : text);
         d.base = draft !== null ? o.base ?? null : text;
         d.text = d.prev = shown;
+        if (!long || draft !== null) this.textStats(d, draft ?? text);
         d.dirty = draft !== null && draft !== d.base;
         // The file moved on while the unsaved text waited.
         if (draft !== null && text !== d.base) { if (text === null) { d.base = null; d.notice = "gone"; } else { d.notice = "changed"; d.disk = text; } }
@@ -268,6 +284,7 @@ export default class FileEditor extends View {
         if (show && this.active === d.id) this.focus();
         reveal(d);
         this.head(d, cx);
+        if (d.preview && this.doc() === d) this.refreshPreview(d, cx);
       } catch (e) {
         d.error = "This file can't be shown (too large, or unreadable)";
         console.log(`${MOD}: ${d.path}: ${e}`);
@@ -294,6 +311,15 @@ export default class FileEditor extends View {
     const searching = this.find.open && d.id === this.active;
     if (searching) this.search(false);
     if (dirty !== d.dirty || searching) { d.dirty = dirty; cx.notify(); }
+    if (!d.counting) {
+      d.counting = true;
+      cx.timer.after(140, cx => {
+        d.counting = false;
+        if (!this.docs.includes(d)) return;
+        this.textStats(d);
+        cx.notify();
+      });
+    }
     if (!d.readonly) this.stash(cx);
     this.remark(d, cx);
   }
@@ -318,12 +344,17 @@ export default class FileEditor extends View {
   // Reads the file again: a change made elsewhere is shown at once when nothing is unsaved
   // here, and asked about when something is.
   look(d, cx) {
-    if (!d?.state || d.looking || d.saving || d.notice === "changed") return;
+    if (!d) return;
+    if (previews.binary(d.kind)) return this.refreshPreview(d, cx);
+    this.measure(d, cx);
+    if (d.preview && this.doc() === d) this.refreshPreview(d, cx);
+    if (!d.state || d.looking || d.saving || d.notice === "changed") return;
+    const path = d.path;
     d.looking = true;
     cx.spawn(async cx => {
       try {
-        const text = await readTextFile(d.path, { on: d.on });
-        if (!this.docs.includes(d) || d.saving) return;
+        const text = await readTextFile(path, { on: d.on });
+        if (!this.docs.includes(d) || d.path !== path || d.saving) return;
         if (text === null) {
           if (d.base !== null && !d.readonly) { d.base = null; d.dirty = true; d.notice = "gone"; this.store(); cx.notify(); }
           return;
@@ -331,7 +362,7 @@ export default class FileEditor extends View {
         if (text === d.base || text.includes("\0") || text.length > MOST) return;
         if (d.dirty && d.text !== text) { d.notice = "changed"; d.disk = text; }
         else {
-          this.take(d, text);
+          this.take(d, text, cx);
           // The place just asked for is another one in the new text.
           if (d.goal && Date.now() - d.goal.at < GOAL_FOR && this.active === d.id) this.reveal(d, d.goal.select, cx);
         }
@@ -341,10 +372,116 @@ export default class FileEditor extends View {
     });
   }
 
+  measure(d, cx) {
+    const { path, on } = d;
+    if (d.measuring === path) return;
+    d.measuring = path;
+    cx.spawn(async cx => {
+      try {
+        const info = await previews.stamp(path, on);
+        if (!this.docs.includes(d) || d.path !== path || (d.info?.key === info?.key && !d.infoError)) return;
+        d.info = info; d.infoError = false;
+        cx.notify();
+      } catch {
+        if (this.docs.includes(d) && d.path === path && !d.info && !d.infoError) {
+          d.infoError = true;
+          cx.notify();
+        }
+      } finally {
+        if (d.measuring === path) d.measuring = null;
+      }
+    });
+  }
+
+  // Text previews use the draft. Raster and PDF data is refreshed when the file changes.
+  refreshPreview(d, cx, force = false) {
+    const { kind, path, on, text } = d, binary = previews.binary(kind);
+    if (!this.docs.includes(d) || (!binary && (!d.preview || !d.state))) return;
+    if (kind === "csv") { this.loadCsv(d); return; }
+    if (!binary && kind !== "svg" && kind !== "html") return;
+    if (d.previewJob) {
+      if (force || path !== d.previewJob.path || (!binary && text !== d.previewJob.text)) d.previewAgain = true;
+      return;
+    }
+    if (!binary && !force && d.media?.text === text && d.media.path === path) return;
+    const job = d.previewJob = { text, path }, old = d.media;
+    const current = () => this.docs.includes(d) && d.path === path && d.kind === kind && (binary || d.text === text);
+    cx.spawn(async cx => {
+      let result;
+      try {
+        if (binary) {
+          const info = await previews.stamp(path, on);
+          if (!current()) return;
+          d.info = info;
+          result = await previews.readMedia(path, on, kind, info, force ? null : old, d.page);
+        } else {
+          if (d.readonly) throw new Error(d.readonly);
+          result = await previews.readTextPreview(kind, path, on, text);
+        }
+        if (!current()) {
+          if (result.dir !== old?.dir) await previews.discard(result.dir);
+          else if (result.file !== old?.file) await previews.removePage(result.file);
+          return;
+        }
+        d.media = binary ? result : { ...result, text, path };
+        d.mediaError = null;
+        if (result.page) d.page = result.page;
+        if (old?.dir && old.dir !== result.dir) await previews.discard(old.dir);
+        else if (old?.file && old.file !== result.file) await previews.removePage(old.file);
+      } catch (e) {
+        if (current()) d.mediaError = String(e.message ?? e);
+      } finally {
+        if (d.previewJob === job) {
+          d.previewJob = null;
+          if (d.previewAgain) { d.previewAgain = false; this.refreshPreview(d, cx, true); }
+          cx.notify();
+        }
+      }
+    });
+  }
+
+  textStats(d, text = d.text) {
+    d.stats = previews.textInfo(text);
+    if (d.kind === "svg") d.stats.dimensions = previews.svgDimensions(text);
+    if (d.kind === "csv") this.loadCsv(d);
+  }
+
+  loadCsv(d) {
+    if (d.readonly || (d.csv?.text === d.text && d.csv.page === d.csvPage && d.csv.columnPage === d.csvColumnPage)) return;
+    let result = previews.csv(d.text, d.csvPage, d.csvColumnPage);
+    const lastRowPage = Math.max(0, Math.ceil(result.rowCount / previews.CSV_ROWS) - 1);
+    const lastColumnPage = Math.max(0, Math.ceil(result.columns / previews.CSV_COLS) - 1);
+    if (d.csvPage > lastRowPage || d.csvColumnPage > lastColumnPage) {
+      d.csvPage = Math.min(d.csvPage, lastRowPage);
+      d.csvColumnPage = Math.min(d.csvColumnPage, lastColumnPage);
+      result = previews.csv(d.text, d.csvPage, d.csvColumnPage);
+    }
+    d.csv = { ...result, text: d.text, page: d.csvPage, columnPage: d.csvColumnPage };
+  }
+
+  previewPage(d, step, cx) {
+    if (!d || d.previewJob) return;
+    if (d.kind === "pdf" && d.media) {
+      d.page = Math.max(1, Math.min(d.media.pages, d.media.page + step));
+      if (d.page !== d.media.page) this.refreshPreview(d, cx);
+    }
+    if (d.kind === "csv" && d.preview && d.csv) {
+      d.csvPage = Math.max(0, Math.min(Math.ceil(d.csv.rowCount / previews.CSV_ROWS) - 1, d.csvPage + step));
+      this.loadCsv(d);
+    }
+  }
+
+  csvColumns(d, step) {
+    const last = Math.max(0, Math.ceil(d.csv.columns / previews.CSV_COLS) - 1);
+    d.csvColumnPage = Math.max(0, Math.min(last, d.csvColumnPage + step));
+    this.loadCsv(d);
+  }
+
   // The file's text, as it is on disk, becomes the editor's.
-  take(d, text) {
+  take(d, text, cx) {
     const sel = d.state.selected_range();
     d.base = d.text = d.prev = text;
+    this.textStats(d);
     d.dirty = false; d.notice = null; d.disk = null;
     d.state.set_value(text);
     const indent = indentOf(d);
@@ -355,6 +492,7 @@ export default class FileEditor extends View {
     if (this.find.open && d.id === this.active) this.search(false);
     this.mark(d);
     this.store();
+    if (d.preview && this.doc() === d) this.refreshPreview(d, cx);
   }
 
   // Reads the file as the last commit has it, when that is not what was read before: the
@@ -476,6 +614,7 @@ export default class FileEditor extends View {
         d.base = text;
         d.dirty = d.state.value() !== text;
         d.notice = null; d.disk = null;
+        this.measure(d, cx);
         this.store();
       } catch (e) {
         // Refused: the file is not what was read. See what it is now, and ask.
@@ -511,10 +650,17 @@ export default class FileEditor extends View {
     }
     this.docs = this.docs.filter(d => !drop.has(d));
     closing.files = closing.files.filter(d => !drop.has(d));
-    for (const d of drop) d.state?.release();
+    for (const d of drop) {
+      d.state?.release();
+      previews.discard(d.media?.dir);
+    }
     if (closing.files.length) this.active = closing.files[0].id;
     else this.closing = null;
-    if (this.doc() !== active) { this.found(); this.focus(); }
+    if (this.doc() !== active) {
+      this.found(); this.focus();
+      const next = this.doc();
+      if (next) next.needsLook = true;
+    }
     this.store();
   }
 
@@ -664,8 +810,19 @@ export default class FileEditor extends View {
     const d = this.doc();
     if (name === "focus") return this.focus();
     if (name === "save") return this.save(d, cx);
-    if (name === "find") return this.openFind(false);
-    if (name === "replace") return this.openFind(true);
+    if ((name === "find" || name === "replace") && d?.state) {
+      if (d.preview && !d.markdown) this.unpreview(d, null, cx);
+      return this.openFind(name === "replace");
+    }
+    if (name === "open-browser" && d?.kind === "html") {
+      const { path, on } = d;
+      return cx.spawn(async cx => {
+        try { cx.open_url(await previews.openBrowser(path, on)); }
+        catch (e) { notify({ title: "Couldn't open the HTML file", body: String(e.message ?? e), level: "error" }); }
+      });
+    }
+    if (name === "refresh-preview" && d) return this.refreshPreview(d, cx, true);
+    if (name === "page-next" || name === "page-prev") return this.previewPage(d, name === "page-next" ? 1 : -1, cx);
     if (name === "find-next") return this.step(1);
     if (name === "find-prev") return this.step(-1);
     if (name === "escape") {
@@ -684,11 +841,13 @@ export default class FileEditor extends View {
       return void run(`${SEARCH}.open`);
     }
     if (name === "preview") {
-      if (!d?.markdown || !d.state) return;
+      if (!d?.kind || !d.state) return;
       // Back to the text where the reader was in the page: what they selected last there.
       if (d.preview) return this.unpreview(d, d.place, cx);
       d.preview = true; d.place = null; d.picked = "";
       this.find.replacing = false;
+      if (!d.markdown) this.find.open = false;
+      this.refreshPreview(d, cx, d.kind === "html");
       this.store();
       return this.focus();
     }
@@ -745,6 +904,12 @@ export default class FileEditor extends View {
         if ((d.on ?? null) !== (m.on ?? null) || !(d.path === m.from || d.path.startsWith(m.from + "/"))) continue;
         const was = d.id;
         d.path = m.to + d.path.slice(m.from.length); d.name = base(d.path); d.id = idOf(d.path, d.on);
+        const kind = previews.format(d.path);
+        if (previews.binary(kind) === previews.binary(d.kind)) {
+          d.kind = kind; d.markdown = kind === "markdown";
+          if (!kind) d.preview = false;
+        }
+        d.needsLook = true;
         if (this.active === was) this.active = d.id;
         if (d.notice === "gone") d.notice = null;
         // Under its new name git may have another file, or none.
@@ -871,11 +1036,13 @@ export default class FileEditor extends View {
         })))
       .when(Boolean(d?.state), el => el
         .when(!d.preview, el => el.child(this.button(t, "fe-wrap", "Wrap", hint(d.wrap ? "Long lines wrap: scroll them sideways instead" : "Long lines scroll sideways: wrap them instead", "wrap"), cx => this.command("wrap", cx), { on: d.wrap })))
-        .when(Boolean(d.markdown), el => el.child(this.button(t, "fe-preview", d.preview ? "Edit" : "Preview", hint(d.preview ? "Back to the text, where you selected last" : "Show it rendered", "preview"), cx => this.command("preview", cx), { on: d.preview })))
+        .when(Boolean(d.kind), el => el.child(this.button(t, "fe-preview", d.preview ? "Edit" : "Preview", hint(d.preview ? "Back to the text" : "Show it rendered", "preview"), cx => this.command("preview", cx), { on: d.preview })))
         .when(d.diff.marks.length > 0 && !d.preview, el => el.child(this.button(t, "fe-changes", `±${d.diff.marks.length}`,
           hint(`${d.diff.marks.length === 1 ? "1 change" : `${d.diff.marks.length} changes`} since the last commit: go to the next`, "next-change"), cx => this.command("next-change", cx))))
         .child(this.button(t, "fe-find", "Find", hint("Find in this file", "find"), cx => this.command("find", cx), { on: this.find.open }))
-        .when(!d.readonly, el => el.child(this.button(t, "fe-save", d.saving ? "Saving…" : "Save", hint(d.dirty ? "Save" : "Nothing to save", "save"), cx => this.command("save", cx), { off: !d.dirty }))));
+        .when(!d.readonly, el => el.child(this.button(t, "fe-save", d.saving ? "Saving…" : "Save", hint(d.dirty ? "Save" : "Nothing to save", "save"), cx => this.command("save", cx), { off: !d.dirty }))))
+      .when(d?.kind === "html", el => el.child(this.button(t, "fe-browser", "Open in Browser",
+        "Open the saved HTML file and its project assets in your browser", cx => this.command("open-browser", cx))));
   }
 
   // Markdown's own row: what the shortcuts do, as buttons.
@@ -977,6 +1144,107 @@ export default class FileEditor extends View {
     return view;
   }
 
+  pager(t, d, label, before, after) {
+    return h_flex().h(32).flex_none().gap(8).items_center().justify_center()
+      .border_b(1).border_color(t.border).bg(t.surface).text_size(12).text_color(t.muted)
+      .child(this.button(t, "fe-prev-page", "‹", "Previous page", cx => this.previewPage(d, -1, cx), { off: !before }))
+      .child(label)
+      .child(this.button(t, "fe-next-page", "›", "Next page", cx => this.previewPage(d, 1, cx), { off: !after }));
+  }
+
+  csvTable(t, d, empty) {
+    if (d.readonly) return empty(d.readonly);
+    const result = d.csv;
+    if (!result?.rowCount) return empty("This CSV file is empty");
+    const firstCol = result.columnPage * previews.CSV_COLS;
+    const cols = Math.min(result.columns - firstCol, previews.CSV_COLS), cellWidth = 150, gutter = 52;
+    const id = `fe-csv-${d.n}-${result.page}-${result.columnPage}`, first = result.page * previews.CSV_ROWS;
+    const cell = (value, width, muted = false) => div().w(width).flex_none().px(8).truncate()
+      .border_r(1).border_color(t.border).text_color(muted ? t.dim : t.foreground).child(value);
+    const row = (values, index, header = false) => h_flex().h(27).items_center().border_b(1).border_color(t.border)
+      .bg(header ? t.raised : index % 2 ? t.surface : t.background)
+      .child(cell(header ? "#" : String(first + index + 1), gutter, true))
+      .children(values.map(value => cell(value, cellWidth, header)));
+    return v_flex().flex_1().min_h(0)
+      .child(this.pager(t, d, `Rows ${first + 1}–${first + result.rows.length} of ${result.rowCount}`,
+        first > 0, first + result.rows.length < result.rowCount))
+      .when(result.columns > previews.CSV_COLS, el => el.child(h_flex().h(30).flex_none().gap(6).items_center().justify_center()
+        .text_size(11).text_color(t.muted).border_b(1).border_color(t.border)
+        .child(this.button(t, "fe-prev-col", "‹", "Previous columns", () => this.csvColumns(d, -1), { off: !firstCol }))
+        .child(`Columns ${firstCol + 1}–${firstCol + cols} of ${result.columns}`)
+        .child(this.button(t, "fe-next-col", "›", "Next columns", () => this.csvColumns(d, 1), { off: firstCol + cols >= result.columns }))))
+      .when(result.clipped || result.unclosed, el => el.child(div().px(8).py(4).flex_none().text_size(11).text_color(t.muted)
+        .child([result.clipped ? "Long cells shortened" : "", result.unclosed ? "Unclosed quote" : ""].filter(Boolean).join(" · "))))
+      .child(div().id(`fe-csv-scroll-${d.n}`).flex_1().min_h(0).min_w(0).overflow_x_scrollbar()
+        .child(v_flex().w(gutter + cellWidth * cols).h_full().min_h(0)
+          .child(row(Array.from({ length: cols }, (_, i) => String(firstCol + i + 1)), 0, true).flex_none())
+          .child(v_flex().relative().flex_1().min_h(0)
+            .child(v_virtual_list(id, result.rows.length, 27, i => String(first + i),
+              range => result.rows.slice(range.start, range.end).map((values, i) =>
+                row(Array.from({ length: cols }, (_, col) => (values[col] ?? "").replace(/\r\n|\r|\n/g, " ↵ ")), i + range.start)))
+              .flex_1().min_h(0))
+            .child(Scrollbar.vertical(id).absolute().inset_0()))));
+  }
+
+  previewContent(t, d, empty) {
+    if (d.kind === "csv") return this.csvTable(t, d, empty);
+    const media = d.media;
+    const message = d.previewJob ? "Loading preview…" : d.mediaError;
+    if (!media || d.mediaError) return v_flex().flex_1().min_h(0)
+      .child(empty(message ?? "Loading preview…"))
+      .when(!d.previewJob && Boolean(d.mediaError), el => el.child(h_flex().justify_center().pb(16)
+        .child(this.button(t, "fe-retry", "Retry", "Try the preview again", cx => this.refreshPreview(d, cx, true)))));
+    const shown = image(media.asset);
+    const viewport = this.mediaSize ?? { width: 360, height: 360 };
+    const width = media.width || 300, height = media.height || 150;
+    const scale = Math.min((viewport.width - 24) / width, (viewport.height - 24) / height);
+    const htmlWidth = Math.min(1080, Math.max(20, viewport.width - 26));
+    const isHtml = d.kind === "html";
+    const body = div().id("fe-media-frame").flex_1().min_h(0).min_w(0)
+      .on_size_change((size, cx) => {
+        const zoom = settings().zoom || 1;
+        this.mediaSize = { width: size.width / zoom, height: size.height / zoom };
+        cx.notify();
+      })
+      .when(isHtml, el => el.overflow_y_scrollbar().px(10).py(10)
+        .child(shown.w(htmlWidth).h(htmlWidth * height / width)))
+      .when(!isHtml, el => el.flex().items_center().justify_center().overflow_hidden()
+        .child(shown.w(Math.max(1, width * scale)).h(Math.max(1, height * scale))));
+    return v_flex().flex_1().min_h(0)
+      .when(d.kind === "pdf", el => el.child(this.pager(t, d, `Page ${media.page} of ${media.pages}`,
+        !d.previewJob && media.page > 1, !d.previewJob && media.page < media.pages)))
+      .when(d.kind === "html", el => el.child(h_flex().h(32).flex_none().px(8).items_center()
+        .border_b(1).border_color(t.border).bg(t.surface)
+        .child(this.button(t, "fe-refresh", d.previewJob ? "Rendering…" : "Refresh", "Refresh this HTML snapshot",
+          cx => this.refreshPreview(d, cx, true), { off: Boolean(d.previewJob) }))))
+      .child(body);
+  }
+
+  statusBar(t, d) {
+    const info = d.info, media = d.media, stats = d.stats;
+    const items = [];
+    if (info) items.push([previews.fileSize(info.size), `${info.size.toLocaleString()} bytes on disk`]);
+    else if (d.infoError || d.error || d.mediaError || d.notice === "gone") items.push(["Size unavailable"]);
+    if (stats) {
+      items.push([`${stats.lines.toLocaleString()} ${stats.lines === 1 ? "line" : "lines"}`],
+        [`${stats.chars.toLocaleString()} ${stats.chars === 1 ? "char" : "chars"}`]);
+      if (stats.eol) items.push([stats.eol, "Line endings"]);
+    }
+    const dimensions = d.kind === "svg" ? stats?.dimensions : media;
+    if (d.kind === "pdf" && media) items.push([`${media.pages.toLocaleString()} ${media.pages === 1 ? "page" : "pages"}`]);
+    if ((d.kind === "image" || d.kind === "svg") && dimensions?.width && dimensions.height) {
+      items.push([`${dimensions.width} × ${dimensions.height}${dimensions.viewBox ? " viewBox" : " px"}`]);
+    }
+    if (d.kind === "csv" && d.csv) items.push([`${d.csv.rowCount.toLocaleString()} rows × ${d.csv.columns.toLocaleString()} cols`]);
+    if (d.dirty) items.push(["Unsaved"]);
+    else if (d.readonly) items.push(["Read-only"]);
+    if (d.on) items.push(["SSH", "Remote file"]);
+    return h_flex().id("fe-status").h(24).flex_none().min_w(0).px(10).gap(12).items_center().overflow_x_scroll()
+      .border_t(1).border_color(t.border).bg(t.surface).text_color(t.muted).text_size(11)
+      .children(items.map(([label, description], i) => div().id(`fe-stat-${i}`).flex_none().whitespace_nowrap()
+        .when(Boolean(description), el => el.tooltip(description)).child(label)));
+  }
+
   // A line that asks about a disk change or a pending close.
   notice(t, d, closing = false) {
     const act = (id, label, action, primary) => h_flex().id(id).h(24).px(10).flex_none().items_center().rounded(6).cursor_pointer()
@@ -993,8 +1261,8 @@ export default class FileEditor extends View {
       return row(`“${d.name}” has unsaved changes.`, cancel, discard, act("fe-n-save", "Save", cx => this.save(d, cx), true));
     }
     if (d.notice === "changed") return row("This file changed on disk while it was being edited here.",
-      act("fe-n-theirs", "Load the file", () => {
-        this.take(d, d.disk);
+      act("fe-n-theirs", "Load the file", cx => {
+        this.take(d, d.disk, cx);
         if (!d.dirty && this.closing?.files.includes(d)) this.advanceClose();
       }),
       // What is on disk now is what a save may replace.
@@ -1033,6 +1301,10 @@ export default class FileEditor extends View {
     this.arrived(cx);
     this.tell(cx);
     const t = theme(), d = this.doc();
+    if (d?.needsLook) {
+      d.needsLook = false;
+      cx.spawn(async cx => { await null; this.look(d, cx); this.head(d, cx); });
+    }
     const empty = text => v_flex().id("fe-empty").flex_1().min_h(0).items_center().justify_center().p(24).text_size(13).text_color(t.dim)
       .on_mouse_down("left", () => this.handle.focus()).child(text);
     return v_flex().id("file-editor").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13)
@@ -1047,6 +1319,7 @@ export default class FileEditor extends View {
       .when(Boolean(d && this.closing?.files[0] === d), el => el.child(this.notice(t, d, true)))
       .when(Boolean(d?.state && d.readonly), el => el.child(div().flex_none().px(12).py(5).border_b(1).border_color(t.border).text_size(11.5).text_color(t.dim).child(d.readonly)))
       .child(!d ? empty("Click a file in the Files panel to open it here")
+        : previews.binary(d.kind) || (d.preview && d.state && d.kind !== "markdown") ? this.previewContent(t, d, empty)
         : !d.state ? empty(d.error ?? "Loading…")
         : d.preview ? div().id(`fe-view-${d.n}`).flex_1().min_h(0).overflow_y_scrollbar().px(28).py(20)
             .on_mouse_down("left", () => this.handle.focus())
@@ -1054,6 +1327,7 @@ export default class FileEditor extends View {
         : h_flex().flex_1().min_h(0).items_stretch()
             .child(v_flex().id(`fe-text-${d.n}`).flex_1().min_w(0).min_h(0).on_key_down((e, cx) => this.typed(e, cx))
               .child(Editor.new(d.state).font_family(settings().font_family).text_size(textSize()).flex_1().min_h(0)))
-            .when(d.head !== null, el => el.child(this.ruler(t, d))));
+            .when(d.head !== null, el => el.child(this.ruler(t, d))))
+      .when(Boolean(d), el => el.child(this.statusBar(t, d)));
   }
 }

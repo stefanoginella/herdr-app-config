@@ -252,6 +252,7 @@
       ]
     },
     "file-editor": {
+      "canvas": [1680, 1480],
       "cards": [
         {
           "src": "raw/ed-source.png",

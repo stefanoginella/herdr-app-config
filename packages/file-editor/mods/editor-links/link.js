@@ -5,7 +5,7 @@
 // (`link.line`, `link.column`) for every form but `(42,7)`; this mod's own reading is what's left.
 //
 // What the editor can't show goes on ("pass") to the next link handler, then to Herdr's own
-// opener: images, PDFs, archives and other binaries by their name, folders, missing files, and a
+// opener: archives and unsupported binaries by their name, folders, missing files, and a
 // terminal outside any tab. A path in a terminal on another machine opens in the editor there.
 //
 // The editor is asked as the Search panel asks it (`project-search`'s `open()`): the request in
@@ -14,7 +14,7 @@
 import { panes, setShared, run, exec } from "herdr";
 
 const EDITOR = "file-editor";
-const BINARY = /\.(png|jpe?g|gif|webp|bmp|ico|icns|tiff?|heic|avif|psd|sketch|fig|pdf|zip|gz|tgz|bz2|xz|zst|7z|rar|dmg|pkg|iso|exe|dll|so|dylib|a|o|class|jar|wasm|pyc|woff2?|ttf|otf|eot|mp3|mp4|m4a|mov|avi|mkv|webm|wav|flac|ogg|sqlite3?|db)$/i;
+const BINARY = /\.(psd|sketch|fig|zip|gz|tgz|bz2|xz|zst|7z|rar|dmg|pkg|iso|exe|dll|so|dylib|a|o|class|jar|wasm|pyc|woff2?|ttf|otf|eot|mp3|mp4|m4a|mov|avi|mkv|webm|wav|flac|ogg|sqlite3?|db)$/i;
 // Where a file ends and its place begins, after a period that ends the sentence is taken off, in
 // the order Herdr tries them (`without_suffix()` in its `src/links.rs`): an anchor, `#L42`,
 // `#L5-12`, `#L5-L12`; a range, `:5-12`, `:5-L12`; then `:12`, `:12:5`, `(12)`, `(12,5)`, a colon
