@@ -1,6 +1,6 @@
 # Hide Names
 
-For a screenshot or a screen share: Cmd+Shift+H (or "Hide Names / Show Names" in the command palette) gives every space, folder, tab, branch and machine around the content a plausible made-up name, in the sidebar, the agents list, the tab bar, the pane headers, the status bar and the Usage dialog. The same real name always gets the same made-up one. What the panes and the right panel show stays real: that is the content you chose to show. Press it again to show the names; the app also shows them again when it starts.
+For a screenshot or a screen share: Cmd+Shift+H (or "Hide Names / Show Names" in the command palette) gives every space, folder, tab, branch and machine around the content a plausible made-up name, in the sidebar, the agents list, the tab bar, the pane headers, the status bar, the Usage dialog and the notifications. The same real name always gets the same made-up one. What the panes and the right panel show stays real: that is the content you chose to show. Press it again to show the names; the app also shows them again when it starts.
 
 ![The sidebar, tab bar and pane header with real names, and the same window with made-up names](images/hide-names.webp)
 
@@ -11,9 +11,11 @@ What stays as it is:
 - The content: terminals, the editor, the diff, and the right panel (Files, Git, Search).
 - This computer, `~`, a tab's number and a program's name.
 - `main`, `master`, `develop`, `dev`, `staging`, `production`, `trunk`, `HEAD` and a branch's prefix (`feat/`, `fix/`, …).
-- What is Herdr's own: its notifications, menus and dialogs, and the window's title where the system shows it.
+- What is Herdr's own: its menus and dialogs, and the window's title where the system shows it.
 
 Only what is drawn changes: a rename dialog still holds the real name, and copying a machine's login command copies the real one.
+
+Notifications show in a card of one size, names shown or hidden: a title or a text too long for it is cut to its first line, and resting the pointer on the card shows all of it. Herdr's own notification card grows with its text, but Herdr gives that card only to its own notifications mod.
 
 The key is in `keys.json` under `global`: `cmd-shift-h` runs `hide-names.toggle`. The Usage dialog's Hide names button and its `h` key switch the same mode.
 

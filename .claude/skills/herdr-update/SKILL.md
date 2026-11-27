@@ -59,6 +59,7 @@ The clones, copied from a shipped file (`rg -l cloned_from packages/*/mods/*/mod
 | `tabs-names` | `defaults/mods/tabs/main.js` | `mods/tabs/main.js` |
 | `pane-names` | `defaults/mods/pane/main.js` | `mods/pane/main.js` |
 | `hide-names` | `defaults/mods/workspace-status/main.js` | `mods/workspace-status/main.js` |
+| `toast-names` | `defaults/mods/toast/main.js` | `mods/toast/main.js` |
 | `herdr-powertools` | `defaults/layouts/main.json` | `layouts/main.json` |
 
 The shipped mods that other custom mods stand in for. Nothing was copied from them, but they show what Herdr added that the custom mod lacks:

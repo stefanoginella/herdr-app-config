@@ -27,7 +27,7 @@ Each feature has a page with everything it does: every key, limit and edge case.
 | [Quick Actions](docs/quick-actions.md) | Run saved commands for the current project | `quick-actions` |
 | [Go to File](docs/go-to-file.md) | Any file of the project, by some of its name | `go-to-file` |
 | [File Explorer](docs/file-actions.md) | The Files panel with icons, change marks, drag and drop and search shortcuts | `file-explorer` |
-| [Hide Names](docs/hide-names.md) | Made-up names around the content, for a screenshot or a screen share | `hide-names`, `tabs-names`, `pane-names` |
+| [Hide Names](docs/hide-names.md) | Made-up names around the content, for a screenshot or a screen share | `hide-names`, `tabs-names`, `pane-names`, `toast-names` |
 
 The `herdr-powertools` layout shows all of the above, with the panes you're not in faded and the dividers lit on hover. The repository also includes my key bindings and settings, notes for coding agents, and the [scripts that take these pictures](docs/screenshots/README.md).
 
@@ -227,7 +227,7 @@ Open **Packages** and choose **Update all** to update installed mods and layouts
 - `project-search` and `go-to-file` need [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`), also on another machine whose project is searched. `agent-usage` needs `node`. The Git panel's GitHub marks need [`gh`](https://cli.github.com), and its message writer `claude` or `codex`.
 - `editor-links` is turned on by the layout's `"link_handlers": ["editor-links"]` (Herdr adds it to a layout of your own the first time it sees the mod).
 - `go-to-file` and the `agent-usage` dialog are in no layout: their keys open them.
-- The three hide names mods, `space-folders`, `mark-agents-unread` and `agent-usage` share the mode: with only some of them, only those hide their names. `hide-names` holds the command that switches it.
+- The four hide names mods, `space-folders`, `mark-agents-unread` and `agent-usage` share the mode: with only some of them, only those hide their names. `hide-names` holds the command that switches it.
 
 To place an individual mod in your layout, set the `spaces` block to `{ "mod": "space-folders" }`, the `agents` block to `{ "mod": "mark-agents-unread" }`, the `files` block to `{ "mod": "file-explorer" }`, or the `changes` block to `{ "mod": "git-panel" }`. The usage widget takes a 62 px block with `{ "mod": "agent-usage", "props": { "role": "side" } }`. As shown in `herdr-powertools.json`, `project-search` needs the panel and an always-visible block with props `{ "keys": true, "show": { ... } }`. That block can be 0 px tall and handles Cmd+Shift+F. Clone a shipped layout before editing it.
 
@@ -235,7 +235,7 @@ To place an individual mod in your layout, set the `spaces` block to `{ "mod": "
 herdr-app do layout.clone '{"name":"main","as":"my-layout"}'
 ```
 
-The layout and the cloned mods are copies of Herdr's `main`, `spaces`, `agents`, `files`, `tabs`, `pane` and `workspace-status`, so they don't pick up changes Herdr makes to those later.
+The layout and the cloned mods are copies of Herdr's `main`, `spaces`, `agents`, `files`, `tabs`, `pane`, `workspace-status` and `toast`, so they don't pick up changes Herdr makes to those later.
 
 ## How the repository works
 

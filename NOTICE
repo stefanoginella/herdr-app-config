@@ -10,9 +10,9 @@ licensed under the Apache License, Version 2.0:
   (version 0.1.18). It lets an idle agent be marked unread.
 - packages/file-explorer/mods/file-explorer/main.js is a modified copy of Herdr's `files` mod
   (version 0.1.18). It adds file type icons, a right-click menu and drag to move.
-- packages/hide-names/mods/tabs-names/main.js, packages/hide-names/mods/pane-names/main.js and packages/hide-names/mods/hide-names/main.js
-  are modified copies of Herdr's `tabs`, `pane` and `workspace-status` mods
-  (version 0.1.18). They draw made-up names while names are hidden; the
+- packages/hide-names/mods/tabs-names/main.js, packages/hide-names/mods/pane-names/main.js, packages/hide-names/mods/hide-names/main.js
+  and packages/hide-names/mods/toast-names/main.js are modified copies of Herdr's
+  `tabs`, `pane`, `workspace-status` and `toast` mods (version 0.1.18). They draw made-up names while names are hidden; the
   pane-names and tabs-names icons are unmodified copies of those mods' icons.
 - layouts/herdr-powertools.json is a modified copy of Herdr's `main` layout
   (version 0.1.18). Its Spaces block shows `space-folders` instead of `spaces`,
@@ -21,7 +21,7 @@ licensed under the Apache License, Version 2.0:
   `git-panel` instead of `changes`. It also has two blocks of its own for
   `project-search`: the Search panel, and one that only takes a key. Its tab
   bar, pane headers and status bar show `tabs-names`, `pane-names` and
-  `hide-names`.
+  `hide-names`, and its notifications are drawn by `toast-names`.
 
 The full layout also includes Back and forward from PostHog/herdr and Quick
 Actions from dougcunha/herdr-mods. Each is distributed under its MIT license
