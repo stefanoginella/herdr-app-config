@@ -11,6 +11,8 @@
 //   --now <ms>      the time to count days from (tests)
 //   --docker-timeout <ms>  how long docker may take to answer (default 3000; a copy gets 10 times that)
 //   --pretty        indent the JSON
+//   --limits        only Claude's limits (the statusline's file and limits.json): the sidebar
+//                   widget's poll, which must cost no more than that
 //
 // Node >= 18, no dependencies. Prints one JSON document on stdout; errors go to
 // stderr with exit code 1. Missing sources are empty parts, never errors.
@@ -22,7 +24,8 @@
 //             estimate from CODEX_PRICES (est: true), worked out when the document is printed, so
 //             a new price table re-prices the past. A model with no price has cost null.
 //   sessions  sessions a day, per project
-//   limits    claude: the statusline's reading, its trail and earlier weeks; codex: the newest
+//   limits    claude: the statusline's reading as believed (claudeStep), its trail, its restarts
+//             (resets of the limit inside the window) and earlier weeks; codex: the newest
 //             rate_limits (primary, secondary, plan) and, for its weekly window, a trail of the
 //             readings (week: { pct, resets, trail }) and the earlier weeks' peaks (weeks)
 //   top       the TOP_MOST biggest sessions by tokens of the last TOP_DAYS, both agents
@@ -49,6 +52,11 @@ const RECENT_SHORT_MS = 15 * 60000;
 const HOURLY_DAYS = 8; // the days (today included) whose rows keep their hour
 const SETTLED_DAYS = 2; // a day at least this old is merged into history
 const TRAIL_WEEKS = 12; // weekly-limit trails kept
+// Claude's weekly reading (claudeStep): a reading this many points under the believed one, or,
+// after a reset, as many over it, is believed once two writes of the statusline's file this far
+// apart both say it.
+const CLAUDE_CHECK_POINTS = 3;
+const CLAUDE_CONFIRM_MS = 10 * 60000;
 const HEAD_MOST = 1 << 20; // bytes read from a transcript's start to find its first cwd
 const LOCK_WAIT = 15000;
 const LOCK_STALE = 60000;
@@ -93,7 +101,7 @@ const CODEX_NEEDLES = ['"type":"session_meta"', '"type":"turn_context"', '"type"
 // ---------------------------------------------------------------- arguments
 
 function parseArgs(argv) {
-  const o = { home: null, state: undefined, rg: true, now: null, pretty: false, help: false, dockerTimeout: 3000 };
+  const o = { home: null, state: undefined, rg: true, now: null, pretty: false, help: false, limits: false, dockerTimeout: 3000 };
   for (let i = 0; i < argv.length; i++) {
     let a = argv[i];
     let inline = null;
@@ -111,6 +119,7 @@ function parseArgs(argv) {
     else if (a === '--now') { o.now = Number(val()); if (!Number.isFinite(o.now)) throw new Error('--now needs a number of ms'); }
     else if (a === '--docker-timeout') { o.dockerTimeout = Number(val()); if (!Number.isFinite(o.dockerTimeout) || o.dockerTimeout <= 0) throw new Error('--docker-timeout needs a number of ms'); }
     else if (a === '--pretty') o.pretty = true;
+    else if (a === '--limits') o.limits = true;
     else if (a === '--help' || a === '-h') o.help = true;
     else throw new Error(`unknown flag ${argv[i]}`);
   }
@@ -1131,20 +1140,159 @@ function claudeLimits(home) {
   if (!c || typeof c !== 'object') return null;
   const ms = (x) => { if (x === null || x === undefined) return null; const t = typeof x === 'number' ? x : Date.parse(x); return Number.isFinite(t) ? t : null; };
   const fiveHour = typeof c.fiveHour === 'number' ? { pct: c.fiveHour, resets: ms(c.fiveHourResets) } : null;
-  let week = null;
+  let week = null, obs = null;
   if (typeof c.sevenDay === 'number') {
     const resets = ms(c.sevenDayResets);
     const w = c.week && typeof c.week === 'object' ? c.week : null;
-    const samples = w && Array.isArray(w.samples) && ms(w.resets) === resets ? w.samples : [];
-    // Every session's statusline writes this file with the reading of its own last reply, so an idle
-    // session puts an older, lower one back. Inside one window the reading only rises: take the
-    // highest the statusline has seen in it (`peak`, its samples), as the statusline's burst does.
     const same = w && ms(w.resets) === resets;
-    const seen = [c.sevenDay, same && typeof w.peak === 'number' ? w.peak : 0, ...samples.map((x) => (Array.isArray(x) && typeof x[1] === 'number' ? x[1] : 0))];
-    week = { pct: Math.max(...seen), resets, samples, trail: [] };
+    // The statusline's own peak and samples of the window. `judged`: it keeps each session's last
+    // reading (`week.seen`), so its peak is what it believes, a reset it saw included.
+    obs = {
+      at: Math.round(st.mtimeMs), pct: c.sevenDay, peak: same && typeof w.peak === 'number' ? w.peak : null, samples: same ? pairs(w.samples) : [],
+      judged: Boolean(same && w.seen && typeof w.seen === 'object' && typeof w.peak === 'number'),
+    };
+    if (obs.judged) obs.seen = seenMap(w.seen);
+    // Without a state folder there is nothing to check a lower reading against: the highest.
+    const r = claudeStep(null, obs);
+    week = { pct: r.pct, resets, samples: r.samples, trail: [], restarts: [] };
   }
-  return { at: Math.round(st.mtimeMs), fiveHour, week, weeks: [] };
+  // `obs` is the history step's (claudeWeek) and is taken out before printing.
+  return { at: Math.round(st.mtimeMs), fiveHour, week, weeks: [], obs };
 }
+
+// The statusline's `week.seen`: { session id: [its last reading, when it moved there] }.
+function seenMap(v) {
+  const out = {};
+  if (v && typeof v === 'object') for (const [id, e] of Object.entries(v)) if (Array.isArray(e) && Number.isFinite(e[0]) && Number.isFinite(e[1])) out[id] = [e[0], e[1]];
+  return out;
+}
+
+const pairs = (a) => (Array.isArray(a) ? a.filter((x) => Array.isArray(x) && Number.isFinite(x[0]) && Number.isFinite(x[1])).map((x) => [x[0], x[1]]) : []);
+
+// What to believe of the statusline's file, in one weekly window. Every Claude Code session writes
+// the file with the reading of its own last reply, so an idle session puts an older, lower one
+// back (57% after 59% was seen). A reset of the limit lowers the reading too, inside the same
+// window: the reset time stays.
+//
+// A statusline that keeps each session's last reading (`week.seen`, obs.judged) tells the two
+// apart itself: its `peak` only rises, but at a reset, which it sees as a session's own reading
+// moving well under the peak (an idle session's reading doesn't move). Then the peak is the
+// reading, and a peak CLAUDE_CHECK_POINTS or more under the believed reading is a restart at
+// once, at the first of the statusline's samples after it (they start again at its reset).
+// `sevenDay`, whoever wrote last, is left out: idle sessions all write theirs when a resize
+// redraws every statusline.
+//
+// Without `seen` the file can't tell them apart, so a reading that would undo what is believed is
+// held (`pend`) until a second write of the file, CLAUDE_CONFIRM_MS later at least, says it too,
+// with no reading in between that denies it:
+//   - a drop of CLAUDE_CHECK_POINTS or more under the believed reading: a reset, once confirmed,
+//     kept as a restart [the time of the first lower reading, the reading before it];
+//   - after a restart, a rise of as many that goes no higher than the week had been before it: a
+//     session with no reply since the reset puts its old reading back (the statusline's peak too,
+//     when that session is one it hasn't seen yet); believed once confirmed. Judged, there is no
+//     waiting: against the `seen` of the last look (prev.seen), only sessions that were in it
+//     and whose reading moved since are believed (a session puts a peak back by being new to
+//     the statusline), so the reading rises to the highest of theirs, or stays; without one,
+//     it stays, and this look's `seen` is kept for the next.
+// Anything else is the old rule: inside a window the reading only rises, and the statusline's own
+// peak and samples count; after a restart, without `seen`, its peak only above what the week had
+// before it (a stale reading is never higher), and its samples taken after the restart or above.
+//
+// prev: { trail: [[ms, pct]], restarts: [[ms, pct]], pend: { dir, at, pct, last } | null, seen },
+// or null for no state (the highest of the window). obs: { at, pct, peak, samples, judged, seen },
+// from the file. → { trail, restarts, pend, pct, samples, seen }, new: prev is left as it was.
+function claudeStep(prev, obs) {
+  const trail = prev ? prev.trail.map((x) => [x[0], x[1]]) : [];
+  const restarts = prev ? prev.restarts.map((x) => [x[0], x[1]]) : [];
+  let pend = prev ? prev.pend : null;
+  // The last restart, and the highest the week had before it.
+  const cutOf = () => restarts[restarts.length - 1] ?? null;
+  const ceilOf = (c) => (c ? trail.reduce((m, x) => (x[0] < c[0] && x[1] > m ? x[1] : m), c[1]) : -Infinity);
+  const after = (c) => { const top = ceilOf(c); return obs.samples.filter((x) => !c || x[0] >= c[0] || x[1] > top); };
+  const cut = cutOf(), ceil = ceilOf(cut);
+  const judged = obs.judged === true && obs.peak !== null;
+  const samples = after(cut);
+  const hi = judged ? obs.peak
+    : Math.max(obs.pct, obs.peak !== null && obs.peak > ceil ? obs.peak : -Infinity, ...samples.map((x) => x[1]));
+  // The samples given back are those after the last restart, one made by this step too, and none
+  // above the reading believed: one on hold (a peak put back) would make a burst that never was.
+  const out = (pct) => ({ trail, restarts, pend, pct, samples: (cutOf() === cut ? samples : after(cutOf())).filter((x) => x[1] <= pct), seen: judged ? obs.seen ?? null : null });
+  const last = trail[trail.length - 1];
+  if (!last) {
+    if (prev) trail.push([obs.at, hi]);
+    return out(hi);
+  }
+  const b = last[1];
+  if (judged && hi <= b - CLAUDE_CHECK_POINTS) {
+    const first = obs.samples.find((x) => x[0] > last[0] && x[0] < obs.at && x[1] <= hi);
+    const at0 = first ? first[0] : Math.max(obs.at, last[0] + 1);
+    restarts.push([at0, b]);
+    trail.push([at0, first ? first[1] : hi]);
+    if (hi > trail[trail.length - 1][1] && obs.at > at0) trail.push([obs.at, hi]);
+    pend = null;
+    return out(hi);
+  }
+  const dir = !judged && obs.pct <= b - CLAUDE_CHECK_POINTS ? 'down'
+    : cut && hi >= b + CLAUDE_CHECK_POINTS && hi <= ceil ? 'up' : null;
+  if (dir === 'up' && judged) {
+    pend = null;
+    // No look to compare with yet: this one's `seen` is kept, and the next look decides.
+    if (!prev.seen || !obs.seen) return out(b);
+    const moved = Object.entries(obs.seen).filter(([id, e]) => prev.seen[id] && prev.seen[id][0] !== e[0]).map(([, e]) => e[0]);
+    const v = Math.min(hi, Math.max(b, ...moved));
+    if (v > b && obs.at > last[0]) { trail.push([obs.at, v]); return out(v); }
+    return out(b);
+  }
+  if (!dir) {
+    pend = null;
+    if (hi > b && obs.at > last[0]) { trail.push([obs.at, hi]); return out(hi); }
+    return out(b);
+  }
+  const seen = dir === 'down' ? obs.pct : hi;
+  if (!pend || pend.dir !== dir) { pend = { dir, at: obs.at, pct: seen, last: obs.at }; return out(b); }
+  if (obs.at <= pend.last) return out(b); // the same write again
+  if (obs.at - pend.at < CLAUDE_CONFIRM_MS) { pend = { ...pend, last: obs.at }; return out(b); }
+  const at0 = Math.max(pend.at, last[0] + 1);
+  if (dir === 'down') restarts.push([at0, b]);
+  trail.push([at0, pend.pct]);
+  if (seen > pend.pct && obs.at > at0) trail.push([obs.at, seen]);
+  pend = null;
+  return out(trail[trail.length - 1][1]);
+}
+
+// The current window's claudeStep against what limits.json keeps (`l`): its trail in claudeWeeks,
+// its restarts, the reading on hold and the statusline's `seen` of the last look in claudeChecks. Sets the reading, its samples, trail and
+// restarts, and the earlier weeks on `limits`, and takes its `obs` out. → { key, changed }
+function claudeWeek(l, limits) {
+  if (!l.claudeWeeks || typeof l.claudeWeeks !== 'object') l.claudeWeeks = {};
+  if (!l.claudeChecks || typeof l.claudeChecks !== 'object') l.claudeChecks = {};
+  const weeks = l.claudeWeeks, checks = l.claudeChecks;
+  let key = null, changed = false;
+  if (limits.week && limits.week.resets !== null && limits.obs) {
+    key = String(limits.week.resets);
+    const ck = checks[key] && typeof checks[key] === 'object' ? checks[key] : {};
+    const p = ck.pend;
+    const pend = p && typeof p === 'object' && (p.dir === 'down' || p.dir === 'up') && [p.at, p.pct, p.last].every(Number.isFinite) ? p : null;
+    const prevSeen = ck.seen && typeof ck.seen === 'object' ? seenMap(ck.seen) : null;
+    const r = claudeStep({ trail: pairs(weeks[key]), restarts: pairs(ck.restarts), pend, seen: prevSeen }, limits.obs);
+    if (JSON.stringify(r.trail) !== JSON.stringify(weeks[key])) { weeks[key] = r.trail; changed = true; }
+    const next = r.restarts.length || r.pend || r.seen ? { restarts: r.restarts, pend: r.pend, ...(r.seen ? { seen: r.seen } : {}) } : undefined;
+    if (JSON.stringify(next) !== JSON.stringify(checks[key])) {
+      if (next) checks[key] = next; else delete checks[key];
+      changed = true;
+    }
+    Object.assign(limits.week, { pct: r.pct, samples: r.samples, trail: r.trail, restarts: r.restarts });
+  }
+  delete limits.obs;
+  const keys = Object.keys(weeks).sort((a, b) => Number(a) - Number(b));
+  while (keys.length > TRAIL_WEEKS) { delete weeks[keys.shift()]; changed = true; }
+  for (const k of Object.keys(checks)) if (!(k in weeks)) { delete checks[k]; changed = true; }
+  // The earlier windows, newest first: the highest reading each reached.
+  limits.weeks = earlierWeeks(weeks, key);
+  return { key, changed };
+}
+
+const limitsState = (l) => ({ v: STATE_V, claudeWeeks: l.claudeWeeks ?? {}, claudeChecks: l.claudeChecks ?? {}, codexWeeks: l.codexWeeks ?? {} });
 
 function sleep(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
 
@@ -1225,7 +1373,6 @@ function history(stateDir, res, limits, codex) {
 
     const lfile = path.join(stateDir, 'limits.json');
     const l = readState(lfile, () => ({ v: STATE_V, claudeWeeks: {}, codexWeeks: {} }));
-    const weeks = l.claudeWeeks && typeof l.claudeWeeks === 'object' ? l.claudeWeeks : {};
     const xweeks = l.codexWeeks && typeof l.codexWeeks === 'object' ? l.codexWeeks : {};
     let lchanged = false;
     // Codex: every window the transcripts still hold joins the one kept under a reset close to
@@ -1248,23 +1395,13 @@ function history(stateDir, res, limits, codex) {
       codex.weeks = earlierWeeks(xweeks, xkey);
     }
     let key = null;
-    {
-      if (limits && limits.week && limits.week.resets !== null) {
-        key = String(limits.week.resets);
-        const trail = Array.isArray(weeks[key]) ? weeks[key] : [];
-        const last = trail[trail.length - 1];
-        // Only a rise is a new reading (see claudeLimits); a lower one is a stale session's.
-        if (!last || (limits.week.pct > last[1] && limits.at > last[0])) { trail.push([limits.at, limits.week.pct]); lchanged = true; }
-        else if (last[1] > limits.week.pct) limits.week.pct = last[1];
-        weeks[key] = trail;
-      }
-      const keys = Object.keys(weeks).sort((a, b) => Number(a) - Number(b));
-      while (keys.length > TRAIL_WEEKS) { delete weeks[keys.shift()]; lchanged = true; }
-      if (key !== null && limits) limits.week.trail = weeks[key];
-      // The earlier windows, newest first: the highest reading each reached.
-      if (limits) limits.weeks = earlierWeeks(weeks, key);
+    if (limits) {
+      const r = claudeWeek(l, limits);
+      key = r.key;
+      if (r.changed) lchanged = true;
     }
-    if (lchanged || ((key !== null || xkey !== null) && !exists(lfile))) writeAtomic(lfile, { v: STATE_V, claudeWeeks: weeks, codexWeeks: xweeks });
+    l.codexWeeks = xweeks;
+    if (lchanged || ((key !== null || xkey !== null) && !exists(lfile))) writeAtomic(lfile, limitsState(l));
   });
   return { rows: rowsOut, sessions: sessOut };
 }
@@ -1278,7 +1415,7 @@ function cmp(a, b) {
   return 0;
 }
 
-const HELP = `usage: node collect.mjs [--home <dir>] [--state <dir> | --no-state] [--no-rg] [--now <ms>] [--docker-timeout <ms>] [--pretty]\n`;
+const HELP = `usage: node collect.mjs [--home <dir>] [--state <dir> | --no-state] [--no-rg] [--now <ms>] [--docker-timeout <ms>] [--pretty] [--limits]\n`;
 
 async function main(argv) {
   const t0 = Date.now();
@@ -1287,6 +1424,28 @@ async function main(argv) {
   const home = opt.home ? path.resolve(opt.home) : os.homedir();
   const now = opt.now ?? Date.now();
   const stateDir = opt.state === null ? null : opt.state ? path.resolve(opt.state) : path.join(home, '.local', 'state', 'herdr-usage');
+
+  // The sidebar widget's poll: Claude's reading by the same rule as a collection's, from the
+  // statusline's file and limits.json alone.
+  if (opt.limits) {
+    const limits = claudeLimits(home);
+    if (limits && stateDir) {
+      try {
+        fs.mkdirSync(stateDir, { recursive: true });
+        withLock(stateDir, () => {
+          const lfile = path.join(stateDir, 'limits.json');
+          const l = readState(lfile, () => ({ v: STATE_V, claudeWeeks: {}, codexWeeks: {} }));
+          const { key, changed } = claudeWeek(l, limits);
+          if (changed || (key !== null && !exists(lfile))) writeAtomic(lfile, limitsState(l));
+        });
+      } catch (e) {
+        process.stderr.write(`collect: limits not kept: ${e.message}\n`);
+      }
+    }
+    if (limits) delete limits.obs;
+    process.stdout.write(JSON.stringify({ v: V, at: now, limits: { claude: limits } }, null, opt.pretty ? 1 : 0) + '\n');
+    return;
+  }
 
   const sources = findSources(home);
   const col = new Collector();
@@ -1334,6 +1493,7 @@ async function main(argv) {
       process.stderr.write(`collect: history not kept: ${e.message}\n`);
     }
   }
+  if (limits) delete limits.obs;
   // Codex's estimates, from history's rows too, never kept there.
   rows = rows.map((r) => {
     if (r.agent !== 'codex') return r;

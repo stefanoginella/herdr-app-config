@@ -285,7 +285,9 @@ export function weekView(data, now, agent = "claude") {
   // The limit's percentage is not in the rows: the weight so far is scaled to the readings. Where
   // the collector and the statusline kept readings of this week (trail, samples), the curve
   // passes through each of them, the weight between two readings scaled to the rise between
-  // them; without any, the whole weight is scaled to today's reading.
+  // them; without any, the whole weight is scaled to today's reading. It only rises, but at a
+  // restart (the limit was reset inside the window, `week.restarts`): there it holds until the
+  // first lower reading, and falls to it.
   const C = [0];
   for (let i = 0; i < slots; i++) { let x = 0; for (let b = 0; b < bands; b++) x += per[b][i]; C.push(C[i] + x); }
   const costAt = (t) => {
@@ -297,16 +299,22 @@ export function weekView(data, now, agent = "claude") {
   const readings = [...(Array.isArray(week.trail) ? week.trail : []), ...samples, [lim.at, week.pct]]
     .filter((x) => Array.isArray(x) && Number.isFinite(x[0]) && Number.isFinite(x[1]) && x[0] > start && x[0] <= upto)
     .sort((a, b) => a[0] - b[0]);
+  const restarts = (Array.isArray(week.restarts) ? week.restarts : []).filter((x) => Array.isArray(x) && Number.isFinite(x[0])).map((x) => x[0]);
   const pts = [[start, 0, 0]];
   for (const [t, v] of readings) {
     const last = pts[pts.length - 1];
-    const pv = Math.max(last[1], Math.min(100, v));
+    const fall = restarts.some((r) => r > last[0] && r <= t);
+    const pv = fall ? Math.min(100, v) : Math.max(last[1], Math.min(100, v));
     if (t === last[0]) { last[1] = pv; continue; }
+    if (fall && pv < last[1] && t - 1 > last[0]) pts.push([t - 1, last[1], costAt(t - 1)]);
     pts.push([t, pv, costAt(t)]);
   }
-  // The rate after the last reading: that of the last stretch that weighed anything.
+  // The rate after the last reading: that of the last stretch that weighed anything and didn't fall.
   let tail = total > 0 ? week.pct / total : 0;
-  for (let k = pts.length - 1; k > 0; k--) { const dc = pts[k][2] - pts[k - 1][2]; if (dc > 0) { tail = (pts[k][1] - pts[k - 1][1]) / dc; break; } }
+  for (let k = pts.length - 1; k > 0; k--) {
+    const dc = pts[k][2] - pts[k - 1][2], dv = pts[k][1] - pts[k - 1][1];
+    if (dc > 0 && dv >= 0) { tail = dv / dc; break; }
+  }
   const valueAt = (t) => {
     const c = costAt(t);
     let k = 0;
@@ -318,10 +326,12 @@ export function weekView(data, now, agent = "claude") {
   };
   const V = times.map(valueAt);
   // tops[b][i]: the top edge of band b (the bands under it included) at times[i]. Each hour's
-  // rise is split among the bands as its weight was; a rise with none seen goes to the rest.
+  // rise is split among the bands as its weight was; a rise with none seen goes to the rest. At a
+  // restart's fall every band shrinks by the same share, so they still add up to the curve.
   const run = new Float64Array(bands);
   const tops = Array.from({ length: bands }, () => [0]);
   for (let i = 0; i < slots; i++) {
+    if (V[i + 1] < V[i] && V[i] > 0) { const k = Math.max(0, V[i + 1]) / V[i]; for (let b = 0; b < bands; b++) run[b] *= k; }
     const rise = Math.max(0, V[i + 1] - V[i]);
     const sum = C[i + 1] - C[i];
     for (let b = 0; b < bands; b++) run[b] += sum > 0 ? rise * per[b][i] / sum : b === bands - 1 ? rise : 0;

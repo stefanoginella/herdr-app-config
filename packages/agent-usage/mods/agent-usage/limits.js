@@ -2,7 +2,7 @@
 // widget say it this way. Nothing in it touches the app, so it runs under
 // node (limits.test.mjs).
 //
-//   fromCache()  the statusline's cache file as a weekly reading (the collector's rule)
+//   fromCache()  the statusline's cache file as a weekly reading (the collector's rule, stateless)
 //   limitBlock() one limit: its percentage, the even-pace point, the verdict, the reset
 //   danger()     how bad a block is; byDanger() sorts blocks, the most in danger first
 //   judge()      the dialog's two sentences, for the weekly limit most in danger (verdict(): one)
@@ -48,7 +48,10 @@ export const HALF_HOUR = 30 * 60_000;
 export function dryAt(ms) { return Math.round(ms / HALF_HOUR) * HALF_HOUR; }
 
 // The statusline's cache: the highest of its 7-day reading, the week's peak and its samples, when
-// they are of the same window (as collect.mjs's claudeLimits reads it).
+// they are of the same window; the peak alone when the statusline keeps each session's last
+// reading (`week.seen`): then the peak is what it believes, and the 7-day reading may be an idle
+// session's. collect.mjs's rule without a state folder (claudeStep(null)): the widget's fallback
+// when node can't run the collector's limits step.
 export function fromCache(text) {
   let c;
   try { c = JSON.parse(text); } catch { return null; }
@@ -58,8 +61,12 @@ export function fromCache(text) {
   let pct = c.sevenDay;
   const w = c.week && typeof c.week === "object" ? c.week : null;
   const samples = w && Array.isArray(w.samples) && ms(w.resets) === resets ? w.samples.filter((s) => Array.isArray(s) && Number.isFinite(s[1])) : [];
-  if (w && ms(w.resets) === resets && typeof w.peak === "number") pct = Math.max(pct, w.peak);
-  for (const s of samples) pct = Math.max(pct, s[1]);
+  const judged = w && ms(w.resets) === resets && typeof w.peak === "number" && w.seen && typeof w.seen === "object";
+  if (judged) pct = w.peak;
+  else {
+    if (w && ms(w.resets) === resets && typeof w.peak === "number") pct = Math.max(pct, w.peak);
+    for (const s of samples) pct = Math.max(pct, s[1]);
+  }
   const fiveHour = typeof c.fiveHour === "number" ? { pct: c.fiveHour, resets: ms(c.fiveHourResets) } : null;
   return { pct, resets, samples, fiveHour };
 }

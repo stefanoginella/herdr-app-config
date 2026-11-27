@@ -1,8 +1,10 @@
 // The glance of the limits: the sidebar widget (props `{ role: "side" }`). A click on it opens
 // the dialog.
 //
-// They never run the collector. Every TICK, while Herdr is the active app, they read the
-// statusline's cache file (a few hundred bytes) and its age for Claude; every CODEX_EVERY, one
+// They never run a collection. Every TICK, while Herdr is the active app, they run the collector's
+// limits step for Claude (`collect.mjs --limits`: the statusline's cache file, a few hundred
+// bytes, and limits.json, so the widget believes what the dialog does, a reset of the limit
+// too); without node, they read the cache file and its age themselves. Every CODEX_EVERY, one
 // small `sh` (CODEX_READ) prints the last rate_limits line of the newest Codex session file, and
 // without one the dialog's snapshot stands in. Every dashboard collection publishes its limits
 // to the widget. Its refresh button reads both agents immediately using the same light poll.
@@ -16,11 +18,14 @@
 
 import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { readTextFile, exec, home, theme, settings, layout, run, checking, agents, shared, setShared, window as app } from "herdr";
+import { readTextFile, exec, home, appHome, theme, settings, layout, run, checking, agents, shared, setShared, window as app } from "herdr";
 import { fromCache, limitBlock, short, levelColor, WEEKDAYS, clock, byDanger, danger } from "./limits.js";
 import { WEEK_MS, HOUR_MS, burn, formatRate } from "./pace.js";
 
 const CACHE = () => `${home()}/.claude/statusline/.usage-cache.json`;
+const COLLECT = () => `${appHome()}/mods/agent-usage/collect.mjs`;
+// The limits step waits for the state folder's lock while a collection holds it (up to 15 s).
+const LIMITS_TIMEOUT = 20_000;
 const SNAPSHOT = () => `${home()}/.local/state/herdr-usage/view.json`;
 const CODEX_SESSIONS = () => `${home()}/.codex/sessions`;
 const DASHBOARD_LIMITS = "agent-usage.limits";
@@ -136,8 +141,10 @@ export default class Glance {
       // A dashboard collection or a manual refresh can finish while a poll is in flight.
       if (id !== this.pollId || dashboardAt !== this.dashboardAt) return;
       const collected = shared(DASHBOARD_LIMITS)?.claude;
-      // The local stat only has whole seconds. Keep the collected peak for the same week.
-      if (local && (local.at == null || local.at + 999 >= (collected?.at ?? 0))) {
+      // The limits step's reading is the newest of the collector's rule: it stands. Read from the
+      // file alone, the local stat only has whole seconds: keep the collected peak for the same week.
+      if (local?.checked) this.reading = local;
+      else if (local && (local.at == null || local.at + 999 >= (collected?.at ?? 0))) {
         if (local.resets === collected?.resets) local.pct = Math.max(local.pct, collected.pct);
         this.reading = local;
       } else this.reading = collected ?? null;
@@ -161,7 +168,18 @@ export default class Glance {
     return true;
   }
 
+  // Claude's reading: the collector's limits step, else the cache file alone (the highest of the
+  // window, fromCache).
   async readClaude() {
+    try {
+      const r = await exec("node", [COLLECT(), "--limits"], { timeout: LIMITS_TIMEOUT });
+      const c = r.code === 0 ? JSON.parse(r.stdout)?.limits?.claude : undefined;
+      if (c === null) return null;
+      if (c && typeof c === "object") {
+        const w = c.week;
+        return w && w.pct != null ? { pct: w.pct, resets: w.resets, samples: w.samples ?? [], fiveHour: c.fiveHour ?? null, at: c.at ?? null, checked: true } : null;
+      }
+    } catch {}
     let reading, at = null;
     try { reading = fromCache(await readTextFile(CACHE())); } catch {}
     if (!reading) return null;

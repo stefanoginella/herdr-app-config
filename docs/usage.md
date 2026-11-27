@@ -39,7 +39,7 @@ Above Spaces, the widget shows the limit closest to running out for each agent, 
 It only reads, and it asks the network nothing.
 
 - **Usage:** Claude Code's transcripts and cost records (`~/.claude/projects`) and Codex's sessions (`~/.codex/sessions`), read by one Node script, `packages/agent-usage/mods/agent-usage/collect.mjs`. It needs `node` 18 or later, and uses ripgrep when there is one.
-- **Limits:** Codex's come from its own session files. Claude's come from the file my statusline writes, `~/.claude/statusline/.usage-cache.json`: without one there is no Claude limit, and the usage still shows.
+- **Limits:** Codex's come from its own session files. Claude's come from the file my statusline writes, `~/.claude/statusline/.usage-cache.json`: without one there is no Claude limit, and the usage still shows. Every Claude Code session writes that file with the reading of its own last reply, so a session left idle puts an older, lower one back. A reset of the limit inside the week shows as soon as the statusline sees it, when the file keeps each session's last reading (`week.seen`); without that, a lower reading is believed once the file has said it twice, at least ten minutes apart, with nothing higher in between.
 - **Other machines:** the same script runs there through Herdr, with nothing installed. A machine that fails, or has no `node`, is shown as unreachable.
 - **Dev containers:** read through `docker`, and counted as their project's.
 - **History:** Claude Code keeps its transcripts for 30 days, so the day totals are kept in `~/.local/state/herdr-usage/` on each machine, with each weekly window's readings.

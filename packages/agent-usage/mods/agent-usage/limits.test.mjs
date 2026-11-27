@@ -14,6 +14,8 @@ test('the cache file: the highest of the reading, the peak and the samples of th
   assert.equal(L.fromCache(c({ week: { resets: iso, peak: 61, samples: [[now, 58]] } })).pct, 61);
   assert.equal(L.fromCache(c({ week: { resets: iso, peak: 52, samples: [[now, 63]] } })).pct, 63);
   assert.equal(L.fromCache(c({ week: { resets: new Date(resets - 7 * DAY).toISOString(), peak: 90, samples: [[now, 95]] } })).pct, 50);
+  // A statusline that keeps each session's last reading: its peak is the reading, a reset's too.
+  assert.equal(L.fromCache(c({ sevenDay: 96, week: { resets: iso, peak: 71, samples: [[now, 71]], seen: { a: [71, now] } } })).pct, 71);
   assert.deepEqual(L.fromCache(c({ fiveHour: 12, fiveHourResets: iso })).fiveHour, { pct: 12, resets });
   assert.equal(L.fromCache('{'), null);
   assert.equal(L.fromCache('{"sevenDay":null}'), null);

@@ -437,7 +437,7 @@ test('sessions per day', () => {
 test('limits', () => {
   assert.deepEqual(base.limits.claude, {
     at: 1795520000000, fiveHour: null,
-    week: { pct: 58, resets: Date.parse('2026-11-29T05:00:00.000Z'), samples: [[1795500000000, 55], [1795510000000, 58]], trail: [] },
+    week: { pct: 58, resets: Date.parse('2026-11-29T05:00:00.000Z'), samples: [[1795500000000, 55], [1795510000000, 58]], trail: [], restarts: [] },
     weeks: [],
   });
   assert.deepEqual(base.limits.codex, {
@@ -581,6 +581,96 @@ test('punch: weekday and hour over 28 days and today, both agents', () => {
   const later = run(fx.home, ['--no-state', '--now', String(NOW + 20 * 86400000)]); // window from 2026-11-16
   assert.equal(total(later.punch, 'n'), total(base.rows.filter((r) => r.d >= '2026-11-16'), 'n'));
   assert.equal(later.punchDays, 29); // records go back further than the window
+});
+
+// The statusline's file written at `at`: the session's own reading `pct`, the window's peak and samples.
+// `seen`: each session's last reading, as a statusline that keeps them writes it.
+function writeCache(file, at, pct, peak = pct, samples = [], seen = undefined) {
+  put(file, JSON.stringify({ fiveHour: null, fiveHourResets: null, sevenDay: pct, sevenDayResets: '2026-11-29T05:00:00.000Z',
+    week: { resets: '2026-11-29T05:00:00.000Z', peak, samples, ...(seen ? { seen } : {}) } }));
+  fs.utimesSync(file, new Date(at), new Date(at));
+}
+// The widget's poll (--limits) after the file is written at T + `min` minutes.
+function poller() {
+  const h = makeHome();
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-state-'));
+  const at = (min, pct, peak, samples, seen) => { writeCache(h.cache, T + min * MIN, pct, peak, samples, seen); return run(h.home, ['--limits', '--state', state]).limits.claude; };
+  const checks = () => JSON.parse(fs.readFileSync(path.join(state, 'limits.json'), 'utf8')).claudeChecks;
+  return { h, state, at, checks };
+}
+const T = 1795600000000, MIN = 60000;
+
+test('Claude: a reset inside the window is believed once two writes ten minutes apart say it', () => {
+  const { h, state, at } = poller();
+  assert.equal(at(0, 96).week.pct, 96);
+  // The reset: the statusline's own reading falls, its peak of the window stays.
+  assert.equal(at(60, 69, 96).week.pct, 96);
+  assert.equal(at(60, 69, 96).week.pct, 96); // the same write, read again
+  assert.equal(at(65, 70, 96).week.pct, 96); // five minutes on: still held
+  const c = at(71, 71, 96);
+  assert.equal(c.week.pct, 71);
+  assert.deepEqual(c.week.restarts, [[T + 60 * MIN, 96]]);
+  assert.deepEqual(c.week.trail, [[T, 96], [T + 60 * MIN, 69], [T + 71 * MIN, 71]]);
+  // A session with no reply since the reset puts its 95 back: held, and the next reading denies it.
+  assert.equal(at(72, 95, 96).week.pct, 71);
+  assert.equal(at(73, 72, 96).week.pct, 72);
+  // The statusline's samples of before the reset no longer count.
+  const s = at(74, 72, 96, [[T + 30 * MIN, 96]]);
+  assert.deepEqual([s.week.pct, s.week.samples], [72, []]);
+  // A collection believes the same, and keeps what it believes.
+  const d = run(h.home, ['--state', state]).limits.claude;
+  assert.deepEqual([d.week.pct, d.week.restarts], [72, [[T + 60 * MIN, 96]]]);
+  // Over the week's old peak a reading is a fresh one: a rise at once, the statusline's peak and samples again.
+  const up = at(300, 97, 98, [[T + 299 * MIN, 98]]);
+  assert.deepEqual([up.week.pct, up.week.samples], [98, [[T + 299 * MIN, 98]]]);
+});
+
+test('Claude: an idle session\'s older reading is no reset', () => {
+  const { at, checks } = poller();
+  assert.equal(at(0, 90).week.pct, 90);
+  assert.equal(at(30, 60, 90).week.pct, 90); // held
+  assert.equal(at(31, 91, 91).week.pct, 91); // a reply's reading denies it, and rises
+  assert.equal(at(45, 60, 91).week.pct, 91); // held again
+  assert.equal(at(52, 89, 91).week.pct, 91); // under three points: denies it
+  assert.equal(at(58, 60, 91).week.pct, 91); // held again, from here
+  assert.equal(checks()[String(Date.parse('2026-11-29T05:00:00.000Z'))].pend.at, T + 58 * MIN);
+  const c = at(70, 89, 91);
+  assert.deepEqual([c.week.pct, c.week.restarts, c.week.trail], [91, [], [[T, 90], [T + 31 * MIN, 91]]]);
+  assert.deepEqual(checks(), {});
+});
+
+test('Claude, from a statusline that keeps each session\'s reading: its reset at once, an idle writer left out', () => {
+  const { at, checks } = poller();
+  const key = String(Date.parse('2026-11-29T05:00:00.000Z'));
+  assert.equal(at(0, 96, 96, [], { a: [96, T] }).week.pct, 96);
+  // The statusline saw the reset: its peak falls, its samples start again there.
+  const after = [[T + 58 * MIN, 69]], seen = { a: [69, T + 58 * MIN], b: [96, T] };
+  const r = at(60, 69, 69, after, seen);
+  assert.deepEqual([r.week.pct, r.week.restarts, r.week.trail.slice(1), r.week.samples], [69, [[T + 58 * MIN, 96]], [[T + 58 * MIN, 69]], after]);
+  // Idle sessions writing their own 7-day reading change nothing, and hold nothing.
+  assert.equal(at(61, 96, 69, after, seen).week.pct, 69);
+  assert.equal(at(62, 40, 70, [...after, [T + 62 * MIN, 70]], seen).week.pct, 70);
+  assert.equal(checks()[key].pend, null);
+  // A session it hadn't seen puts the old peak back: no session the last look knew moved there, so
+  // it is left out, and with it its sample, without waiting for the statusline to drop it.
+  const back = { ...seen, c: [96, T + 63 * MIN] };
+  const held = at(63, 96, 96, [[T + 62 * MIN, 70], [T + 63 * MIN, 96]], back);
+  assert.deepEqual([held.week.pct, held.week.samples], [70, [[T + 62 * MIN, 70]]]);
+  assert.equal(at(80, 70, 96, [[T + 62 * MIN, 70], [T + 63 * MIN, 96]], back).week.pct, 70); // still, 17 minutes on
+  // A session it knew moving there is a real rise, however big.
+  const moved = { ...back, a: [75, T + 81 * MIN] };
+  assert.equal(at(81, 75, 96, [[T + 63 * MIN, 96]], moved).week.pct, 75);
+  assert.deepEqual(checks()[key], { restarts: [[T + 58 * MIN, 96]], pend: null, seen: moved });
+});
+
+test('Claude without a state folder: the highest of the window, as before', () => {
+  const h = makeHome();
+  writeCache(h.cache, T, 69, 96);
+  assert.equal(run(h.home, ['--limits', '--no-state']).limits.claude.week.pct, 96);
+  assert.equal(run(h.home, ['--no-state']).limits.claude.week.pct, 96);
+  // With each session's last reading kept, the statusline's peak, whatever the last writer said.
+  writeCache(h.cache, T, 96, 71, [], { a: [71, T] });
+  assert.equal(run(h.home, ['--limits', '--no-state']).limits.claude.week.pct, 71);
 });
 
 test('past weeks of the limit, newest first, the current one left out', () => {

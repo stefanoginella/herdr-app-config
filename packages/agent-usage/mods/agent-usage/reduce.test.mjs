@@ -171,6 +171,25 @@ test('the used curve passes through the week\'s readings', () => {
   assert.equal(plain.tops[plain.tops.length - 1].at(-1), 40);
 });
 
+test('a reset inside the week: the curve holds until it, falls to the lower reading and rises again', () => {
+  const at1 = new Date(2026, 10, 23, 12).getTime(), at2 = new Date(2026, 10, 24, 9).getTime();
+  const rows = [row({ d: day(-1), h: 10, project: '/fixtures/u/a', cost: 10 }), row({ d: day(0), h: 10, project: '/fixtures/u/b', cost: 10 })];
+  const claude = { ...here.limits.claude, week: { pct: 35, resets, samples: [], trail: [[at1, 30], [at2, 10]], restarts: [[at2, 30]] } };
+  const w = weekView(prepare([{ machine: null, doc: { ...here, rows, limits: { ...here.limits, claude } } }], now), now);
+  const top = w.tops[w.tops.length - 1];
+  const used = (t) => top[w.times.findIndex((x) => x >= t)];
+  assert.equal(used(at2 - H), 30); // held
+  assert.equal(used(at2 + H), 10); // fallen
+  assert.equal(top.at(-1), 35); // and risen with the second day's cost
+  assert.deepEqual(w.readings.map((r) => r[1]), [30, 30, 10, 35]);
+  // The bands still add up to the curve: none is above it, none under zero.
+  for (const band of w.tops) band.forEach((v, i) => assert.ok(v >= 0 && v <= top[i] + 1e-9, `band ${v} at ${i}`));
+  assert.equal(Math.round(w.points.reduce((a, x) => a + x, 0)), 35);
+  // Without the restart, the same trail only rises: the lower reading is a stale one.
+  const flat = weekView(prepare([{ machine: null, doc: { ...here, rows, limits: { ...here.limits, claude: { ...claude, week: { ...claude.week, restarts: [] } } } } }], now), now);
+  assert.equal(flat.readings.every((r, i, a) => i === 0 || r[1] >= a[i - 1][1]), true);
+});
+
 test('the home folder and folders holding projects join "Other folders"', () => {
   const rows = [row({ d: day(0), h: 10, project: '/fixtures/u', cost: 3 }), row({ d: day(0), h: 10, project: '/fixtures/workspace', cost: 4 }),
     row({ d: day(0), h: 10, project: '/fixtures/workspace/app', cost: 5 }), row({ d: day(0), h: 10, project: '/fixtures/workspace/site', cost: 1 }),
