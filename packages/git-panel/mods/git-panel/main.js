@@ -90,16 +90,23 @@ const markColor = (t, mark) => (mark === "A" || mark === "U" ? t.ansi2 : mark ==
 const checkColor = (t, state) => (state === "fail" ? t.ansi1 : state === "running" ? t.blocked : t.ansi2);
 
 // A mod pane (the diff, the editor) is in no folder: while one has the focus, the panel goes
-// on showing the repository of the terminal that had it before, in that tab.
+// on showing the repository of the terminal that had it before, in that tab. With nothing
+// held (a reload of the mod empties `held`, and a tab can come back with its mod pane
+// focused) it is the tab's first terminal's, else the space's first terminal's. The space's
+// `folder` is the last resort: it is where the space was made, often another project.
 const held = new Map();
 function location() {
   const space = spaces().find((s) => s.active), f = focused();
   const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
   if (pane?.mod && held.has(pane.tab)) return held.get(pane.tab);
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  const at = { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+  const at = { cwd: pane?.cwd || f?.cwd || terminalFolder(space, pane?.tab ?? f?.tab) || space?.folder, on };
   if (pane && !pane.mod) held.set(pane.tab, at);
   return at;
+}
+function terminalFolder(space, tab) {
+  const all = panes().filter((p) => p.terminal && p.cwd), tabs = new Set((space?.tabs ?? []).map((t) => t.id));
+  return (all.find((p) => p.tab === tab) ?? all.find((p) => tabs.has(p.tab)))?.cwd ?? null;
 }
 
 // Whether a copy of this mod in the layout is on screen: no block around it hidden, and every
