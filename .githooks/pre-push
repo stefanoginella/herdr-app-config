@@ -1,0 +1,38 @@
+#!/bin/sh
+# Before a push: mods/, which Herdr runs, is what packages/ holds (so what was tried is what is
+# pushed), the tests of every package the push changes pass, and the gallery files are up to
+# date. It checks the files as they are in the checkout. `git push --no-verify` skips it.
+# Turned on per clone with `git config core.hooksPath .githooks` (see the README).
+cd "$(git rev-parse --show-toplevel)" || exit 1
+fail() { echo "pre-push: $1" >&2; exit 1; }
+
+python3 docs/sync-mods.py --check || fail "mods/ is not what packages/ holds: sync, try it in Herdr, then push"
+git diff --quiet HEAD -- packages || echo "pre-push: packages/ has changes not committed; they are what is checked" >&2
+
+# The files under packages/ the pushed commits change: each pushed ref against its remote one, or,
+# for a new branch (or a remote one not here), the commits no remote has. A deleted ref is all 0s.
+pushed_files() {
+  while read -r _ local _ remote; do
+    case $local in
+      *[!0]*) ;;
+      *) continue ;;
+    esac
+    if git cat-file -e "$remote^{commit}" 2>/dev/null; then
+      git diff --name-only "$remote" "$local" -- packages
+    else
+      git log --format= --name-only "$local" --not --remotes -- packages
+    fi
+  done
+}
+changed=$(pushed_files | sed -n 's|^packages/\([^/]*\)/.*|\1|p' | sort -u)
+for pkg in $changed; do
+  tests=$(git ls-files "packages/$pkg/*.test.mjs")
+  [ -n "$tests" ] || continue
+  command -v node >/dev/null || fail "node is needed for the tests of $pkg"
+  echo "pre-push: testing $pkg" >&2
+  # Package paths have no spaces: the list splits on them.
+  out=$(node --test $tests 2>&1) || { printf '%s\n' "$out" | tail -n 40 >&2; fail "the tests of $pkg fail"; }
+done
+
+out=$(python3 docs/gallery.py --check 2>&1) || { printf '%s\n' "$out" >&2; fail "the gallery files are stale: run python3 docs/gallery.py"; }
+exit 0

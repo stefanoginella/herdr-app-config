@@ -1,0 +1,6 @@
+#!/bin/sh
+# A checkout or a switch changed the checkout: copy the packaged mods into mods/, which Herdr runs.
+# Turned on per clone with `git config core.hooksPath .githooks` (see the README).
+cd "$(git rev-parse --show-toplevel)" || exit 0
+python3 docs/sync-mods.py || echo "post-checkout: mods/ was not synced; run python3 docs/sync-mods.py" >&2
+exit 0

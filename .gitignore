@@ -23,6 +23,8 @@
 __pycache__/
 !/LICENSE
 !/NOTICE
+# Git hooks: sync mods/ after a pull, checkout or rebase; check before a push
+!/.githooks/
 
 # What you edit
 !/keys.json

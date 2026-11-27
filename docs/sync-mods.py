@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -44,6 +45,29 @@ def snapshot(mods):
     return files
 
 
+def rsync_command(rsync):
+    command = [rsync, "-rcp", "--delete-after", "--delay-updates", "--itemize-changes"]
+    command.extend(f"--exclude={pattern}" for pattern in EXCLUDE)
+    return command
+
+
+def check(mods, home, rsync):
+    """The packaged mods whose copy under <home>/mods differs, each with what a sync would change."""
+    stale = {}
+    for name, source in mods.items():
+        dest = home / "mods" / name
+        if dest.is_symlink() or not dest.is_dir():
+            stale[name] = ["no copy"]
+            continue
+        out = subprocess.check_output(
+            [*rsync_command(rsync), "--dry-run", str(source) + "/", str(dest) + "/"], text=True
+        )
+        lines = [line for line in out.splitlines() if line.strip()]
+        if lines:
+            stale[name] = lines
+    return stale
+
+
 def sync(mods, home, rsync):
     runtime = home / "mods"
     if runtime.is_symlink():
@@ -56,8 +80,7 @@ def sync(mods, home, rsync):
 
     for name, source in mods.items():
         dest = runtime / name
-        command = [rsync, "-rcp", "--delete-after", "--delay-updates", "--itemize-changes"]
-        command.extend(f"--exclude={pattern}" for pattern in EXCLUDE)
+        command = rsync_command(rsync)
 
         def copy_to(folder):
             return subprocess.check_output(
@@ -80,7 +103,9 @@ def sync(mods, home, rsync):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", type=Path, default=ROOT, help="destination app home (default: this checkout)")
-    parser.add_argument("--watch", action="store_true", help="sync when package sources change")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--watch", action="store_true", help="sync when package sources change")
+    mode.add_argument("--check", action="store_true", help="change nothing; fail if a copy differs from its package")
     args = parser.parse_args()
     rsync = shutil.which("rsync")
     if not rsync:
@@ -88,6 +113,17 @@ def main():
 
     try:
         mods = sources()
+        if args.check:
+            stale = check(mods, args.home.expanduser(), rsync)
+            for name, lines in stale.items():
+                print(f"mods/{name} differs from its package:", file=sys.stderr)
+                for line in lines[:10]:
+                    print(f"  {line}", file=sys.stderr)
+                if len(lines) > 10:
+                    print(f"  and {len(lines) - 10} more", file=sys.stderr)
+            if stale:
+                parser.exit(1, "Run python3 docs/sync-mods.py to copy the packages into mods/.\n")
+            return
         previous = snapshot(mods) if args.watch else None
         sync(mods, args.home.expanduser(), rsync)
         if args.watch:
