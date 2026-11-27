@@ -3,6 +3,7 @@
 // node (limits.test.mjs).
 //
 //   fromCache()  the statusline's cache file as a weekly reading (the collector's rule, stateless)
+//   codexLast()  the widget's Codex reading of a session file; codexPick() it or the dialog's
 //   limitBlock() one limit: its percentage, the even-pace point, the verdict, the reset
 //   danger()     how bad a block is; byDanger() sorts blocks, the most in danger first
 //   judge()      the dialog's two sentences, for the weekly limit most in danger (verdict(): one)
@@ -69,6 +70,66 @@ export function fromCache(text) {
   }
   const fiveHour = typeof c.fiveHour === "number" ? { pct: c.fiveHour, resets: ms(c.fiveHourResets) } : null;
   return { pct, resets, samples, fiveHour };
+}
+
+// The widget's Codex, by collect.mjs's rules: readings of a window whose resets are this close
+// are of the same window (CODEX_JITTER_MS); a reading this many points under the believed one is
+// held (CHECK_POINTS), and believed as a reset once one at least CONFIRM_MS later is as low; lines
+// of a session file this close in time are a copy of another thread's history (CODEX_BURST_MS).
+const JITTER = 3 * HOUR_MS;
+const RESET_POINTS = 3;
+const CONFIRM_MS = 10 * 60_000;
+const BURST_MS = 50;
+
+// A rate_limits line of a Codex session file: { at, week, short } (each { pct, resets, windowMs }),
+// with `own` when it is a model's own limit (Spark's), not the account's.
+export function codexLine(line) {
+  let o;
+  try { o = JSON.parse(line); } catch { return null; }
+  const rl = o?.payload?.rate_limits;
+  if (!rl || typeof rl !== "object") return null;
+  const at = Date.parse(o.timestamp);
+  const ws = [rl.primary, rl.secondary].filter((x) => x && typeof x.used_percent === "number" && typeof x.resets_at === "number" && x.window_minutes > 0)
+    .map((x) => ({ pct: x.used_percent, resets: x.resets_at * 1000, windowMs: x.window_minutes * 60_000 }));
+  const own = (typeof rl.limit_name === "string" && rl.limit_name !== "") || (typeof rl.limit_id === "string" && rl.limit_id !== "codex");
+  return { at: Number.isFinite(at) ? at : null, week: ws.find((x) => x.windowMs === WEEK_MS) ?? null, short: ws.find((x) => x.windowMs < DAY_MS) ?? null, own };
+}
+
+// The newest reading of a session file's last rate_limits lines, copies of another thread's
+// history and a model's own limits left out, as the collector leaves them out. → codexLine's, or null
+export function codexLast(text) {
+  const xs = String(text ?? "").split("\n").map((x) => (x.trim() ? codexLine(x) : null)).filter(Boolean);
+  const near = (i, j) => j >= 0 && j < xs.length && xs[i].at !== null && xs[j].at !== null && Math.abs(xs[i].at - xs[j].at) <= BURST_MS;
+  for (let i = xs.length - 1; i >= 0; i--) if (!xs[i].own && !near(i, i - 1) && !near(i, i + 1)) return xs[i];
+  return null;
+}
+
+// The widget's Codex reading of one window kind (the week, the short one), from the newest session
+// file's and the dialog's ({ at, r: { pct, resets } }), with what it keeps between polls (`keep`:
+// { held, cut } or null). Of the same window the higher; a newer one RESET_POINTS or more under
+// the older is held, and believed as a reset once a reading at least CONFIRM_MS after the held one
+// is as low (a reading near the older in between lets it go); from then on, readings of that
+// window from before the reset are left out. → { r, keep }
+export function codexPick(a, b, keep) {
+  let held = keep?.held ?? null, cut = keep?.cut ?? null;
+  const same = (x, y) => Math.abs(x.resets - y.resets) <= JITTER;
+  const live = (x) => (x?.r && !(cut && same(x.r, cut) && (x.at ?? 0) < cut.at) ? x : null);
+  const A = live(a), B = live(b);
+  const done = (x) => ({ r: x?.r ?? null, keep: { held, cut } });
+  if (!A || !B) return done(A ?? B);
+  const [older, newer] = (A.at ?? 0) >= (B.at ?? 0) ? [B, A] : [A, B];
+  if (!same(A.r, B.r)) return done(newer);
+  if (newer.r.pct > older.r.pct - RESET_POINTS) {
+    held = null;
+    return done(newer.r.pct >= older.r.pct ? newer : older);
+  }
+  if (held && same(held, newer.r) && (newer.at ?? 0) - held.at >= CONFIRM_MS) {
+    cut = { resets: newer.r.resets, at: held.at };
+    held = null;
+    return done(newer);
+  }
+  if (!held || !same(held, newer.r)) held = { resets: newer.r.resets, at: newer.at ?? 0 };
+  return done(older);
 }
 
 // One limit. `windowMs`: its window. Weeks are measured in usable hours, as the statusline does;

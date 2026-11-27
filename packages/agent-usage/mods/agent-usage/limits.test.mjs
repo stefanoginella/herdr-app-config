@@ -21,6 +21,38 @@ test('the cache file: the highest of the reading, the peak and the samples of th
   assert.equal(L.fromCache('{"sevenDay":null}'), null);
 });
 
+test('Codex in the widget: the newest line that is no copy, of the account\'s limit', () => {
+  const line = (iso, pct, extra = {}) => JSON.stringify({ timestamp: iso, type: 'event_msg', payload: { type: 'token_count', rate_limits: { primary: { used_percent: pct, window_minutes: 10080, resets_at: resets / 1000 }, secondary: null, limit_id: 'codex', ...extra } } });
+  const text = [
+    line('2026-11-25T09:00:00.000Z', 20),
+    line('2026-11-25T09:05:00.000Z', 21),
+    line('2026-11-25T09:06:00.000Z', 9, { limit_id: 'codex_bengalfox', limit_name: 'GPT-5.3-Codex-Spark' }), // Spark's own
+    line('2026-11-25T09:07:00.000Z', 31), line('2026-11-25T09:07:00.000Z', 32), // a copied history
+  ].join('\n');
+  assert.equal(L.codexLast(text).week.pct, 21);
+  assert.equal(L.codexLast(''), null);
+});
+
+test('Codex in the widget: a lower reading is held, and believed ten minutes on', () => {
+  const r = (pct) => ({ pct, resets });
+  const M = 60_000;
+  let keep = null;
+  const pick = (file, snap) => { const x = L.codexPick(file, snap, keep); keep = x.keep; return x.r?.pct ?? null; };
+  const snap = { at: now - 60 * M, r: r(60) };
+  assert.equal(pick({ at: now, r: r(61) }, snap), 61);
+  assert.equal(pick({ at: now, r: r(59) }, snap), 60); // a point under: noise
+  assert.equal(pick({ at: now, r: r(10) }, snap), 60); // held
+  assert.equal(pick({ at: now + 5 * M, r: r(11) }, snap), 60); // five minutes on
+  assert.equal(pick({ at: now + 6 * M, r: r(60) }, snap), 60); // a reading near it lets it go
+  assert.equal(pick({ at: now + 7 * M, r: r(10) }, snap), 60); // held again
+  assert.equal(pick({ at: now + 17 * M, r: r(12) }, snap), 12); // ten minutes on: a reset
+  assert.equal(pick(null, snap), null); // the dialog's, from before it, no longer counts
+  assert.equal(pick({ at: now + 18 * M, r: r(12) }, { at: now + 18 * M, r: r(13) }), 13);
+  // Another window: the newer, at once.
+  keep = null;
+  assert.equal(pick({ at: now, r: { pct: 2, resets: resets + 7 * DAY } }, snap), 2);
+});
+
 test('the verdict in each case', () => {
   const v = (pct) => L.verdict({ pct, resets, samples: [] }, now, now);
   assert.equal(v(20).level, 'ok');

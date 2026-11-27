@@ -5,7 +5,7 @@
 // limits step for Claude (`collect.mjs --limits`: the statusline's cache file, a few hundred
 // bytes, and limits.json, so the widget believes what the dialog does, a reset of the limit
 // too); without node, they read the cache file and its age themselves. Every CODEX_EVERY, one
-// small `sh` (CODEX_READ) prints the last rate_limits line of the newest Codex session file, and
+// small `sh` (CODEX_READ) prints the last rate_limits lines of the newest Codex session file, and
 // without one the dialog's snapshot stands in. Every dashboard collection publishes its limits
 // to the widget. Its refresh button reads both agents immediately using the same light poll.
 //
@@ -19,7 +19,7 @@
 import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { readTextFile, exec, home, appHome, theme, settings, layout, run, checking, agents, shared, setShared, window as app } from "herdr";
-import { fromCache, limitBlock, short, levelColor, WEEKDAYS, clock, byDanger, danger } from "./limits.js";
+import { fromCache, codexLast, codexPick, limitBlock, short, levelColor, WEEKDAYS, clock, byDanger, danger } from "./limits.js";
 import { WEEK_MS, HOUR_MS, burn, formatRate } from "./pace.js";
 
 const CACHE = () => `${home()}/.claude/statusline/.usage-cache.json`;
@@ -33,10 +33,9 @@ const TICK = 60_000;
 const CODEX_EVERY = 5 * 60_000;
 // A Claude reading older than this is drawn dim, with its time.
 const OLD = 6 * 3_600_000;
-// Readings of a Codex window whose resets are this close are of the same window.
-const JITTER = 3 * HOUR_MS;
 // The newest Codex session file of the last two day folders (<year>/<month>/<day>), and the last
-// line of its tail with a reading. The folder is the script's argument, never part of its text.
+// lines of its tail with a reading (codexLast picks the newest that is no copy). The folder is the
+// script's argument, never part of its text.
 const CODEX_READ = `cd "$1" 2>/dev/null || exit 0
 set --
 for d in $(ls -d [0-9]*/[0-9]*/[0-9]* 2>/dev/null | sort | tail -n 2); do
@@ -44,7 +43,7 @@ for d in $(ls -d [0-9]*/[0-9]*/[0-9]* 2>/dev/null | sort | tail -n 2); do
 done
 [ $# -gt 0 ] || exit 0
 f=$(ls -1t "$@" | head -n 1)
-tail -c 524288 "$f" | grep '"rate_limits":{' | tail -n 1`;
+tail -c 524288 "$f" | grep '"rate_limits":{' | tail -n 8`;
 const MONO = () => settings()?.font_family ?? "JetBrains Mono";
 // The agents' own icons, in full color, from the app's home.
 export const ICON = { claude: "icons/claude.svg", codex: "icons/codex.svg" };
@@ -57,25 +56,6 @@ function find(node, id) {
 }
 // The sidebar's rail goes by its width, as in space-folders.
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
-
-// A rate_limits line of a Codex session file: { at, week, short } (each { pct, resets, windowMs }).
-export function codexLine(line) {
-  let o;
-  try { o = JSON.parse(line); } catch { return null; }
-  const rl = o?.payload?.rate_limits;
-  if (!rl || typeof rl !== "object") return null;
-  const at = Date.parse(o.timestamp);
-  const ws = [rl.primary, rl.secondary].filter((x) => x && typeof x.used_percent === "number" && typeof x.resets_at === "number" && x.window_minutes > 0)
-    .map((x) => ({ pct: x.used_percent, resets: x.resets_at * 1000, windowMs: x.window_minutes * 60_000 }));
-  return { at: Number.isFinite(at) ? at : null, week: ws.find((x) => x.windowMs === WEEK_MS) ?? null, short: ws.find((x) => x.windowMs < 86_400_000) ?? null };
-}
-
-// The fresher of two readings of a window; of the same window, the higher.
-function fresher(a, b) {
-  if (!a?.r) return b; if (!b?.r) return a;
-  if (Math.abs(a.r.resets - b.r.resets) <= JITTER) return a.r.pct >= b.r.pct ? a : b;
-  return (a.at ?? 0) >= (b.at ?? 0) ? a : b;
-}
 
 function snapshotCodex(s) {
   const w = s?.weeks?.codex;
@@ -99,7 +79,8 @@ export default class Glance {
   init(cx, role) {
     this.role = role;
     this.reading = null;   // Claude's limits and the time of their reading
-    this.codex = null;     // { at, week, short }: the fresher of the session file's and the snapshot's
+    this.codex = null;     // { week, short }: the session file's or the snapshot's, by codexPick
+    this.codexKeep = { week: null, short: null }; // codexPick's held readings and resets, by kind
     this.codexAt = 0;
     this.dashboardAt = 0;
     this.pollId = 0;
@@ -192,18 +173,22 @@ export default class Glance {
     return { ...reading, at };
   }
 
-  // Codex's reading: the newest session file's, else the snapshot's; per window, the fresher.
+  // Codex's reading: the newest session file's or the snapshot's, per window kind (codexPick).
   async readCodex() {
     let file = null, snap = shared(DASHBOARD_LIMITS)?.codex ?? null;
     try {
       const r = await exec("sh", ["-c", CODEX_READ, "sh", CODEX_SESSIONS()], { timeout: 5000 });
-      if (r.code === 0 && r.stdout.trim()) file = codexLine(r.stdout.trim().split("\n").pop());
+      if (r.code === 0 && r.stdout.trim()) file = codexLast(r.stdout);
     } catch {}
     if (!snap) {
       try { snap = snapshotCodex(JSON.parse(await readTextFile(SNAPSHOT()) ?? "null")); } catch {}
     }
     if (!file && !snap) return null;
-    const pick = (k) => fresher(file && { at: file.at, r: file[k] }, snap && { at: snap.at, r: snap[k] })?.r ?? null;
+    const pick = (k) => {
+      const x = codexPick(file && { at: file.at, r: file[k] }, snap && { at: snap.at, r: snap[k] }, this.codexKeep[k]);
+      this.codexKeep[k] = x.keep;
+      return x.r;
+    };
     return { week: pick("week"), short: pick("short") };
   }
 

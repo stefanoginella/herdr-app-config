@@ -445,7 +445,7 @@ test('limits', () => {
     primary: { pct: 9, windowMinutes: 10080, resets: 1795969395000 },
     secondary: { pct: 20, windowMinutes: 300, resets: 1795600000000 },
     // 4, 5 and 6 inside one hour are one point; the repeat of 6 is no rise.
-    week: { pct: 9, resets: 1795969395000, trail: [[Date.parse('2026-11-20T09:02:00Z'), 6], [Date.parse('2026-11-21T10:05:00Z'), 9]] },
+    week: { pct: 9, resets: 1795969395000, trail: [[Date.parse('2026-11-20T09:02:00Z'), 6], [Date.parse('2026-11-21T10:05:00Z'), 9]], restarts: [] },
     weeks: [],
   });
 });
@@ -777,6 +777,57 @@ test('Codex estimates: priced when printed, from history too, never kept there',
   const top = d.top.find((x) => x.sessionId === 'now');
   close(top.cost, 21, 'top estimate');
   assert.equal(top.tok, 3_500_000);
+});
+
+test('Codex: a reading three points under or more is a reset once one ten minutes on is as low', () => {
+  const h = makeHome();
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-state-'));
+  const C = path.join(h.home, '.codex', 'sessions', '2026', '11', '22');
+  // `credits` makes each event its own: the same payload in another file would be its copy.
+  const RLR = (pct) => RL(pct, { credits: { balance: String(pct) } });
+  put(path.join(C, 'r-reset.jsonl'), jl(
+    { timestamp: '2026-11-21T11:00:00Z', type: 'session_meta', payload: { id: 'R', cwd: '/fixtures/u/proj', source: 'cli' } },
+    tokenCount('2026-11-21T11:00:00Z', null, null, RLR(8)), // a point under 9: noise
+    tokenCount('2026-11-22T08:00:00Z', null, null, RLR(2)), // held
+    tokenCount('2026-11-22T08:05:00Z', null, null, RLR(9)), // a reading near 9 lets it go
+    tokenCount('2026-11-22T08:06:00Z', null, null, RLR(3)), // held again
+    tokenCount('2026-11-22T08:20:00Z', null, null, RLR(4)), // ten minutes on and as low: the reset
+    tokenCount('2026-11-22T08:40:00Z', null, null, RLR(5)), // a rise in its hour: a point of its own
+    tokenCount('2026-11-22T08:50:00Z', null, null, RLR(6)), // which a rise in the same hour moves
+  ));
+  // A sub-agent's thread starting with a copy of its parent's history, stamped at its own start.
+  put(path.join(C, 'r-copy.jsonl'), jl(
+    tokenCount('2026-11-22T09:00:00.000Z', null, null, RL(40)),
+    tokenCount('2026-11-22T09:00:00.010Z', null, null, RL(41)),
+  ));
+  // A model's own limit (Spark's), the newest reading of all.
+  put(path.join(C, 'r-spark.jsonl'), jl(
+    tokenCount('2026-11-22T09:10:00Z', null, null, RL(1, { limit_id: 'codex_bengalfox', limit_name: 'GPT-5.3-Codex-Spark' })),
+  ));
+  const at = (iso) => Date.parse(iso);
+  const want = {
+    pct: 6, resets: 1795969395000, restarts: [[at('2026-11-22T08:06:00Z'), 9]],
+    trail: [[at('2026-11-20T09:02:00Z'), 6], [at('2026-11-21T10:05:00Z'), 9], [at('2026-11-22T08:06:00Z'), 3], [at('2026-11-22T08:20:00Z'), 4], [at('2026-11-22T08:50:00Z'), 6]],
+  };
+  const d = run(h.home, ['--no-state']).limits.codex;
+  assert.deepEqual(d.week, want);
+  assert.deepEqual([d.at, d.primary.pct], [at('2026-11-22T08:50:00Z'), 6]);
+  // Kept in limits.json and read again with the transcripts, it says the same, and so it does
+  // once the older transcripts are gone.
+  assert.deepEqual(run(h.home, ['--state', state]).limits.codex.week, want);
+  assert.deepEqual(run(h.home, ['--state', state]).limits.codex.week, want);
+  fs.rmSync(path.join(h.home, '.codex', 'sessions', '2026', '11', '20'), { recursive: true, force: true });
+  fs.rmSync(path.join(h.home, '.codex', 'sessions', '2026', '11', '21'), { recursive: true, force: true });
+  assert.deepEqual(run(h.home, ['--state', state]).limits.codex.week, want);
+});
+
+test('Codex: servers that disagree turn by turn are no reset', () => {
+  const h = makeHome();
+  const rows = [];
+  for (let i = 0; i < 16; i++) rows.push(tokenCount(new Date(Date.parse('2026-11-23T10:00:00Z') + i * 120000).toISOString(), null, null, RL(i % 2 ? 9 : 0)));
+  put(path.join(h.home, '.codex', 'sessions', '2026', '11', '23', 'r-two.jsonl'), jl(...rows));
+  const w = run(h.home, ['--no-state']).limits.codex.week;
+  assert.deepEqual([w.pct, w.restarts], [9, []]);
 });
 
 test('Codex weeks: earlier windows kept in limits.json and printed, newest first', () => {

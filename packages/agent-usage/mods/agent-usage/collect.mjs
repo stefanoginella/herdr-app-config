@@ -26,8 +26,9 @@
 //   sessions  sessions a day, per project
 //   limits    claude: the statusline's reading as believed (claudeStep), its trail, its restarts
 //             (resets of the limit inside the window) and earlier weeks; codex: the newest
-//             rate_limits (primary, secondary, plan) and, for its weekly window, a trail of the
-//             readings (week: { pct, resets, trail }) and the earlier weeks' peaks (weeks)
+//             rate_limits (primary, secondary, plan) and, for its weekly window, the reading, the
+//             trail of the readings and its restarts (week: { pct, resets, trail, restarts },
+//             codexTrail) and the earlier weeks' peaks (weeks)
 //   top       the TOP_MOST biggest sessions by tokens of the last TOP_DAYS, both agents
 //   recent    what each project spent in the last 60 and 15 minutes (replies, tokens, cost)
 //   older     Claude Code's own daily counts from before the first transcript
@@ -52,11 +53,16 @@ const RECENT_SHORT_MS = 15 * 60000;
 const HOURLY_DAYS = 8; // the days (today included) whose rows keep their hour
 const SETTLED_DAYS = 2; // a day at least this old is merged into history
 const TRAIL_WEEKS = 12; // weekly-limit trails kept
-// Claude's weekly reading (claudeStep): a reading this many points under the believed one, or,
-// after a reset, as many over it, is believed once two writes of the statusline's file this far
-// apart both say it.
-const CLAUDE_CHECK_POINTS = 3;
-const CLAUDE_CONFIRM_MS = 10 * 60000;
+// A weekly reading this many points under the believed one can be a reset of the limit, not
+// noise (two servers a tick apart). Claude's (claudeStep) and Codex's (codexTrail) are believed
+// once a second reading at least CONFIRM_MS later says it too (Claude's at once when its
+// statusline saw the reset).
+const CHECK_POINTS = 3;
+const CONFIRM_MS = 10 * 60000;
+// Codex's token_count events of one file this close in time are a copy of another thread's
+// history (a sub-agent's thread starts with its parent's, stamped at its own start): their limits
+// are that thread's old readings, and are left out.
+const CODEX_BURST_MS = 50;
 const HEAD_MOST = 1 << 20; // bytes read from a transcript's start to find its first cwd
 const LOCK_WAIT = 15000;
 const LOCK_STALE = 60000;
@@ -802,18 +808,42 @@ const sessKey = (r) => [r.d, r.agent, r.where, r.box, r.project].join(SEP);
 const weight = (m) => m.in + 5 * m.out + 0.1 * m.cr + 1.25 * m.cw5 + 2 * m.cw1h;
 const round6 = (x) => Math.round(x * 1e6) / 1e6;
 
-// Readings [ms, pct], oldest first, as a trail: only a rise, at most one point an hour (a rise
-// inside the hour of the last point moves that point).
-function risesHourly(points) {
-  const out = [];
+// A Codex window's readings [ms, pct] (copies and other limits already left out) as its trail.
+// Inside a window it only rises, at most one point an hour (a rise inside the hour of the last
+// point moves that point). A reading under the last by fewer than CHECK_POINTS is noise; one by
+// CHECK_POINTS or more is held, and believed as a reset of the limit once a reading at least
+// CONFIRM_MS later is as low, with none in between that denies it: OpenAI's servers have
+// disagreed for an hour about the window (0% from one, 9% from another, turn by turn), and in 60
+// weeks of readings no reset was found that way. A reset is a restart [the time of the first low
+// reading, the reading before it], and two points that a later rise never moves (the first low
+// reading and the one that confirmed it), so the trail read again says the same.
+// → { trail, restarts, pct: the reading believed, the last point's }
+function codexTrail(points) {
+  const trail = [], restarts = [];
+  let fixed = -1, pend = null;
   for (const [ts, pct] of [...points].sort((a, b) => a[0] - b[0])) {
-    const last = out[out.length - 1];
+    const last = trail[trail.length - 1];
+    if (last && pct <= last[1] - CHECK_POINTS) {
+      if (!pend) pend = [ts, pct];
+      else if (ts - pend[0] >= CONFIRM_MS) {
+        restarts.push([pend[0], last[1]]);
+        trail.push([pend[0], pend[1]], [ts, Math.max(pct, pend[1])]);
+        fixed = trail.length - 1;
+        pend = null;
+      }
+      continue;
+    }
+    pend = null;
     if (last && pct <= last[1]) continue;
-    if (last && Math.floor(ts / 3600000) === Math.floor(last[0] / 3600000)) { last[0] = ts; last[1] = pct; continue; }
-    out.push([ts, pct]);
+    if (last && trail.length - 1 !== fixed && Math.floor(ts / 3600000) === Math.floor(last[0] / 3600000)) { last[0] = ts; last[1] = pct; continue; }
+    trail.push([ts, pct]);
   }
-  return out;
+  return { trail, restarts, pct: trail.length ? trail[trail.length - 1][1] : null };
 }
+
+// A Codex reading of a model's own limit (Spark's: a limit_name, a limit_id other than codex),
+// not the account's.
+const codexOwnLimit = (rl) => (typeof rl.limit_name === 'string' && rl.limit_name !== '') || (typeof rl.limit_id === 'string' && rl.limit_id !== 'codex');
 
 // The earlier weeks of a limit, newest first, from { resets: trail }: the highest reading each reached.
 function earlierWeeks(weeks, current) {
@@ -1073,9 +1103,10 @@ function finish(col, sources, home, now) {
     tops.push({ ...rest, model, cost: x.cost === null ? null : round6(x.cost), est: true, sub: x.tok > 0 ? Math.round((subTok / x.tok) * 1e4) / 1e4 : 0 });
   }
 
-  // --- Codex limits: the newest event carrying them, replays of other files' events left out.
+  // --- Codex limits: the newest event carrying them, replays of other files' events left out, and
+  // copies of another thread's history (CODEX_BURST_MS) and a model's own limits too.
   // Every reading of the weekly window, grouped by its reset (codexWindows), is that window's
-  // trail: at most one point an hour, and only a rise.
+  // trail (codexTrail): at most one point an hour, only a rise but at a reset of the limit.
   let codexLimits = null;
   const codexWindows = [];
   {
@@ -1086,8 +1117,12 @@ function finish(col, sources, home, now) {
     }
     let newest = null;
     const weekly = [];
+    for (const st of xfiles) st.limits.forEach((l, i, a) => {
+      const near = (j) => j >= 0 && j < a.length && Math.abs(a[j].ts - l.ts) <= CODEX_BURST_MS;
+      l.copy = near(i - 1) || near(i + 1);
+    });
     for (const st of xfiles) for (const l of st.limits) {
-      if (firstFile.get(l.fp)[1] !== st.file) continue;
+      if (firstFile.get(l.fp)[1] !== st.file || l.copy || codexOwnLimit(l.rl)) continue;
       if (!newest || l.ts > newest.ts) newest = l;
       const w = [l.rl.primary, l.rl.secondary].find((x) => x && typeof x === 'object' && x.window_minutes === CODEX_WEEK_MIN && typeof x.used_percent === 'number' && typeof x.resets_at === 'number');
       if (w) weekly.push([l.ts, w.used_percent, w.resets_at * 1000]);
@@ -1098,7 +1133,7 @@ function finish(col, sources, home, now) {
       if (!win) { win = { resets, points: [] }; codexWindows.push(win); }
       win.points.push([ts, pct]);
     }
-    for (const win of codexWindows) win.trail = risesHourly(win.points);
+    for (const win of codexWindows) Object.assign(win, codexTrail(win.points));
     if (newest) {
       const w = (p) => (p && typeof p === 'object' ? {
         pct: typeof p.used_percent === 'number' ? p.used_percent : null,
@@ -1109,7 +1144,7 @@ function finish(col, sources, home, now) {
       const wk = [codexLimits.primary, codexLimits.secondary].find((x) => x && x.windowMinutes === CODEX_WEEK_MIN && x.resets !== null && x.pct !== null);
       const win = wk ? codexWindows.find((x) => Math.abs(x.resets - wk.resets) <= CODEX_JITTER_MS) : null;
       if (wk && win) {
-        codexLimits.week = { pct: Math.max(wk.pct, ...win.trail.map((x) => x[1])), resets: wk.resets, trail: win.trail };
+        codexLimits.week = { pct: win.pct, resets: wk.resets, trail: win.trail, restarts: win.restarts };
         win.current = true;
       }
       codexLimits.weeks = [];
@@ -1177,15 +1212,15 @@ const pairs = (a) => (Array.isArray(a) ? a.filter((x) => Array.isArray(x) && Num
 // A statusline that keeps each session's last reading (`week.seen`, obs.judged) tells the two
 // apart itself: its `peak` only rises, but at a reset, which it sees as a session's own reading
 // moving well under the peak (an idle session's reading doesn't move). Then the peak is the
-// reading, and a peak CLAUDE_CHECK_POINTS or more under the believed reading is a restart at
+// reading, and a peak CHECK_POINTS or more under the believed reading is a restart at
 // once, at the first of the statusline's samples after it (they start again at its reset).
 // `sevenDay`, whoever wrote last, is left out: idle sessions all write theirs when a resize
 // redraws every statusline.
 //
 // Without `seen` the file can't tell them apart, so a reading that would undo what is believed is
-// held (`pend`) until a second write of the file, CLAUDE_CONFIRM_MS later at least, says it too,
+// held (`pend`) until a second write of the file, CONFIRM_MS later at least, says it too,
 // with no reading in between that denies it:
-//   - a drop of CLAUDE_CHECK_POINTS or more under the believed reading: a reset, once confirmed,
+//   - a drop of CHECK_POINTS or more under the believed reading: a reset, once confirmed,
 //     kept as a restart [the time of the first lower reading, the reading before it];
 //   - after a restart, a rise of as many that goes no higher than the week had been before it: a
 //     session with no reply since the reset puts its old reading back (the statusline's peak too,
@@ -1223,7 +1258,7 @@ function claudeStep(prev, obs) {
     return out(hi);
   }
   const b = last[1];
-  if (judged && hi <= b - CLAUDE_CHECK_POINTS) {
+  if (judged && hi <= b - CHECK_POINTS) {
     const first = obs.samples.find((x) => x[0] > last[0] && x[0] < obs.at && x[1] <= hi);
     const at0 = first ? first[0] : Math.max(obs.at, last[0] + 1);
     restarts.push([at0, b]);
@@ -1232,8 +1267,8 @@ function claudeStep(prev, obs) {
     pend = null;
     return out(hi);
   }
-  const dir = !judged && obs.pct <= b - CLAUDE_CHECK_POINTS ? 'down'
-    : cut && hi >= b + CLAUDE_CHECK_POINTS && hi <= ceil ? 'up' : null;
+  const dir = !judged && obs.pct <= b - CHECK_POINTS ? 'down'
+    : cut && hi >= b + CHECK_POINTS && hi <= ceil ? 'up' : null;
   if (dir === 'up' && judged) {
     pend = null;
     // No look to compare with yet: this one's `seen` is kept, and the next look decides.
@@ -1251,7 +1286,7 @@ function claudeStep(prev, obs) {
   const seen = dir === 'down' ? obs.pct : hi;
   if (!pend || pend.dir !== dir) { pend = { dir, at: obs.at, pct: seen, last: obs.at }; return out(b); }
   if (obs.at <= pend.last) return out(b); // the same write again
-  if (obs.at - pend.at < CLAUDE_CONFIRM_MS) { pend = { ...pend, last: obs.at }; return out(b); }
+  if (obs.at - pend.at < CONFIRM_MS) { pend = { ...pend, last: obs.at }; return out(b); }
   const at0 = Math.max(pend.at, last[0] + 1);
   if (dir === 'down') restarts.push([at0, b]);
   trail.push([at0, pend.pct]);
@@ -1376,22 +1411,19 @@ function history(stateDir, res, limits, codex) {
     const xweeks = l.codexWeeks && typeof l.codexWeeks === 'object' ? l.codexWeeks : {};
     let lchanged = false;
     // Codex: every window the transcripts still hold joins the one kept under a reset close to
-    // its own; the trail is worked out again from both.
-    let xkey = null;
+    // its own; the trail, its restarts and the reading are worked out again from both.
+    let xkey = null, xnow = null;
     for (const win of res.codexWindows || []) {
       const k = Object.keys(xweeks).find((x) => Math.abs(Number(x) - win.resets) <= CODEX_JITTER_MS) ?? String(win.resets);
-      const old = Array.isArray(xweeks[k]) ? xweeks[k] : [];
-      const trail = risesHourly([...old, ...win.trail]);
-      if (JSON.stringify(trail) !== JSON.stringify(old)) { xweeks[k] = trail; lchanged = true; }
-      if (win.current) xkey = k;
+      const old = pairs(xweeks[k]);
+      const merged = codexTrail([...old, ...win.trail]);
+      if (JSON.stringify(merged.trail) !== JSON.stringify(xweeks[k])) { xweeks[k] = merged.trail; lchanged = true; }
+      if (win.current) { xkey = k; xnow = merged; }
     }
     const xkeys = Object.keys(xweeks).sort((a, b) => Number(a) - Number(b));
     while (xkeys.length > TRAIL_WEEKS) { delete xweeks[xkeys.shift()]; lchanged = true; }
     if (codex) {
-      if (codex.week && xkey !== null && xweeks[xkey]) {
-        codex.week.trail = xweeks[xkey];
-        codex.week.pct = Math.max(codex.week.pct, ...xweeks[xkey].map((x) => x[1]));
-      }
+      if (codex.week && xnow) Object.assign(codex.week, { trail: xnow.trail, restarts: xnow.restarts, pct: xnow.pct });
       codex.weeks = earlierWeeks(xweeks, xkey);
     }
     let key = null;
