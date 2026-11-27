@@ -1,6 +1,6 @@
 # `mark-agents-unread`
 
-Notes for agents on the mod in `mods/mark-agents-unread/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/mark-agents-unread/mods/mark-agents-unread/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 The gallery calls this mod Mark Agents Unread, and the sidebar heading is Agents. It is a clone of Herdr's `agents` list (from version 0.1.18) where an idle agent can be marked unread. A marked agent is drawn with the done dot and appears in the Done section in the priority view.
 

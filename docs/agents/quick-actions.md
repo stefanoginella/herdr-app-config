@@ -1,6 +1,6 @@
 # Quick Actions
 
-This is the standalone Quick Actions mod from PowerMods, adapted for this layout. The sources were taken from `quick-actions-app/mods/quick-actions` at commit `93c58b5a7d0b3ab7564c45e9ecad68cc1e10cc7c` of [the upstream repository](https://github.com/dougcunha/herdr-mods/tree/93c58b5a7d0b3ab7564c45e9ecad68cc1e10cc7c/quick-actions-app). The upstream MIT license accompanies the mod. Herdr runs the mod from its own folder.
+This is the standalone Quick Actions mod from PowerMods, adapted for this layout. Its sources and MIT license are in `packages/quick-actions/mods/quick-actions/`. They were taken from `quick-actions-app/mods/quick-actions` at commit `93c58b5a7d0b3ab7564c45e9ecad68cc1e10cc7c`. [Upstream source](https://github.com/dougcunha/herdr-mods/tree/93c58b5a7d0b3ab7564c45e9ecad68cc1e10cc7c/quick-actions-app)
 
 ## What is where
 

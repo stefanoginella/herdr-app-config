@@ -16,7 +16,7 @@ s_diff() {
   h pane.focus "{\"terminal\":\"$TERM1\"}"
   local pane; pane=$(herdr-app do pane.split "{\"direction\":\"right\",\"mod\":\"git-diff\",\"props\":{\"tab\":\"$T1\"}}" | py -c 'import json, sys; print(json.load(sys.stdin).get("pane", ""))')
   nap 1.5; h pane.zoom "{\"pane\":\"$pane\"}"; draw 3
-  req "[{\"shared\":[\"git-diff.open\",{\"tab\":\"$T1\",\"root\":\"$R\",\"on\":null,\"source\":{\"kind\":\"work\"},\"path\":\"mods/git-panel/lanes.js\",\"group\":\"staged\",\"at\":\"now\"}]}]" 6
+  req "[{\"shared\":[\"git-diff.open\",{\"tab\":\"$T1\",\"root\":\"$R\",\"on\":null,\"source\":{\"kind\":\"work\"},\"path\":\"packages/git-panel/mods/git-panel/lanes.js\",\"group\":\"staged\",\"at\":\"now\"}]}]" 6
   h git-diff.split
   h git-diff.viewed; nap 1; draw 5
   shot diff
@@ -33,20 +33,22 @@ s_editor() {
   h file-editor.preview; h file-editor.toggle-pin; nap 0.5; draw 2
 }
 
-# The Files panel with a file's menu. The panel unfolds a folder when something is made in it: a
-# folder in mods, then the test file in mods/git-panel, which is put back as it was.
+# The Files panel with a file's menu. Making an entry unfolds its parent.
 s_files() {
   zoom 1.45; h layout.hide '{"id":"sidebar"}'; h layout.show '{"id":"panel"}'
   h layout.select '{"stack":"panel-body","child":"files"}'; h layout.resize '{"id":"panel","px":340}'; nap 1; draw 3
-  local f=mods/git-panel/initials.test.mjs
+  local folder f=packages/git-panel/mods/git-panel/initials.test.mjs
   cp "$R/$f" "$DEMO/initials.test.mjs"
-  req "[{\"shared\":[\"file-explorer.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"mods/zz-tmp\",\"dir\":true,\"at\":\"now\"}]}]" 6
+  for folder in packages packages/git-panel packages/git-panel/mods; do
+    req "[{\"shared\":[\"file-explorer.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"$folder/zz-tmp\",\"dir\":true,\"at\":\"now\"}]}]" 6
+    rmdir "${R:?}/$folder/zz-tmp"
+  done
   rm -f "${R:?}/${f:?}"; nap 2; draw 3
   req "[{\"shared\":[\"file-explorer.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"$f\",\"dir\":false,\"at\":\"now\"}]}]" 6
-  rmdir "${R:?}/mods/zz-tmp"; cp "$DEMO/initials.test.mjs" "$R/$f"; nap 2; draw 3
-  open_file "$R/mods/git-panel/git.js" 131
+  cp "$DEMO/initials.test.mjs" "$R/$f"; nap 2; draw 3
+  open_file "$R/packages/git-panel/mods/git-panel/git.js" 131
   # `at` is in window pixels: left of the file's row, as the menu opens when there is no room below.
-  req "[{\"overlay\":{\"mod\":\"file-explorer\",\"kind\":\"popup\",\"width\":236,\"height\":620,\"at\":{\"x\":1330,\"y\":215},\"props\":{\"menu\":{\"root\":\"$R\",\"on\":null,\"path\":\"mods/git-panel/git.js\",\"dir\":false,\"project\":\"$R\",\"repo\":\"$R\"}}}}]" 5
+  req "[{\"overlay\":{\"mod\":\"file-explorer\",\"kind\":\"popup\",\"width\":236,\"height\":620,\"at\":{\"x\":1330,\"y\":215},\"props\":{\"menu\":{\"root\":\"$R\",\"on\":null,\"path\":\"packages/git-panel/mods/git-panel/git.js\",\"dir\":false,\"project\":\"$R\",\"repo\":\"$R\"}}}}]" 5
   shot file-actions
   h overlay.close; nap 0.8
 }
@@ -54,7 +56,7 @@ s_files() {
 # Project search with a replacement, opened from the editor.
 s_search() {
   zoom 1.45; h layout.hide '{"id":"sidebar"}'; h layout.show '{"id":"panel"}'; h layout.resize '{"id":"panel","px":340}'
-  open_file "$R/mods/git-panel/git.js" 131
+  open_file "$R/packages/git-panel/mods/git-panel/git.js" 131
   req "[{\"shared\":[\"project-search.ask\",{\"query\":\"initials\",\"to\":\"monogram\",\"focus\":false,\"at\":\"now\"}]},{\"run\":[\"project-search.open\",{}]}]" 8
   nap 2; draw 4
   shot search
@@ -101,7 +103,7 @@ s_window() {
   zoom 1.3; h layout.show '{"id":"sidebar"}'; h layout.resize '{"id":"sidebar","px":290}'; h layout.show '{"id":"panel"}'
   h layout.select '{"stack":"panel-body","child":"changes"}'; h layout.resize '{"id":"panel","px":430}'
   h pane.focus "{\"terminal\":\"$TERM1\"}"; draw 3
-  open_file "$R/mods/git-panel/git.js" 145; nap 3; draw 4
+  open_file "$R/packages/git-panel/mods/git-panel/git.js" 145; nap 3; draw 4
   shot hero
   h hide-names.toggle; nap 1.5; draw 4; shot hidden
   h hide-names.toggle; nap 1; draw 3
@@ -124,7 +126,7 @@ s_usage() {
 s_review() {
   zoom 1.45
   req '[{"overlay":{"mod":"git-diff","kind":"window","key":"branch-demo","width":1080,"height":585,"props":{"tab":"branch-demo"}}}]' 3
-  req "[{\"shared\":[\"git-diff.open\",{\"tab\":\"branch-demo\",\"root\":\"$R\",\"on\":null,\"source\":{\"kind\":\"branch\",\"branch\":\"refs/heads/feat/editor-minimap\",\"base\":\"refs/heads/main\"},\"path\":\"mods/file-editor/minimap.js\",\"at\":\"now\"}]}]" 7
+  req "[{\"shared\":[\"git-diff.open\",{\"tab\":\"branch-demo\",\"root\":\"$R\",\"on\":null,\"source\":{\"kind\":\"branch\",\"branch\":\"refs/heads/feat/editor-minimap\",\"base\":\"refs/heads/main\"},\"path\":\"packages/file-editor/mods/file-editor/minimap.js\",\"at\":\"now\"}]}]" 7
   shot branch-review
   h overlay.close --id "$(py -c 'import json, sys; print(json.load(open(sys.argv[1]))["stage.last"])' "$A/shared.json")"
 }

@@ -1,6 +1,6 @@
 # `git-panel`
 
-Notes for agents on the mod in `mods/git-panel/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/git-panel/mods/git-panel/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 The Git Panel replaces Herdr's `changes` view. Its gallery title and panel heading both read Git Panel. It shows commit history as a graph, branches, remotes, tags, stashes and uncommitted changes, with actions for day-to-day Git work.
 

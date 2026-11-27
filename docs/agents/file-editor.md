@@ -1,6 +1,6 @@
 # `file-editor`
 
-Notes for agents on the mod in `mods/file-editor/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/file-editor/mods/file-editor/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 A text editor that opens as a pane beside the terminals. It is not a clone: Herdr ships nothing like it. One editor a tab, its open files as a strip of tabs; long lines wrapped or not (a file at a time), save, find and replace, Markdown shortcuts and a rendered preview where the find bar's matches are lit, previews of images, PDFs, CSV, SVG and HTML, a file status bar, comment and line commands, and marks where a file differs from the last commit.
 

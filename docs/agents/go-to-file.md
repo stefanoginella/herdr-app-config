@@ -1,6 +1,6 @@
 # `go-to-file`
 
-Notes for agents on the mod in `mods/go-to-file/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/go-to-file/mods/go-to-file/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 Go to a file of the project by its name, in a popup like Herdr's own "Go to…" for tabs (`picker`, which keeps Cmd+P). It is not a clone. ripgrep (`rg`) lists the files, on the project's own machine; the file opens in the tab's `file-editor`.
 

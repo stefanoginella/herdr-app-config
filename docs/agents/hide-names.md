@@ -1,6 +1,6 @@
 # Hide names
 
-Notes for agents on the window's hide names mode, and on the three clones made for it: the mods in `mods/tabs-names/`, `mods/pane-names/` and `mods/hide-names/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the window's hide names mode, and on the three clones made for it: the mods in `packages/hide-names/mods/tabs-names/`, `packages/hide-names/mods/pane-names/` and `packages/hide-names/mods/hide-names/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 A mode of the whole window for a screenshot or a screen share, in which the names around the content are plausible made-up ones ("atlas", "Clients", "Refactor search index", `feat/search-filters`, "studio"). Shared `names.hidden` (`true`, else absent or `false`). `hide-names.toggle` turns it on and off (`cmd-shift-h` in `global`, and the palette's "Hide Names / Show Names"); the Usage dialog's toggle, its `h` key and `agent-usage.names` set the same flag. What it changes: the sidebar (`space-folders`), the agents list (`mark-agents-unread`), the tab bar (`tabs-names`), the pane headers (`pane-names`), the status bar (`hide-names`) and the Usage dialog (`agent-usage`). What it leaves: the panes' content (terminals, the editor, the diff) and the right panel (`file-explorer`, `git-panel`, `project-search`), which are content the owner chose to show.
 
@@ -11,9 +11,9 @@ A mode of the whole window for a screenshot or a screen share, in which the name
 
 ## The three clones
 
-- **Mod `tabs-names`** (`mods/tabs-names/`): a clone of Herdr's `tabs` (from version 0.1.18). The one change: while names are hidden, a tab's label is `alias.label()` of what it would show (a tab's number and a bare program's name stay). The clone began with an empty `localStorage`: which side panel each space showed (`panels`) was Herdr's copy's, and is learned again.
-- **Mod `pane-names`** (`mods/pane-names/`): a clone of Herdr's `pane` header (from version 0.1.18). The one change: while names are hidden, the folder is `alias.path()` (the space's real name, found through the pane's tab, picks the segment), and a terminal's name is its program's, or `alias.label()` of a name someone gave the pane, never the terminal's own title. A mod pane's name stays: it is the file shown.
-- **Mod `hide-names`** (`mods/hide-names/`): a clone of Herdr's `workspace-status` (from version 0.1.18). Changes: while names are hidden, `alias.machine()` for another machine and `alias.branch()` for the branch; the key command `toggle` (taken through `nextCommand()`, so by the copy on screen, which this one always is), in the palette through `mod.json`; and the start check above.
+- **Mod `tabs-names`** (`packages/hide-names/mods/tabs-names/`): a clone of Herdr's `tabs` (from version 0.1.18). The one change: while names are hidden, a tab's label is `alias.label()` of what it would show (a tab's number and a bare program's name stay). The clone began with an empty `localStorage`: which side panel each space showed (`panels`) was Herdr's copy's, and is learned again.
+- **Mod `pane-names`** (`packages/hide-names/mods/pane-names/`): a clone of Herdr's `pane` header (from version 0.1.18). The one change: while names are hidden, the folder is `alias.path()` (the space's real name, found through the pane's tab, picks the segment), and a terminal's name is its program's, or `alias.label()` of a name someone gave the pane, never the terminal's own title. A mod pane's name stays: it is the file shown.
+- **Mod `hide-names`** (`packages/hide-names/mods/hide-names/`): a clone of Herdr's `workspace-status` (from version 0.1.18). Changes: while names are hidden, `alias.machine()` for another machine and `alias.branch()` for the branch; the key command `toggle` (taken through `nextCommand()`, so by the copy on screen, which this one always is), in the palette through `mod.json`; and the start check above.
 - In each of the three clones a changed region is marked with a comment that starts `names:`, so a port at the next Herdr update copies Herdr's new file and puts those regions back.
 
 ## Behavior to preserve

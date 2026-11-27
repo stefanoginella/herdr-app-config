@@ -38,7 +38,7 @@ The command palette and `keys.json` can invoke `git-panel.branches`, `git-panel.
 
 The program runs on this Mac, with your own login to it, in your home folder, with no tools and no session kept. It is sent, as its prompt: the diff of what is about to be committed (what is staged, else everything, cut at 60,000 characters), the text of new files (a few thousand characters), the branch's name and the last twelve commit messages. So whatever is in that diff goes to Anthropic or OpenAI: look before you ask when a change holds something secret. For a repository on another machine git is read there, and the program still runs here.
 
-Who can write, and with which model, is the list at the top of `mods/git-panel/write.js`: a model's name is the program's own (`claude --model`, `codex exec --model`), and Codex's change over time.
+Who can write, and with which model, is the list at the top of `packages/git-panel/mods/git-panel/write.js`: a model's name is the program's own (`claude --model`, `codex exec --model`), and Codex's change over time.
 
 ---
 

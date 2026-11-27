@@ -1,27 +1,13 @@
-"""Refresh the files distributed in the Herdr gallery from the live configuration."""
+"""Refresh package shortcuts and gallery previews."""
 
 import argparse
 import json
-import subprocess
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Gallery slug -> mod folders shipped together.
-FEATURES = {
-    "agent-usage": ["agent-usage"],
-    "space-folders": ["space-folders"],
-    "mark-agents-unread": ["mark-agents-unread"],
-    "git-panel": ["git-panel"],
-    "git-diff": ["git-diff"],
-    "file-editor": ["file-editor", "editor-links"],
-    "project-search": ["project-search"],
-    "go-to-file": ["go-to-file"],
-    "file-explorer": ["file-explorer"],
-    "hide-names": ["tabs-names", "pane-names", "hide-names"],
-}
 PICTURES = {"agent-usage": "usage", "mark-agents-unread": "unread-agents", "file-explorer": "file-actions"}
 
 
@@ -82,11 +68,6 @@ def gallery_card(title, spec, picture=None):
     return canvas
 
 
-def tracked(*paths):
-    raw = subprocess.check_output(["git", "ls-files", "-z", "--", *paths], cwd=ROOT)
-    return [Path(p.decode()) for p in raw.split(b"\0") if p]
-
-
 def feature_keys(feature, mods, keys):
     result = {}
     sections = {"mod:" + mod for mod in mods}
@@ -116,10 +97,9 @@ def main():
     keys = json.loads((ROOT / "keys.json").read_text())
     cards = json.loads((ROOT / "docs/gallery-cards.json").read_text())
     changed = []
-    expected = set()
+    expected_keys = set()
 
     def put(path, data):
-        expected.add(path)
         dest = ROOT / path
         if dest.is_file() and dest.read_bytes() == data:
             return
@@ -146,31 +126,34 @@ def main():
 
     cover = preview(Path("."), cards["power-tools"])
     put_image(Path("docs/images/power-tools.webp"), cover, "WEBP", lossless=True, method=6)
-    for feature, mods in FEATURES.items():
-        folder = Path("packages") / feature
-        sources = tracked(*["mods/" + mod for mod in mods])
-        for mod in mods:
-            if Path("mods", mod, "mod.json") not in sources:
-                raise ValueError(f"Missing tracked manifest for {mod}")
-        for source in sources:
-            if (ROOT / source).is_file():
-                put(folder / source, (ROOT / source).read_bytes())
+    folders = sorted(path.parent.relative_to(ROOT) for path in (ROOT / "packages").glob("*/mods"))
+    missing = cards.keys() - {"power-tools"} - {folder.name for folder in folders}
+    if missing:
+        raise ValueError(f"Missing gallery packages: {', '.join(sorted(missing))}")
+    for folder in folders:
+        feature = folder.name
+        mods = [path.parent.name for path in (ROOT / folder).glob("mods/*/mod.json")]
+        if not mods:
+            raise ValueError(f"Missing mod manifests in {folder}")
         bindings = feature_keys(feature, mods, keys)
         if bindings:
-            put(folder / "keys.json", (json.dumps(bindings, indent=2) + "\n").encode())
-        preview(folder, cards[feature], PICTURES.get(feature, feature))
+            path = folder / "keys.json"
+            expected_keys.add(path)
+            put(path, (json.dumps(bindings, indent=2) + "\n").encode())
+        if feature in cards:
+            preview(folder, cards[feature], PICTURES.get(feature, feature))
 
-    # Only remove previously published, generated files that have lost their source.
-    for path in tracked("packages/*/mods/**", "packages/*/keys.json"):
-        if path not in expected and (ROOT / path).is_file():
+    for dest in (ROOT / "packages").glob("*/keys.json"):
+        path = dest.relative_to(ROOT)
+        if path not in expected_keys:
             changed.append(path)
             if not check:
-                (ROOT / path).unlink()
+                dest.unlink()
     if check and changed:
         for path in changed:
             print(path)
         raise SystemExit("Refresh the gallery with python3 docs/gallery.py")
-    print(f"{len(FEATURES)} feature packages, {len(changed)} files {'stale' if check else 'refreshed'}")
+    print(f"{len(folders)} packages, {len(changed)} files {'stale' if check else 'refreshed'}")
 
 
 if __name__ == "__main__":

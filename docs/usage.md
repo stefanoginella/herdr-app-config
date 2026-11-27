@@ -38,7 +38,7 @@ Above Spaces, the widget shows the limit closest to running out for each agent, 
 
 It only reads, and it asks the network nothing.
 
-- **Usage:** Claude Code's transcripts and cost records (`~/.claude/projects`) and Codex's sessions (`~/.codex/sessions`), read by one Node script, `mods/agent-usage/collect.mjs`. It needs `node` 18 or later, and uses ripgrep when there is one.
+- **Usage:** Claude Code's transcripts and cost records (`~/.claude/projects`) and Codex's sessions (`~/.codex/sessions`), read by one Node script, `packages/agent-usage/mods/agent-usage/collect.mjs`. It needs `node` 18 or later, and uses ripgrep when there is one.
 - **Limits:** Codex's come from its own session files. Claude's come from the file my statusline writes, `~/.claude/statusline/.usage-cache.json`: without one there is no Claude limit, and the usage still shows.
 - **Other machines:** the same script runs there through Herdr, with nothing installed. A machine that fails, or has no `node`, is shown as unreachable.
 - **Dev containers:** read through `docker`, and counted as their project's.

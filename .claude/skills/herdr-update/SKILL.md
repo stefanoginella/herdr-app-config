@@ -36,7 +36,7 @@ Done when: start, installed, and every version between them (the `## [x.y.z]` he
 - Herdr restarted into the installed version: `last_run` in `update-notes.json` is the installed version. If it isn't, report that Herdr hasn't restarted yet and skip the rest of this step.
 - `herdr-app status` shows `"layout": "herdr-powertools"` and `"errors": []`.
 - `find . -maxdepth 2 -name '*.error'` finds nothing (`layout.error`, `keys.error`, `settings.error`, `programs.error`: a file Herdr refused).
-- `herdr-app check mods/<name>` passes for every custom mod: the `!/mods/<name>/` lines of `.gitignore`.
+- `herdr-app check mods/<name>` passes for every custom mod listed by `packages/*/mods/*/mod.json`.
 
 Done when: each of these has a result, and every custom mod has a pass or fail line with any warnings, quoting the exact error on a fail.
 
@@ -49,7 +49,7 @@ gh api "repos/herdrdev/herdr-app/contents/<original>?ref=v<start>" -H "Accept: a
 diff <scratch>/<name>.old <installed copy>
 ```
 
-The clones, copied from a shipped file (`grep -l cloned_from mods/*/mod.json layouts/*.json` finds them all):
+The clones, copied from a shipped file (`rg -l cloned_from packages/*/mods/*/mod.json layouts/*.json` finds them all):
 
 | Clone | `<original>` | Installed copy |
 |---|---|---|
@@ -129,9 +129,9 @@ Every proposed change starts under "Open". The repository is public, so an entry
 
 Make a proposed change only after the owner names it. Then:
 
-- Port the change into the clone, run `herdr-app check` on it and `herdr-app status`, and look with `herdr-app shot`.
+- Port the change into the clone under `packages/`. Run `python3 docs/sync-mods.py`, run `herdr-app check` on the runtime copy and `herdr-app status`, and look with `herdr-app shot`.
 - For a lifted limit, use what Herdr now gives. Delete the workaround and its note in `AGENTS.override.md` or `docs/agents/`, and its example in step 4 here if it has one.
 - Try again the "Behavior to preserve" items the report named, and say which could not be driven from a shell.
 - In `checks.md`, move the item under "Settled", marked `made` or `declined`.
 
-When no item of an entry is left open, the clones are ported up to its `to` version. Make that the new baseline: replace `from version <old>` in the clone entries of "What is custom" and in the clones' notes in `docs/agents/`, `Built against Herdr <old>` in `README.md`, and `(version <old>)` in `NOTICE`. Other version mentions date a fact ("since 0.1.17"): leave them.
+When no item of an entry is left open, the clones are ported up to its `to` version. Make that the new baseline: replace `from version <old>` in the clone entries of "What is custom" and in the clones' notes in `docs/agents/`, the supported Herdr version in the README's install section, and `(version <old>)` in `NOTICE`. Other version mentions date a fact ("since 0.1.17"): leave them.

@@ -8,11 +8,11 @@ Why this file has this name: Codex reads one instruction file per folder and pre
 
 ## What is custom
 
-Everything not listed here is Herdr's and is replaced on every start.
+The mod sources are under `packages/<feature>/mods/<name>/`. Herdr reads real copies under the ignored `mods/`, alongside its shipped mods.
 
 **Before changing a mod, or saying how it works, read its notes in full.** They are not loaded with this file. Each says what the mod is, what each of its files does, where its state lives, how to try it, and the behavior to preserve: what must keep working, why it is built the way it is, and what was and was not tried by hand.
 
-| Mod (`mods/<name>/`) | What it is | Notes |
+| Mod | What it is | Notes |
 |---|---|---|
 | `space-folders` | A clone of Herdr's `spaces` sidebar (from version 0.1.18) with one level of named, foldable folders of spaces, and each space's containers (DDEV, Docker Compose) and agents | `docs/agents/space-folders.md` |
 | `mark-agents-unread` | A clone of Herdr's `agents` list (from version 0.1.18) where an idle agent can be marked unread | `docs/agents/agents-unread.md` |
@@ -35,18 +35,18 @@ Everything not listed here is Herdr's and is replaced on every start.
 
 The 28 px status row keeps the `status` block and adds `back-and-forward` and the `quick-actions` status instance to its right. Both community mods ship with the full layout. Their notes link to the upstream versions.
 
-Gallery packages in `packages/` are built from the tracked mods, key bindings and sandbox screenshots. Edit the root mods and the individual `RECIPE.md` files. The gallery previews and README cover take their titles from the recipes and their captions and screenshot crops from `docs/gallery-cards.json`. After changing a distributed file, run `python3 docs/gallery.py` and verify with `python3 docs/gallery.py --check`. Stage new mod files first so the builder sees them.
+Edit code and assets under `packages/`. Package shortcuts are generated from the root `keys.json`. The gallery previews and README cover take their titles from the recipes and their captions and screenshot crops from `docs/gallery-cards.json`. After changing a distributed file, run `python3 docs/gallery.py` and verify with `python3 docs/gallery.py --check`.
 
 ## Working here
 
-- The window is live: an edit applies to the running app within a second. After every change run `herdr-app check mods/<name>` and `herdr-app status`, and look with `herdr-app shot`.
+- Run `python3 docs/sync-mods.py` to sync the checkout's live mod copies, or keep `python3 docs/sync-mods.py --watch` running while editing. The script uses `rsync` and mirrors each packaged mod's files, including deletions, while preserving Herdr's generated typings and config. A separate app home can be synced with `--home PATH`. After syncing a change run `herdr-app check mods/<name>` and `herdr-app status`, and look with `herdr-app shot`.
 - Before launching a test or screenshot Herdr on macOS, use a short scratch path, a short `TMPDIR` and a short, unique `HC_SESSION`. The Unix socket path can be at most 103 bytes. Check `hc server status --json` with the sandbox's environment before opening its window. If the computed path is still too long, use a short, sandbox-specific `HC_SOCKET` under `/tmp` and pass it to both Herdr and the sandbox CLI.
 - Pointer drags and typing cannot be driven from a shell. Say so when a change to those paths was not tried by hand.
 - A menu, a dialog or a request can be driven from a shell with a throwaway mod: `mod.json` `{ "place": "none", "overlay": { "width": 60, "height": 30 } }`, opened with `herdr-app do mod.open --name <mod>`, whose `init` reads a JSON file and calls `openOverlay(...)` or `setShared("file-explorer.request", ...)`, then closes itself. A request carries its own `root`, so the live panel runs it against a scratch folder. A mod can only import from its own folder: copy the modules it needs into it. Every overlay takes the keyboard from the owner while it is open, so keep these runs few and short, and delete the mod afterwards (`.gitignore` never tracks it).
 - `cx.spawn(body)` runs `body` up to its first `await` at once. Called from `render()`, that first step is inside the draw: `cx.notify()` there is refused and ends the task without a word. A task begun in `render()` that does more than read should `await` first.
 - `herdr-app shot` shows no focus ring and no selection in the editor while Herdr is not the active app.
-- Write a new mod's `mod.json` before anything else in its folder. A folder Herdr first sees without one is docked into the shown layout by itself, as a new block at the end of `layouts/herdr-powertools.json`: take that block out again.
-- Saving a file under `mods/` reloads mods and cuts off their running tasks, also those of a mod that was not saved. Wait a few seconds after a save before sending a request, or it is taken and never answered.
+- Write a new runtime mod's `mod.json` before anything else in its folder. A folder Herdr first sees without one is docked into the shown layout by itself, as a new block at the end of `layouts/herdr-powertools.json`: take that block out again.
+- Syncing a file under `mods/` reloads mods and cuts off their running tasks, also those of a mod that was not saved. Wait a few seconds after a sync before sending a request, or it is taken and never answered.
 - After an `await`, `props()` may answer for another copy (the one that drew last). Read it in `init` or `render` and keep what it said.
 - `herdr-app check` shows nothing a mod logs. To time code in Herdr's own engine, make a throwaway mod whose `init` does the work and throws an `Error` with the timings as its message: the check prints it. `init` is stopped at 500 ms like an event handler, so time a few things a run. `node` is many times faster and says nothing about it.
 - An overlay opened for a test is closed with `herdr-app do overlay.close` (the top dialog or popup), or `--id o<n>` for a window: the ids count up from `o1`. A window is closed by opening another under its `key` and closing the id that returns: `overlay.close --id` with a guessed id answers `ok` whether or not it closed anything.
@@ -58,7 +58,7 @@ Gallery packages in `packages/` are built from the tracked mods, key bindings an
 
 ## Git
 
-- `.gitignore` is an allowlist: everything is ignored unless listed. A new mod, layout, theme or root file needs a line there.
+- `.gitignore` is an allowlist: new sources under `packages/<feature>/mods/` are already allowed. Add an entry for a new layout, theme or root file.
 - **This repository is public. Before every commit, read the staged diff (`git diff --cached`) and make sure it holds nothing that should not be public:** no secrets, tokens, passwords, API or SSH keys; no personal information (names, email addresses, phone numbers, addresses); no home or project paths (`/Users/...`, `/Volumes/...`), machine or host names, client or project names; nothing else private or security-sensitive. This applies to every committed file, including settings, key bindings, notes, screenshots and commit messages. If something like that is needed locally, keep it in an ignored file. The deliberate exceptions: the owner's name in the `NOTICE` copyright line, and the author name and email that git takes from its own config for a commit. The owner's email address must never appear in any file. If you are unsure whether something is safe to publish, stop and ask before committing.
 - Never track state: `shared.json`, `view.json`, `data/`, `layouts/.state/`, or anything Herdr ships. State holds space names, folder paths and project names.
 - Commit messages follow Conventional Commits: `<type>(<scope>): <description>`, then an optional body and footers.

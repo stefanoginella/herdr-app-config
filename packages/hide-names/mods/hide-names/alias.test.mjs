@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import * as alias from "./alias.js";
 
 // Made-up inputs, none of them a word of the lists.
@@ -98,8 +98,12 @@ test("folders avoid the names already taken", () => {
 test("every mod's copy of alias.js is the same", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const mods = join(here, "..");
+  const packages = join(mods, "..", "..");
+  const roots = basename(packages) === "packages"
+    ? readdirSync(packages).map((name) => join(packages, name, "mods")).filter(existsSync)
+    : [mods];
   const mine = readFileSync(join(here, "alias.js"));
-  const copies = readdirSync(mods).filter((m) => existsSync(join(mods, m, "alias.js")));
+  const copies = roots.flatMap((root) => readdirSync(root).map((m) => join(root, m, "alias.js"))).filter(existsSync);
   assert.ok(copies.length >= 6, `copies: ${copies.join(", ")}`);
-  for (const m of copies) assert.ok(readFileSync(join(mods, m, "alias.js")).equals(mine), `${m}/alias.js differs`);
+  for (const path of copies) assert.ok(readFileSync(path).equals(mine), `${path} differs`);
 });

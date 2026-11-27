@@ -1,6 +1,6 @@
 # `back-and-forward`
 
-Two status-bar buttons step through the places visited in this window. This is an adaptation of PostHog’s community mod at revision `8b0be111696030a626c47f90dceb77a579d33768`. The upstream MIT notice is in `mods/back-and-forward/LICENSE`. [Upstream source](https://github.com/PostHog/herdr/tree/8b0be111696030a626c47f90dceb77a579d33768/back-forward)
+Two status-bar buttons step through the places visited in this window. This is an adaptation of PostHog’s community mod at revision `8b0be111696030a626c47f90dceb77a579d33768`. The upstream MIT notice is in `packages/back-and-forward/mods/back-and-forward/LICENSE`. [Upstream source](https://github.com/PostHog/herdr/tree/8b0be111696030a626c47f90dceb77a579d33768/back-forward)
 
 ## Implementation
 

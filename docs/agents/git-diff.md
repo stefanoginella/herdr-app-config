@@ -1,6 +1,6 @@
 # `git-diff`
 
-Notes for agents on the mod in `mods/git-diff/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/git-diff/mods/git-diff/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 The diff pane, beside the terminals. It is not a clone. One a tab (props `{ tab }`), opened by the Git panel.
 
@@ -42,7 +42,7 @@ The diff pane, beside the terminals. It is not a clone. One a tab (props `{ tab 
 
 - The pane is tried in a window, together with the Git panel that opens it: see "Trying it" in `git-panel.md`.
 
-- Run `node --test mods/git-diff/review.test.mjs` for scratch Git history, line anchors, index-only hunk staging with CRLF and a mode change, independent gap expansion and syntax spans.
+- Run `node --test packages/git-diff/mods/git-diff/review.test.mjs` for scratch Git history, line anchors, index-only hunk staging with CRLF and a mode change, independent gap expansion and syntax spans.
 
 - Verified in a separate Herdr window with a fake repository: the Git panel opened its base chooser and split a branch review pane, a viewed mark and checkpoint persisted, and a follow-up commit opened in the incremental comparison.
 - Verified in an isolated Herdr window that the picker renders over a narrow pane, the selection moves via commands, and hunk actions fit in Unified view. A scratch mod exercised progressive gap expansion and collapse, staging and unstaging a single hunk, and rejection after the displayed patch changed. Physical clicks, typing and writes over SSH were not tried.

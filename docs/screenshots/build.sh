@@ -6,7 +6,7 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-for p in hc herdr-app node rg git cwebp; do real "$p" >/dev/null || { echo "build: $p is not on your PATH"; exit 1; }; done
+for p in hc herdr-app node rg git rsync cwebp; do real "$p" >/dev/null || { echo "build: $p is not on your PATH"; exit 1; }; done
 py -c 'import PIL' 2>/dev/null || { echo "build: python3 has no Pillow (pip install pillow)"; exit 1; }
 
 # A sandbox that still runs is stopped first, then everything goes.
@@ -74,7 +74,7 @@ cat > "$A/external-apps.json" <<'X'
 {"apps":["vscode",{"id":"textedit","label":"TextEdit","targets":["file"],"launch":{"macos":{"command":"textedit","args":["{path}"]}}}]}
 X
 cp "$REPO/layouts/herdr-powertools.json" "$A/layouts/"
-(cd "$REPO" && git ls-files -co --exclude-standard mods | rsync -a --files-from=- "$REPO/" "$A/")
+py "$REPO/docs/sync-mods.py" --home "$A"
 cp -R "$SHOTS/stage" "$A/mods/stage"
 mkdir -p "$A/data"
 cat > "$A/data/quick-actions.json" <<'X'
@@ -321,7 +321,7 @@ git branch -q -d fix/search-escape
 
 # a branch with an open pull request
 git checkout -q -b feat/editor-minimap main~2
-w mods/file-editor/minimap.js <<'X'
+w packages/file-editor/mods/file-editor/minimap.js <<'X'
 // The whole file at a glance, right of the text: one row of the map for every `STEP` lines.
 const STEP = 4;
 
@@ -332,14 +332,14 @@ export function rows(text) {
 }
 X
 commit 27 "Noor Haddad" "feat(file-editor): work out a minimap's rows"
-printf '\nexport const width = (row, most) => Math.min(1, row / most);\n' >> mods/file-editor/minimap.js
+printf '\nexport const width = (row, most) => Math.min(1, row / most);\n' >> packages/file-editor/mods/file-editor/minimap.js
 commit 18 "Noor Haddad" "feat(file-editor): scale the minimap to the longest line"
-printf '\n// Not drawn yet: the editor gives a mod no scroll position.\n' >> mods/file-editor/minimap.js
+printf '\n// Not drawn yet: the editor gives a mod no scroll position.\n' >> packages/file-editor/mods/file-editor/minimap.js
 commit 9 "Noor Haddad" "docs(file-editor): say why the minimap is not drawn"
 
 # a local branch nobody pushed
 git checkout -q -b feat/usage-export main~1
-w mods/agent-usage/export.js <<'X'
+w packages/agent-usage/mods/agent-usage/export.js <<'X'
 // The shown range as CSV: one line a day and project.
 export const csv = (rows) => rows.map((r) => [r.day, r.project, r.tokens, r.cost ?? ""].join(",")).join("\n");
 X
@@ -359,7 +359,7 @@ git branch -q --set-upstream-to=origin/feat/editor-minimap feat/editor-minimap
 edit_git_js() { # $1: the comment's wording, so that the stash and the working copy differ
   py - "$1" <<'P'
 import sys
-p = "mods/git-panel/git.js"; t = open(p).read()
+p = "packages/git-panel/mods/git-panel/git.js"; t = open(p).read()
 old = '''  if (!words.length) return "?";
   const first = Array.from(words[0]), last = words.length > 1 ? Array.from(words[words.length - 1]) : [];
   return (first[0] + (last[0] ?? first[1] ?? "")).toUpperCase();'''
@@ -367,7 +367,7 @@ new = '''  if (!words.length) return "?";
   const first = Array.from(words[0]), last = words.length > 1 ? Array.from(words.at(-1)) : [];
   // %s
   return (first[0] + (last[0] ?? first[1] ?? "")).toLocaleUpperCase();''' % sys.argv[1]
-assert old in t, "build: initials() in mods/git-panel/git.js is not as the demo change expects"
+assert old in t, "build: initials() in packages/git-panel/mods/git-panel/git.js is not as the demo change expects"
 open(p, "w").write(t.replace(old, new))
 P
 }
@@ -375,9 +375,9 @@ edit_git_js 'One word: its first two letters. "robin" is RO, never R alone.'
 t=$((now - 17 * 60)); GIT_AUTHOR_DATE="@$t" GIT_COMMITTER_DATE="@$t" git stash push -q -m "try wider rulers in the usage dialog"
 edit_git_js 'One word gives its first two letters: "robin" is RO, never R alone.'
 py - <<'P'
-p = "mods/git-panel/git.js"; t = open(p).read()
+p = "packages/git-panel/mods/git-panel/git.js"; t = open(p).read()
 old = 'const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];'
-assert old in t, "build: MONTHS in mods/git-panel/git.js is not as the demo change expects"
+assert old in t, "build: MONTHS in packages/git-panel/mods/git-panel/git.js is not as the demo change expects"
 t = t.replace(old, 'const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");')
 old = '''  if (s < 86400) return `${Math.floor(s / 3600)}h`;
   if (s < 86400 * 14) return `${Math.floor(s / 86400)}d`;
@@ -386,15 +386,15 @@ old = '''  if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / (86400 * 365))}y`;
 '''
 head = "export function ago(seconds, now = Date.now() / 1000) {\n"
-assert old in t and head in t, "build: ago() in mods/git-panel/git.js is not as the demo change expects"
+assert old in t and head in t, "build: ago() in packages/git-panel/mods/git-panel/git.js is not as the demo change expects"
 t = t.replace(old, old.replace("86400", "DAY")).replace(head, head + "  const DAY = 86400;\n")
 open(p, "w").write(t)
-p = "mods/git-panel/lanes.js"; t = open(p).read().split("\n")
+p = "packages/git-panel/mods/git-panel/lanes.js"; t = open(p).read().split("\n")
 t.insert(1, "// A lane that ends is left empty, never taken out: that keeps a passing line straight.")
 open(p, "w").write("\n".join(t))
 P
-git add mods/git-panel/lanes.js
-w mods/git-panel/initials.test.mjs <<'X'
+git add packages/git-panel/mods/git-panel/lanes.js
+w packages/git-panel/mods/git-panel/initials.test.mjs <<'X'
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { initials } from "./git.js";

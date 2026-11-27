@@ -1,6 +1,6 @@
 # `project-search`
 
-Notes for agents on the mod in `mods/project-search/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/project-search/mods/project-search/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 Search and replace in every file of the project, in a panel that takes the place of Files and Changes. It is not a clone: Herdr ships nothing like it. ripgrep (`rg`) does the searching, on the project's own machine.
 

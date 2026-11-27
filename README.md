@@ -178,69 +178,58 @@ Commands without a key (folders, the Git panel's, the diff's, more of the editor
 
 ### Install and update with herdr-pkg
 
-Start Herdr once. From a clone of this repository, install the community [herdr-pkg manager](https://github.com/manastalukdar/herdr-pkg#install) if you do not already use it. Sign in with the GitHub CLI for a full install. The file icons alone exceed GitHub's anonymous hourly download quota.
+Start Herdr once. From a clone of this repository, install the community [herdr-pkg manager](https://github.com/manastalukdar/herdr-pkg#install) if you do not already use it. The full install below uses `gh` and `jq`. Sign in with `gh auth login` because the file icons alone exceed GitHub's anonymous hourly download quota.
 
 ```sh
 git clone https://github.com/manastalukdar/herdr-pkg.git ../herdr-pkg
 python3 ../herdr-pkg/scripts/install.py --no-adopt
 ```
 
-Install the collection and select its layout:
+From this repository's checkout, install every mod package, then install and select the layout.
+
+```sh
+(
+  set -e
+  repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+  pkg="${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/pkg/pkg.py"
+  install_package() {
+    python3 "$pkg" --json install "$1" --yes | jq -er '
+      if .ok then
+        (.items[] | "Installed \(.kind) \(.name)"),
+        (.skipped_keys[] | "Shortcut already in use: \(.key) (\(.section))")
+      else error(.reason)
+      end'
+  }
+  for directory in packages/*/mods; do
+    install_package "$repo/${directory%/mods}"
+  done
+  install_package "$repo"
+  herdr-app do layout.switch '{"name":"herdr-powertools"}'
+)
+```
+
+For one feature, install its folder under [packages/](packages).
 
 ```sh
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 pkg="${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/pkg/pkg.py"
-python3 "$pkg" install "$repo" --yes
-herdr-app do layout.switch '{"name":"herdr-powertools"}'
+python3 "$pkg" install "$repo/packages/agent-usage" --yes
 ```
 
-For one feature, use its folder under [packages/](packages), for example `python3 "$pkg" install "$repo/packages/agent-usage" --yes`. Each recipe explains where to place it and which companion tools it opens. Merge any shortcuts the manager reports as already taken.
+The feature recipes explain where to place the mods and which companion tools they open. Resolve any shortcut conflicts the manager reports.
 
-Already copied a mod? After migrating any older names, use `python3 "$pkg" adopt agent-usage --from "$repo"` to track that installed copy. Run it once per mod or layout you want to follow. The manager can track itself with `python3 "$pkg" adopt pkg --from manastalukdar/herdr-pkg`.
+Open **Packages** and choose **Update all** to update installed mods and layouts. Newly added tools and future shortcut changes are handled separately. To see daily update status, add a layout block with `{"mod":"pkg","props":{"bar":true}}`.
 
-Open **Packages** to check for updates and choose **Update all**, or run `python3 "$pkg" update`. The manager tracks installed mods and layouts. Newly added tools, future shortcut changes and personal settings need separate attention. Its optional daily update indicator needs a layout block with `{"mod":"pkg","props":{"bar":true}}`. Applying an update takes a click or a scheduled invocation of the command.
+### Dependencies and layout placement
 
-### Follow the whole configuration with Git
-
-For a fresh setup, clone this repository into `~/.config/herdr-app` before first launch, open Herdr, then select `herdr-powertools`. Update with `git -C ~/.config/herdr-app pull --ff-only`. This also brings in settings, key bindings, newly added mods and documentation. To try it alongside an existing setup, use a separate checkout and point `HERDR_APP_HOME` there when launching Herdr.
-
-### Upgrading an earlier install
-
-The layout was renamed from `main-folders` to `herdr-powertools`. The installed mod IDs changed from `agent-inbox` to `mark-agents-unread`, `git-graph` to `git-panel`, `files-actions` to `file-explorer`, `back-forward` to `back-and-forward`, and `status-names` to `hide-names`. The same migration also handles older installs that use `usage` and `agents-unread`. Quit Herdr, update the configuration checkout first, and run these commands from it before updating individual packages. The migration needs the repository's Git history.
-
-```sh
-python3 docs/migrate-mods.py
-python3 docs/migrate-mods.py --apply
-```
-
-The first command previews the migration. It updates layout references, shortcuts and existing herdr-pkg records, and carries across saved layout and view settings. Backups go under the Herdr home's `data/powertools-migration-…/`. If a copied mod has local code edits, keep a copy of the edited folder outside Herdr, restore the original release's files to the old folder, run the migration, then reapply your edits to the new folder. For a separate Herdr home, pass `--home PATH`. Update any personal scripts that use an old mod command or switch to the old layout name.
-
-### Copy by hand or ask your agent
-
-Point your agent at this README or a [feature recipe](packages). It can install the full setup or just the tools you name.
-
-By hand: this was built against Herdr 0.1.18. From a clone of this repository, the following adds the mods and the layout that shows them:
-
-```sh
-cp layouts/herdr-powertools.json ~/.config/herdr-app/layouts/
-for m in space-folders mark-agents-unread file-explorer file-editor editor-links project-search go-to-file git-panel git-diff agent-usage tabs-names pane-names hide-names back-and-forward quick-actions; do
-  cp -R "mods/$m" ~/.config/herdr-app/mods/ && herdr-app check ~/.config/herdr-app/mods/"$m"
-done
-herdr-app do layout.switch '{"name":"herdr-powertools"}'
-```
-
-Your own layout stays as it was: `layout.switch` goes back to it, and deleting the copied files removes all of this. Then copy the [keys](#keys) you want.
-
-What needs what:
-
-- Copy each mod's folder whole, `mod.json` included: a mod folder Herdr first sees without one is docked into the shown layout by itself.
+- The collection was built against Herdr 0.1.18.
 - `file-explorer`, `project-search`, `go-to-file`, `editor-links` and `git-panel` open files in `file-editor`. `git-panel` needs `git-diff`, which is what a click on a file opens.
 - `project-search` and `go-to-file` need [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`), also on another machine whose project is searched. `agent-usage` needs `node`. The Git panel's GitHub marks need [`gh`](https://cli.github.com), and its message writer `claude` or `codex`.
 - `editor-links` is turned on by the layout's `"link_handlers": ["editor-links"]` (Herdr adds it to a layout of your own the first time it sees the mod).
 - `go-to-file` and the `agent-usage` dialog are in no layout: their keys open them.
 - The three hide names mods, `space-folders`, `mark-agents-unread` and `agent-usage` share the mode: with only some of them, only those hide their names. `hide-names` holds the command that switches it.
 
-For only one of them, copy and check its folder, then point a layout of your own at it: `{ "mod": "space-folders" }` in the `spaces` block, `{ "mod": "mark-agents-unread" }` in the `agents` block, `{ "mod": "file-explorer" }` in the `files` block, `{ "mod": "git-panel" }` in the `changes` block, or a block 62 px tall with `{ "mod": "agent-usage", "props": { "role": "side" } }` for the usage widget. `project-search` needs two blocks, as in `herdr-powertools.json`: the panel, and a block that is always shown (it can be 0 px tall) with props `{ "keys": true, "show": { ... } }`. That block handles Cmd+Shift+F, switching between Search and Files. Herdr's shipped layouts are read-only, so clone one first:
+To place an individual mod in your layout, set the `spaces` block to `{ "mod": "space-folders" }`, the `agents` block to `{ "mod": "mark-agents-unread" }`, the `files` block to `{ "mod": "file-explorer" }`, or the `changes` block to `{ "mod": "git-panel" }`. The usage widget takes a 62 px block with `{ "mod": "agent-usage", "props": { "role": "side" } }`. As shown in `herdr-powertools.json`, `project-search` needs the panel and an always-visible block with props `{ "keys": true, "show": { ... } }`. That block can be 0 px tall and handles Cmd+Shift+F. Clone a shipped layout before editing it.
 
 ```sh
 herdr-app do layout.clone '{"name":"main","as":"my-layout"}'
@@ -250,8 +239,10 @@ The layout and the cloned mods are copies of Herdr's `main`, `spaces`, `agents`,
 
 ## How the repository works
 
-This repository is the app's home folder, `~/.config/herdr-app`, with only the customized files tracked. Herdr's own mods and layouts sit next to the custom ones and are replaced on every start, and its state files change constantly. So `.gitignore` is an allowlist: everything in the folder is ignored unless it is listed there, and a new mod, layout or theme needs one line.
+The mod sources live under `packages/<feature>/mods/`. For development, run `python3 docs/sync-mods.py` from the checkout to populate the ignored `mods/` directory. Add `--watch` to keep those copies synced while you edit the packages so Herdr can hot-reload them. The script needs `rsync` and uses the checkout as the app home by default. To test in a separate app home, pass the same path as `--home` to the script and `HERDR_APP_HOME` to Herdr.
+
+The checkout can itself be the Herdr app home. The runtime mods, Herdr's shipped layouts and private app state are ignored.
 
 ## License
 
-Apache-2.0, see [LICENSE](LICENSE). `mods/space-folders/main.js`, `mods/mark-agents-unread/main.js`, `mods/file-explorer/main.js`, `mods/tabs-names/main.js`, `mods/pane-names/main.js`, `mods/hide-names/main.js` and `layouts/herdr-powertools.json` are modified copies of files from Herdr, which is also Apache-2.0. The icons in `mods/file-explorer/icons/` are Material Icon Theme's, which is MIT. See [NOTICE](NOTICE).
+Herdr Power Tools and the parts derived from Herdr are Apache-2.0. The bundled Material Icon Theme icons, Back and Forward, and Quick Actions are MIT. [LICENSE](LICENSE) · [NOTICE](NOTICE)

@@ -1,6 +1,6 @@
 # `file-explorer`
 
-Notes for agents on the mod in `mods/file-explorer/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/file-explorer/mods/file-explorer/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 The gallery calls this mod File Explorer, and the panel heading is Files.
 
@@ -44,4 +44,4 @@ A clone of Herdr's `files` panel (from version 0.1.18), without its preview (a c
 
 ## The icons
 
-- The icons in `mods/file-explorer/icons/` are a release of Material Icon Theme (MIT), named in `icons/map.js` and in `NOTICE`. To update them, follow the header of `icons/build.py`, then update the version in `NOTICE`.
+- The icons in `packages/file-explorer/mods/file-explorer/icons/` are a release of Material Icon Theme (MIT), named in `icons/map.js` and in `NOTICE`. To update them, follow the header of `icons/build.py`, then update the version in `NOTICE`.

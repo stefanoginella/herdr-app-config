@@ -1,6 +1,6 @@
 # `space-folders`
 
-Notes for agents on the mod in `mods/space-folders/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/space-folders/mods/space-folders/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 A clone of Herdr's `spaces` sidebar (from version 0.1.18) with one level of named, foldable folders of spaces.
 

@@ -1,6 +1,6 @@
 # `agent-usage`
 
-Notes for agents on the mod in `mods/agent-usage/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/agent-usage/mods/agent-usage/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 How much of the AI agents' limits is used, whether each will last the week, and where the usage went. It is not a clone. A dialog (`mod.open:agent-usage`, the palette's "Usage", `cmd-shift-u` in `global`), and a glance of the same readings: a widget above Spaces. Tokens are the unit everywhere (input, output, cache write and cache read together); dollars are a side figure: Claude Code's own cost for Claude, an estimate from OpenAI's API prices for Codex, shown with "≈".
 

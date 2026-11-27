@@ -2,7 +2,7 @@
 #
 # Herdr writes most of this folder itself: its own mods and layouts are replaced on
 # every start, and the state files change all the time. So everything is ignored
-# unless it is listed here. For a new mod, layout, theme or asset of yours, add a line.
+# unless it is listed here. Package sources are allowed below.
 
 /*
 
@@ -17,8 +17,9 @@
 !/packages/*/preview.png
 !/packages/*/keys.json
 !/packages/*/mods/
-/packages/*/mods/*/*.d.ts
-/packages/*/mods/*/jsconfig.json
+/packages/*/mods/**/*.d.ts
+/packages/*/mods/**/jsconfig.json
+/packages/*/mods/**/node_modules/
 __pycache__/
 !/LICENSE
 !/NOTICE
@@ -47,32 +48,9 @@ __pycache__/
 /layouts/*
 !/layouts/herdr-powertools.json
 
-# Your mods (the rest are Herdr's)
-!/mods/
-/mods/*
-!/mods/space-folders/
-!/mods/mark-agents-unread/
-!/mods/file-explorer/
-!/mods/file-editor/
-!/mods/project-search/
-!/mods/git-panel/
-!/mods/git-diff/
-!/mods/go-to-file/
-!/mods/editor-links/
-!/mods/agent-usage/
-!/mods/tabs-names/
-!/mods/pane-names/
-!/mods/hide-names/
-!/mods/back-and-forward/
-!/mods/quick-actions/
-
 # Your themes and assets, once there are some
 !/themes/
 /themes/*
 # !/themes/<name>.json
 # !/backgrounds/
 # !/fonts/
-
-# Written into every mod folder by the app
-/mods/*/gpui-kit.d.ts
-/mods/*/jsconfig.json

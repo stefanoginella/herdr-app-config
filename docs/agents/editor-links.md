@@ -1,6 +1,6 @@
 # `editor-links`
 
-Notes for agents on the mod in `mods/editor-links/`. The index and what holds for every mod are in `AGENTS.override.md`.
+Notes for agents on the mod in `packages/file-editor/mods/editor-links/`. The index and what holds for every mod are in `AGENTS.override.md`.
 
 Cmd-click on a file path in a terminal opens it in the tab's `file-editor`, at the line and column it ends with. It is not a clone: a link handler, which Herdr added in 0.1.17. It has no view, only `link.js` (`handleLink()`), and its `mod.json` takes every file link (`"pattern": "."`).
 

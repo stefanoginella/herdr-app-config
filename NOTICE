@@ -4,13 +4,13 @@ Copyright 2026 Stefano Ginella
 This repository includes files derived from Herdr (https://herdr.dev), which is
 licensed under the Apache License, Version 2.0:
 
-- mods/space-folders/main.js is a modified copy of Herdr's `spaces` mod
+- packages/space-folders/mods/space-folders/main.js is a modified copy of Herdr's `spaces` mod
   (version 0.1.18). It adds folders to the sidebar.
-- mods/mark-agents-unread/main.js is a modified copy of Herdr's `agents` mod
+- packages/mark-agents-unread/mods/mark-agents-unread/main.js is a modified copy of Herdr's `agents` mod
   (version 0.1.18). It lets an idle agent be marked unread.
-- mods/file-explorer/main.js is a modified copy of Herdr's `files` mod
+- packages/file-explorer/mods/file-explorer/main.js is a modified copy of Herdr's `files` mod
   (version 0.1.18). It adds file type icons, a right-click menu and drag to move.
-- mods/tabs-names/main.js, mods/pane-names/main.js and mods/hide-names/main.js
+- packages/hide-names/mods/tabs-names/main.js, packages/hide-names/mods/pane-names/main.js and packages/hide-names/mods/hide-names/main.js
   are modified copies of Herdr's `tabs`, `pane` and `workspace-status` mods
   (version 0.1.18). They draw made-up names while names are hidden; the
   pane-names and tabs-names icons are unmodified copies of those mods' icons.
@@ -31,6 +31,6 @@ This repository also includes the icons of Material Icon Theme
 (https://github.com/material-extensions/vscode-material-icon-theme, version
 5.40.0), which is licensed under the MIT License:
 
-- mods/file-explorer/icons/*.svg are unmodified copies of its icons, and
-  mods/file-explorer/icons/map.js is generated from its manifest. Its license
-  is in mods/file-explorer/icons/LICENSE.
+- packages/file-explorer/mods/file-explorer/icons/*.svg are unmodified copies of its icons, and
+  packages/file-explorer/mods/file-explorer/icons/map.js is generated from its manifest. Its license
+  is in packages/file-explorer/mods/file-explorer/icons/LICENSE.

@@ -12,7 +12,7 @@ docs/screenshots/retake.sh
 
 It takes about ten minutes. It builds the sandbox from nothing (deleting the last one), starts it, sets the scene, takes the shots, closes it, and frames the shots into `docs/images/`. The sandbox's window opens in a corner of the screen and is minimized at once: your own Herdr is not touched, and can stay open.
 
-It needs macOS, Herdr installed with `herdr-app` and `hc` on the `PATH`, `python3` with [Pillow](https://python-pillow.org), `node`, `rg`, `git` and `cwebp` (`brew install webp`). The shots are 2220×1410, taken on a display of one pixel a point: on a Retina display a shot has twice the pixels, and the boxes in `pictures.json` no longer fit.
+It needs macOS, Herdr installed with `herdr-app` and `hc` on the `PATH`, `python3` with [Pillow](https://python-pillow.org), `node`, `rg`, `git`, `rsync` and `cwebp` (`brew install webp`). The shots are 2220×1410, taken on a display of one pixel a point: on a Retina display a shot has twice the pixels, and the boxes in `pictures.json` no longer fit.
 
 Then look at what changed (`git status docs/images`) before committing: the times, the figures and the newest commits in the pictures differ from run to run.
 
@@ -76,7 +76,7 @@ A change to a zoom, to a panel's width or to how a pane is split moves the boxes
 - **The diff step selects Split explicitly.** It produces the same layout if the step is run again in the same sandbox.
 - **An overlay's `at` is in window pixels**, not in the app's own.
 - **The usage data is made relative to now:** "Burning now" is the last hour, so shoot within a few minutes of `gen-usage.mjs`. The home is given to it as `/var/tmp/...`, not `/private/var/tmp/...`: the dialog files the second under "Other folders".
-- **The demo repository's uncommitted change is written against `mods/git-panel/git.js` as it is now.** When that file's `ago()`, `initials()` or `MONTHS` change, `build.sh` stops and says which: write the demo change again.
+- **The demo repository's uncommitted change is written against `packages/git-panel/mods/git-panel/git.js` as it is now.** When that file's `ago()`, `initials()` or `MONTHS` change, `build.sh` stops and says which: write the demo change again.
 - **A mod first seen without a `mod.json` is docked into the layout:** `stage/` has one, and goes in whole.
 
 ---
