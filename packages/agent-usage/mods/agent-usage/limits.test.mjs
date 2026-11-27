@@ -48,6 +48,10 @@ test('Codex in the widget: a lower reading is held, and believed ten minutes on'
   assert.equal(pick({ at: now + 17 * M, r: r(12) }, snap), 12); // ten minutes on: a reset
   assert.equal(pick(null, snap), null); // the dialog's, from before it, no longer counts
   assert.equal(pick({ at: now + 18 * M, r: r(12) }, { at: now + 18 * M, r: r(13) }), 13);
+  // Three points under is no noise: held, then believed ten minutes on.
+  keep = null;
+  assert.equal(pick({ at: now, r: r(57) }, snap), 60);
+  assert.equal(pick({ at: now + 10 * M, r: r(56) }, snap), 56);
   // Another window: the newer, at once.
   keep = null;
   assert.equal(pick({ at: now, r: { pct: 2, resets: resets + 7 * DAY } }, snap), 2);

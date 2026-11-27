@@ -637,6 +637,9 @@ test('Claude: an idle session\'s older reading is no reset', () => {
   const c = at(70, 89, 91);
   assert.deepEqual([c.week.pct, c.week.restarts, c.week.trail], [91, [], [[T, 90], [T + 31 * MIN, 91]]]);
   assert.deepEqual(checks(), {});
+  // Three points under is held.
+  assert.equal(at(71, 88, 91).week.pct, 91);
+  assert.equal(checks()[String(Date.parse('2026-11-29T05:00:00.000Z'))].pend.pct, 88);
 });
 
 test('Claude, from a statusline that keeps each session\'s reading: its reset at once, an idle writer left out', () => {
@@ -828,6 +831,11 @@ test('Codex: servers that disagree turn by turn are no reset', () => {
   put(path.join(h.home, '.codex', 'sessions', '2026', '11', '23', 'r-two.jsonl'), jl(...rows));
   const w = run(h.home, ['--no-state']).limits.codex.week;
   assert.deepEqual([w.pct, w.restarts], [9, []]);
+  // Three points under, and as low ten minutes on: a reset.
+  rows.push(tokenCount('2026-11-23T11:00:00Z', null, null, RL(6)), tokenCount('2026-11-23T11:12:00Z', null, null, RL(6, { credits: { balance: 'b' } })));
+  put(path.join(h.home, '.codex', 'sessions', '2026', '11', '23', 'r-two.jsonl'), jl(...rows));
+  const r = run(h.home, ['--no-state']).limits.codex.week;
+  assert.deepEqual([r.pct, r.restarts], [6, [[Date.parse('2026-11-23T11:00:00Z'), 9]]]);
 });
 
 test('Codex weeks: earlier windows kept in limits.json and printed, newest first', () => {
