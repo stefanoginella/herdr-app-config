@@ -5,9 +5,10 @@
 // this pane. Props from the app: { pane, terminal }. Click: focus the pane.
 //
 // Modified from Herdr's `pane` mod (version 0.1.18, Apache-2.0): see NOTICE at the repository root.
-// Changes, each marked "names:": while shared `names.hidden` is on, the folder is a made-up one,
+// While shared `names.hidden` is on, the folder is a made-up one,
 // and a terminal's name is its program's (or a made-up one for a pane someone named). A mod
 // pane's name stays: it is the file shown, which is content.
+// The Power Tools layout also enables plain mouse Back/Forward in terminal frames.
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -40,6 +41,23 @@ function folder(cwd) {
   if (!cwd) return "";
   const h = home();
   return cwd === h ? "~" : cwd.startsWith(h + "/") ? "~" + cwd.slice(h.length) : cwd;
+}
+
+// names: the Power Tools layout opts its terminal frames into workspace history.
+function terminalHistoryTarget(bottom) {
+  function press(e, cx) {
+    const m = e.modifiers;
+    if (m.alt || m.control || m.shift || m.platform || m.function) return;
+    cx.stop_propagation();
+    run(`back-and-forward.${e.button}`);
+  }
+
+  // The header spans its pane's width. Herdr clips this transparent hitbox to
+  // the frame, even after a split or resize. It only listens for side presses.
+  const target = div().absolute().left_0().right_0().h(65536);
+  return (bottom ? target.bottom_0() : target.top_0())
+    .on_mouse_down("back", press)
+    .on_mouse_down("forward", press);
 }
 
 export default class Pane extends View {
@@ -89,6 +107,8 @@ export default class Pane extends View {
       .text_size(12)
       .on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_click(() => run("pane.focus", { pane }))
+      // names: mod panes keep their own side-button handlers.
+      .when(p.terminal && props()?.terminalHistory === true, el => el.relative().child(terminalHistoryTarget(bottom)))
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
       .child(div().flex_1().truncate().text_color(t.dim).child(where))

@@ -2,7 +2,9 @@
 
 Click **Back** in the status bar to return to the tab you were using before you switched spaces or jumped to an agent. Herdr restores the pane you last used in that tab, including a file editor or diff pane. **Forward** takes you back through the same visits. A dim arrow means there is no visit in that direction.
 
-Hold **Option** (Alt) and press the mouse’s **Back** or **Forward** button to use the same history over your workspace. Plain side clicks still navigate locally in the editor, diff and other panels.
+In the Power Tools layout, point at a terminal and press the mouse’s **Back** or **Forward** button to use workspace history. In a split tab, the pointer decides which history you use. Over the File Editor the buttons switch files, and over a diff they move between changed files.
+
+**Option** (Alt) plus a side button also navigates workspace history over other panels when the mouse reports the modifier. With an MX Master 3 on macOS, Herdr can receive these as plain side clicks.
 
 Switching panes within one tab updates where you return. Going back and then choosing a different tab starts a new path. Closed tabs are skipped. If a pane has closed, the arrow opens its tab with the pane Herdr selects.
 

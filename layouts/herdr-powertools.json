@@ -111,7 +111,8 @@
                 "pane": {
                   "header": {
                     "content": {
-                      "mod": "pane-names"
+                      "mod": "pane-names",
+                      "props": { "terminalHistory": true }
                     },
                     "reveal": "always",
                     "height": 30,

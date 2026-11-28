@@ -16,6 +16,8 @@ Cmd+Shift+H or the palette's Hide Names / Show Names toggles the window. Draw ea
 
 Install `tabs-names`, `pane-names`, `hide-names` and `toast-names` from the package's `mods/` folder and merge its key. In a personal layout set the tab bar's mod to `tabs-names`, the active tab's pane header to `pane-names`, the status block to `hide-names`, and the root's `"toast"` to `toast-names`. Turn `names.hidden` on or off through the shown status mod. Each mod computes aliases from the input and its kind. **Space Folders**, **Mark Agents Unread** and **Agent Usage** also read the flag.
 
+With **Back and Forward** in the status bar, the pane header accepts `"props": { "terminalHistory": true }`. Plain Back and Forward mouse presses over a terminal then run the matching history command. File Editor and diff panes handle their own presses.
+
 ## Watch out
 
 Apply aliases at draw time. Real IDs and paths still drive selection, file operations, sorting and machine commands. A terminal, document, diff, right-side panel, native menu or rename field can contain real text. A notification is free text: replace every name the window knows in it as a whole word, and keep an agent's program name. Herdr fits a notification card to its text only for its own `toast` mod; any other gets a fixed 340×72 card, so show a cut text whole on hover. Include this scope in the user-facing instructions.
