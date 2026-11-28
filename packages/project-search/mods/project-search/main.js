@@ -148,7 +148,9 @@ export default class ProjectSearch extends View {
     this.cursor = null; // the row last opened or gone to: a match's id, or fileKey()
     this.hot = null; // the row under the pointer
     this.busy = null; // what is being written, in words
-    this.undo = null; // what takes the last replace back: { on, files, count }
+    this.panelId = ops.token();
+    this.revision = 0;
+    this.undos = new Map(); // one per machine and project, within a single memory budget
     this.seen = 0; // the last ask taken
     this.pending = null; // an ask that waits for the project to be known
     cx.spawn(async (cx) => {
@@ -418,7 +420,7 @@ export default class ProjectSearch extends View {
       return;
     }
     this.error = null;
-    this.result = { ...found, ...of };
+    this.result = { ...found, ...of, revision: ++this.revision };
     const paths = new Set(found.files.map((f) => f.path));
     this.folded = new Set([...this.folded].filter((path) => paths.has(path)));
     this.limit = PAGE; this.grown = null;
@@ -515,6 +517,7 @@ export default class ProjectSearch extends View {
     const gone = m ? 1 : f.matches.length;
     if (!m || !f.matches.length) { r.files = r.files.filter((o) => o !== f); this.folded.delete(f.path); }
     r.count -= gone;
+    r.revision = ++this.revision;
     this.hot = null;
     // The cursor stays where the row was.
     const left = this.rows();
@@ -538,7 +541,8 @@ export default class ProjectSearch extends View {
     const r = this.result, plan = this.plan(path, id);
     if (!plan.length) return notify({ title: "Nothing to replace", body: "What these matches become is not known here" });
     // While it runs there is nothing to take back: not the replace before it either.
-    this.undo = null;
+    const project = this.ctx.key;
+    this.undos.delete(project);
     this.busy = "Replacing…";
     this.remember();
     cx.notify();
@@ -548,8 +552,17 @@ export default class ProjectSearch extends View {
       const n = done.changed.reduce((sum, f) => sum + f.count, 0);
       if (n) {
         const size = done.changed.reduce((sum, f) => sum + f.before.length + f.after.length, 0);
-        this.undo = size <= UNDO_MOST ? { on: r.on ?? null, files: done.changed, count: n } : null;
-        notify({ title: `Replaced ${count(n, "match", "matches")}`, body: `in ${done.changed.length === 1 ? `“${ops.base(done.changed[0].path)}”` : count(done.changed.length, "file", "files")}${this.undo ? "" : " · too much text to undo from here"}` });
+        if (size <= UNDO_MOST) {
+          let total = size;
+          for (const entry of this.undos.values()) total += entry.size;
+          for (const [key, entry] of this.undos) {
+            if (total <= UNDO_MOST) break;
+            this.undos.delete(key);
+            total -= entry.size;
+          }
+          this.undos.set(project, { on: r.on, files: done.changed, count: n, size });
+        }
+        notify({ title: `Replaced ${count(n, "match", "matches")}`, body: `in ${done.changed.length === 1 ? `“${ops.base(done.changed[0].path)}”` : count(done.changed.length, "file", "files")}${this.undos.has(project) ? "" : " · too much text to undo from here"}` });
       }
       this.report(done.missed, "left as it was", "left as they were");
       if (!n && !done.missed.length) notify({ title: "Nothing was replaced", body: "The replacement is the same text" });
@@ -576,17 +589,18 @@ export default class ProjectSearch extends View {
     const becomes = r.o.to ? `“${clip(r.o.query)}” becomes “${clip(r.o.to)}”.` : `“${clip(r.o.query)}” is deleted.`;
     openOverlay({ mod: MOD, kind: "dialog", width: 440, height: 196, props: { confirm: {
       title: `Replace ${count(n, "match", "matches")} in ${count(plan.length, "file", "files")}?`,
-      detail: `${becomes} The files are written at once.${r.capped ? " Only the matches listed are replaced: there are more." : ""} Undo is in this panel until the next replace.`,
+      detail: `${becomes} The files are written at once.${r.capped ? " Only the matches listed are replaced: there are more." : ""} Undo is available while the original and replaced text fit in memory.`,
       button: "Replace",
-      request: { op: "replace-all", want: r.want },
+      request: { op: "replace-all", ...this.target(r) },
     } } });
   }
 
   // Takes the last replace back, once.
   unreplace(cx) {
-    const u = this.undo;
+    this.place(cx);
+    const project = this.ctx?.key, u = this.undos.get(project);
     if (!u || this.busy) return;
-    this.undo = null;
+    this.undos.delete(project);
     this.busy = "Undoing…";
     cx.notify();
     cx.spawn(async (cx) => {
@@ -599,6 +613,10 @@ export default class ProjectSearch extends View {
     });
   }
 
+  target(r) {
+    return { panel: this.panelId, revision: r.revision, root: r.root, on: r.on ?? null };
+  }
+
   // The menu is this mod again, as a popup (menu.js).
   menu(f, m) {
     const r = this.result;
@@ -607,15 +625,17 @@ export default class ProjectSearch extends View {
     const replace = this.canReplace() && this.plan(f.path, m?.id).length > 0;
     // A popup is as tall as its items; height is only the most.
     openOverlay({ mod: MOD, kind: "popup", width: 236, height: 530, props: { menu: {
-      root: r.root, on: r.on ?? null, path: f.path, id: m?.id ?? null, line: m?.line ?? null, text: m?.full ?? null, replace,
+      ...this.target(r), path: f.path, id: m?.id ?? null, line: m?.line ?? null, text: m?.full ?? null, replace,
     } } });
   }
 
   // Runs what the menu or the dialog asked for (ops.js).
   act(q, cx) {
+    this.place(cx);
     const r = this.result;
-    if (!r) return;
-    if (q.op === "replace-all") { if (q.want === r.want) this.replace(null, null, cx); return; }
+    if (!r || q.panel !== this.panelId || q.revision !== r.revision ||
+        q.root !== r.root || q.on !== r.on || r.want !== this.want()) return;
+    if (q.op === "replace-all") return this.replace(null, null, cx);
     const f = r.files.find((o) => o.path === q.path), m = q.id ? f?.matches.find((o) => o.id === q.id) : null;
     if (!f || (q.id && !m)) return;
     if (q.op === "open") this.open(f, m);
@@ -750,6 +770,7 @@ export default class ProjectSearch extends View {
   // One line under the fields: what the list is, or why there is none.
   status(t) {
     const r = this.result, c = this.ctx, o = this.opt, query = this.query.value();
+    const undo = this.undos.get(c?.key);
     const waiting = Boolean(this.running) || (Boolean(c?.auto) && Boolean(query) && !this.fresh() && !this.error);
     let text = "", color = t.dim;
     if (!c) text = this.placed ? "No folder to search" : "";
@@ -764,7 +785,7 @@ export default class ProjectSearch extends View {
     }
     return h_flex().id("ps-status").h(26).flex_none().pl(12).pr(8).gap(4).items_center().border_b(1).border_color(t.border)
       .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(color).tooltip(text).child(text))
-      .when(Boolean(this.undo) && !this.busy, (el) => el.child(this.button(t, "ps-undo", "Undo replace", `Put back the ${count(this.undo.count, "match", "matches")} last replaced`, (cx) => this.unreplace(cx))))
+      .when(Boolean(undo) && !this.busy, (el) => el.child(this.button(t, "ps-undo", "Undo replace", `Put back the ${count(undo.count, "match", "matches")} last replaced`, (cx) => this.unreplace(cx))))
       .child(this.icon(t, "ps-details", ICON.more, o.details ? "Hide the filters" : "Filter the files searched", (cx) => {
         o.details = !o.details;
         this.keep();
@@ -856,7 +877,7 @@ export default class ProjectSearch extends View {
     this.place(cx);
     this.asked(cx);
     // A menu or a dialog left something to do. Taken in a task: only one copy gets it.
-    if (ops.waiting()) this.after(cx, async (cx) => { const q = ops.take(); if (q) this.act(q, cx); cx.notify(); });
+    if (ops.waiting(this.panelId)) this.after(cx, async (cx) => { const q = ops.take(this.panelId); if (q) this.act(q, cx); cx.notify(); });
     const t = theme(), r = this.result, c = this.ctx;
     const all = Boolean(r?.files.length) && r.files.every((f) => this.folded.has(f.path));
     return v_flex().id("project-search").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)

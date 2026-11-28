@@ -6,7 +6,7 @@ Search and replace across the project in the sidebar. Cmd+Shift+F switches betwe
 
 *A search with the replace row open: every match shows what it becomes. The names in the pictures are made up.*
 
-- **Open:** Cmd+Shift+F, or the lens in the Files panel's header. From the editor, text selected on one line becomes the query. The Files button in the panel's header goes back.
+- **Open:** the Search button in the Power Tools tab bar, Cmd+Shift+F, or the lens in the Files panel's header. From the editor, text selected on one line becomes the query. The Files button in the panel's header goes back.
 - **The project.** Search follows the active tab's terminal to its repository or folder. When the editor has focus, Search uses the tab's last focused terminal, or its first terminal if Search has just opened. In a repository, Search runs as you type. In an ordinary folder, press Enter.
 - **Options:** match case (`Aa`), whole words (`ab`) and regular expression (`.*`). The syntax is ripgrep's: no lookaround, no backreferences.
 - **Filters:** the `…` button opens "files to include" and "files to exclude", comma-separated: `src`, `*.ts`, `docs/**` count at any depth, and `./src` is the folder at the project's top. Dotfiles are searched; what git ignores is not, unless "Search ignored files too" is ticked. Closed, the filters don't count.
@@ -17,7 +17,7 @@ Search and replace across the project in the sidebar. Cmd+Shift+F switches betwe
 - **To a terminal:** drag a result onto a terminal to paste its file's path there.
 - **Replace:** the chevron left of the query opens the replace row, and every match shows what it becomes. With a regular expression `$1` is the first group; in plain text a `$` is a dollar. Replace one match or one file from its row, or all of them with the button beside the field, which asks first. Only the matches listed are replaced.
 - **What a replace writes:** the files themselves, at once. A file that changed since the search is left alone, whole, and so is one that is not UTF-8 text or is larger than 1 MB. A file open in the editor shows its new text, or asks when it has unsaved text.
-- **Undo:** "Undo replace" under the fields takes back the last replace, in every file that is still as the replace left it.
+- **Undo:** **Undo replace** takes back the most recent replacement in the displayed project on its machine. It restores each file that still contains the replacement. The panel holds 24 million UTF-16 units of original and replaced text across projects. Older undo records expire as space is needed. A replacement larger than the budget has no undo record.
 
 The search reads the files on disk: unsaved text in the editor is not searched. Results come when the search is done, not one by one.
 

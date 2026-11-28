@@ -16,6 +16,8 @@ It needs macOS, Herdr installed with `herdr-app` and `hc` on the `PATH`, `python
 
 Then look at what changed (`git status docs/images`) before committing: the times, the figures and the newest commits in the pictures differ from run to run.
 
+For the indent-guide picture, set `HERDR_SHOTS_APP` to the absolute path of the patched Herdr executable when running `build.sh` or `retake.sh`. The sandbox links that binary for both the window and CLI. It picks up a local release at `build/Herdr Power Tools.app` automatically. With stock Herdr, the full retake preserves the published native guide picture and retakes the others. The `guides` step stages two same-named files and a wrapped line indented with literal tabs.
+
 For a separate run, set `HERDR_SHOTS_DIR` to a fresh short absolute path containing `herdr-app-demo` and `HERDR_SHOTS_SESSION` to a unique short name. If the core socket path is still too long, set `HERDR_SHOTS_SOCKET` to a short path under `/tmp` and use the same environment for each script.
 
 ## One step at a time
@@ -38,7 +40,7 @@ quit_sandbox            # close the window and stop its core
 | `build.sh` | The sandbox: stubs for `docker`, `ddev`, `gh` and the programs a mod could start, a fake home with this setup's mods and layout as they are in the working folder, the fake projects, and a copy of this repository as it is committed, with branches, a pull request and uncommitted changes to draw |
 | `launch.sh` | Starts the sandbox's Herdr with a clean environment |
 | `scene.sh` | The scene every picture starts from |
-| `shoot.sh` | The raw shots, in steps: `diff editor files search goto git sidebar window usage review ci tools` |
+| `shoot.sh` | The raw shots, in steps: `diff editor guides files search goto git sidebar window usage review ci tools` |
 | `pictures.json` | Every picture: its canvas, and which parts of which shots go where |
 | `frame.py` | Draws them: the backdrop, each part as a card with rounded corners, a hairline and a shadow |
 | `make.sh` | Runs `frame.py`, then saves each picture as lossless WebP in `docs/images/` |

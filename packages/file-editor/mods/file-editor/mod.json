@@ -26,6 +26,12 @@
       "command": "file-editor.wrap",
       "group": "Editor",
       "words": "soft wrap lines"
+    },
+    {
+      "title": "Reveal Active File in Files",
+      "command": "file-editor.reveal",
+      "group": "Editor",
+      "words": "show locate explorer tree"
     }
   ]
 }

@@ -10,6 +10,8 @@ Give each machine its own section in the Spaces sidebar. Mix folder headers and 
 
 ## How it behaves
 
+The folder’s + and **New space here** both unfold the folder, create a space on its machine and file the returned space ID there.
+
 Drag spaces into, out of or between folders on their machine. Drag headers to reorder folders. Click a header to fold it or its hover + to start a space there. Folder and space menus offer the same filing actions. Removing a folder puts its spaces back at the root. A new space on an already filed project joins that folder. Click a container button to start or stop the associated stack.
 
 The space menu opens the local project folder in a configured external app and a running local DDEV site in the default browser.

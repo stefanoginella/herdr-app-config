@@ -1,6 +1,6 @@
 # File Editor
 
-Cmd-click a source path printed by an agent and edit the file beside its terminal. Open another path in the same tab to add it to the editor's file strip. Markdown has a formatting toolbar. Preview Markdown, images, PDF, CSV, SVG and HTML in the pane.
+Cmd-click a source path printed by an agent and edit the file beside its terminal. Open another path in the same tab to add it to the editor's file strip. Show the shortest distinguishing parent on same-named tabs and the machine for identical paths. Offer **Reveal Active File in Files** from the palette. Markdown has a formatting toolbar. Preview Markdown, images, PDF, CSV, SVG and HTML in the pane.
 
 ![A Markdown file in the editor and its rendered preview](preview.png)
 

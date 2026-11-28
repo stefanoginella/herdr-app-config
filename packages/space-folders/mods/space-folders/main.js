@@ -506,7 +506,7 @@ export default class Spaces extends View {
         continue;
       }
       const main = nested(r) ? list.find((o) => o.g && !o.g.linked && o.g.repo === r.g.repo && model.has(m, o.w.id)) : null;
-      if (!main || !model.moveSpace(m, r.w.id, { folder: model.folderOf(m, main.w.id)?.id ?? null, after: main.w.id })) model.admit(m, r.w.id, keys[r.w.id], now);
+      if (!main || !model.moveSpace(m, r.w.id, { folder: model.folderOf(m, main.w.id)?.id ?? null, after: main.w.id })) model.admit(m, r.w.id, keys[r.w.id]);
     }
     // A loose space that went into a filed project (a cd) joins that project's folder. Only a change
     // seen while this runs counts: after a restart, spaces stay where they were left.
@@ -1086,6 +1086,14 @@ export default class Spaces extends View {
 
   render(cx) {
     if (this.other) return this.other.render();
+    if (shared(model.CREATE)) cx.spawn(async cx => {
+      await null;
+      const request = shared(model.CREATE);
+      if (!request) return;
+      setShared(model.CREATE, null);
+      const f = model.folder(model.load(), request.folder);
+      if (f && Date.now() - request.at < 10000) this.newSpaceIn(f, cx);
+    });
     // The menu left a project to open. Taken in a task: only one copy gets it.
     if (opening.waiting()) cx.spawn(async () => {
       await null;

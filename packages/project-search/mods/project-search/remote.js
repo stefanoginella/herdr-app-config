@@ -1,6 +1,3 @@
-// A copy of `file-editor`'s remote.js: a mod can only import from its own folder. Keep the two
-// the same under this note.
-//
 // Saving a file on another machine. Herdr's writeTextFile writes on this computer only, so the
 // text goes there as arguments of a shell script, run with `sh` through `exec(..., { on })`.
 // Nothing is installed there: the script travels with every call.

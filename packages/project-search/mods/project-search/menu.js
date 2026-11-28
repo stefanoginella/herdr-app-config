@@ -20,11 +20,11 @@ const ICON = {
 // Rows: { label, icon, act(cx), rule? (a line above) } and { section } (a heading, not a choice).
 function rows(m, apps) {
   if (!m.path) return [];
-  const target = { path: m.path, id: m.id ?? null }, abs = `${m.root}/${m.path}`;
+  const target = { panel: m.panel, revision: m.revision, root: m.root, on: m.on, path: m.path, id: m.id ?? null }, abs = `${m.root}/${m.path}`;
   const out = [{ section: m.id ? `${ops.base(m.path)} · line ${m.line}` : ops.base(m.path) }];
   out.push({ label: "Open in Editor", icon: "open", act: () => ops.request({ op: "open", ...target }) });
   for (const { id, label } of external.choices(apps, { path: abs })) {
-    out.push({ label, icon: external.isReveal(id) ? "reveal" : "app", act: () => ops.request({ op: "app", app: id, root: m.root, on: m.on, ...target }) });
+    out.push({ label, icon: external.isReveal(id) ? "reveal" : "app", act: () => ops.request({ op: "app", app: id, ...target }) });
   }
   out.push({ label: "Copy Path", icon: "copy", rule: true, act: (cx) => cx.write_to_clipboard(abs) });
   out.push({ label: "Copy Relative Path", icon: "copy", act: (cx) => cx.write_to_clipboard(m.path) });

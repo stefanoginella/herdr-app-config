@@ -20,6 +20,8 @@ Browse and manage project files in the Files panel. The tree shows file-type ico
 - **Undo:** Cmd+Z takes back the last move, rename or Trash, once, and a toast says what it did. A trashed file comes back out of the Trash. It is for slips: it works for five minutes, while the panel still shows the same folder. After a duplicate, a copy or a new file or folder there is nothing to take back.
 - **From Finder:** drop files or folders from Finder onto a folder, onto a file for that file's folder, or under the list for the top folder. They are copied: the originals stay where they are.
 - **Add Files…:** right-click, Add Files…, and pick them in the system's file picker. They are copied in the same way.
+- **Browse with the keyboard.** Click a folder or move focus to Files with pane navigation. Use ↑ and ↓ to move, → to expand a folder or enter its first child, ← to fold it or move to its parent, and Enter to open the selected entry. Escape returns to the pane.
+- **Reveal the active file.** Click the target beside the search button, or choose **Reveal Active File in Files** from the editor’s command palette. This opens its ancestor folders, scrolls the row into view and puts the keyboard in the tree. The file must be inside the folder Files is showing.
 - **Search:** the lens in the header goes to the [search panel](project-search.md), and right-clicking a folder offers Find in Folder.
 - **To and from the clipboard:** right-click, Copy puts a file or a folder on the clipboard, for Cmd+V in Finder; Paste copies in what was copied in Finder, or here. Dragging out to Finder is not possible: Herdr's file drag stays inside its window.
 

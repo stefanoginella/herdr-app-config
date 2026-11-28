@@ -10,7 +10,7 @@ Place the query and its case, word and regex toggles above a foldable result lis
 
 ## How it behaves
 
-Cmd+Shift+F toggles between Search and Files, including when the query field has focus. On opening Search it uses a one-line selection from the editor when available. Esc gives focus back to the pane without switching the sidebar. Search as the user types in a repository, or on Enter outside one. F4 and Shift+F4 open the next and previous matches. Replace a match, a file, or all listed results with confirmation for Replace All. Undo the last replace in files that still match the written version.
+Cmd+Shift+F toggles between Search and Files, including when the query field has focus. On opening Search it uses a one-line selection from the editor when available. Esc gives focus back to the pane without switching the sidebar. Search as the user types in a repository, or on Enter outside one. F4 and Shift+F4 open the next and previous matches. Replace a match, a file, or all listed results with confirmation for Replace All. Keep one undo per project and machine within a shared memory budget. Restore files that still match the written version. Bind result menus and confirmations to the panel and result revision that opened them.
 
 Resolve the project from the active tab's focused or last focused terminal. When Search first opens with the editor focused, use the first terminal in that tab. Wait for the current project before applying a search request.
 

@@ -29,7 +29,7 @@ Each feature has a page with everything it does: every key, limit and edge case.
 | [File Explorer](docs/file-actions.md) | The Files panel with icons, change marks, drag and drop and search shortcuts | `file-explorer` |
 | [Hide Names](docs/hide-names.md) | Made-up names around the content, for a screenshot or a screen share | `hide-names`, `tabs-names`, `pane-names`, `toast-names` |
 
-The `herdr-powertools` layout shows all of the above, with the panes you're not in faded and the dividers lit on hover. The repository also includes my key bindings and settings, notes for coding agents, and the [scripts that take these pictures](docs/screenshots/README.md).
+The `herdr-powertools` layout puts Files, Search and Git together on the tab bar and shows all of the above, with the panes you're not in faded and the dividers lit on hover. The repository also includes my key bindings and settings, notes for coding agents, and the [scripts that take these pictures](docs/screenshots/README.md).
 
 ## The tour
 
@@ -241,7 +241,7 @@ The layout and the cloned mods are copies of Herdr's `main`, `spaces`, `agents`,
 
 The mod sources live under `packages/<feature>/mods/`. For development, run `python3 docs/sync-mods.py` from the checkout to populate the ignored `mods/` directory. Add `--watch` to keep those copies synced while you edit the packages so Herdr can hot-reload them. The script needs `rsync` and uses the checkout as the app home by default. To test in a separate app home, pass the same path as `--home` to the script and `HERDR_APP_HOME` to Herdr.
 
-To keep those copies in step with git, turn on the repository's hooks once in each clone: `git config core.hooksPath .githooks`. After a pull, a checkout or a rebase they sync `mods/`. Before a push they check that `mods/` is what `packages/` holds (`python3 docs/sync-mods.py --check`), that the tests of every package the push changes pass, and that the gallery files are up to date; `git push --no-verify` skips the checks.
+To keep those copies in step with git, turn on the repository's hooks once in each clone: `git config core.hooksPath .githooks`. After a pull, a checkout or a rebase they sync `mods/`. Before a push they check that `mods/` is what `packages/` holds (`python3 docs/sync-mods.py --check`), that shared helper copies match (`python3 docs/check-shared.py`), that the tests of every package the push changes pass, and that the gallery files are up to date; `git push --no-verify` skips the checks.
 
 The checkout can itself be the Herdr app home. The runtime mods, Herdr's shipped layouts and private app state are ignored.
 

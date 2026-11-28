@@ -397,3 +397,35 @@ export function position(text, at) {
   for (let i = text.indexOf("\n"); i >= 0 && i < at; i = text.indexOf("\n", i + 1)) { line++; from = i + 1; }
   return { line, column: at - from + 1 };
 }
+
+
+// Only colliding basenames need a parent in the strip. Identical paths on two
+// machines get their machine label as well.
+export function tabLabels(docs) {
+  const groups = new Map(), labels = new Map();
+  for (const d of docs) {
+    if (!groups.has(d.name)) groups.set(d.name, []);
+    groups.get(d.name).push(d);
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const counts = new Map(), suffixes = new Map(), copies = new Map();
+    for (const { path } of group) copies.set(path, (copies.get(path) ?? 0) + 1);
+    for (const path of copies.keys()) {
+      const parts = path.split("/").filter(Boolean), names = [];
+      let suffix = parts.pop();
+      while (parts.length) {
+        suffix = parts.pop() + "/" + suffix;
+        names.push(suffix);
+        counts.set(suffix, (counts.get(suffix) ?? 0) + 1);
+      }
+      suffixes.set(path, names);
+    }
+    for (const doc of group) {
+      const short = copies.size === 1 ? doc.name :
+        suffixes.get(doc.path).find(suffix => counts.get(suffix) === 1) ?? doc.path;
+      labels.set(doc.id, copies.get(doc.path) > 1 ? (doc.on ?? "this computer") + ": " + short : short);
+    }
+  }
+  return labels;
+}

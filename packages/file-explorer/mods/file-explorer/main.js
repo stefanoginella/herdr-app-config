@@ -13,7 +13,7 @@
 // The key command `file-explorer.undo` takes back the last move, rename or Trash.
 // Modified from Herdr's `files` mod (version 0.1.16, Apache-2.0): see NOTICE at the repository root.
 import { View, div, svg, image } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, pickFiles, theme, settings, window, props, openOverlay, notify, nextCommand, keys, run, shared, setShared } from "herdr";
 import Menu, { any } from "./menu.js";
 import Naming from "./naming.js";
@@ -230,6 +230,10 @@ export default class Files extends View {
       this.other.init(cx);
       return;
     }
+    this.handle = cx.focus_handle();
+    this.scroll = ScrollHandle.new();
+    this.tree = [];
+    this.cursor = null;
     this.saved = new Map();
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set();
     this.git = EMPTY_GIT;
@@ -246,7 +250,12 @@ export default class Files extends View {
     this.refresh(cx);
     cx.timer.every(500, cx => this.refreshIfDue(cx));
     cx.spawn(async cx => {
-      for (;;) if ((await nextCommand()) === "undo") this.undo(cx);
+      for (;;) {
+        const command = await nextCommand();
+        if (command === "undo") this.undo(cx);
+        if (command === "focus") { this.handle.focus(); cx.notify(); }
+        if (command === "reveal") this.reveal(cx);
+      }
     });
   }
 
@@ -323,6 +332,7 @@ export default class Files extends View {
         // At most 64 folders can have a watch waiting: the one no longer shown lets go.
         this.context.watch?.pending?.cancel();
       }
+      this.cursor = this.scrollTo = null;
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on, dirtyAt: 0 }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.git = EMPTY_GIT; this.nestedGit = new Map(); this.error = null; this.limited = false;
@@ -523,6 +533,7 @@ export default class Files extends View {
   // at once (the reload that follows only confirms it).
   moved(from, to) {
     const swap = path => path === from ? to : path.startsWith(from + "/") ? to + path.slice(from.length) : path;
+    if (this.cursor) this.cursor = swap(this.cursor);
     const entry = this.take(from);
     this.folders = new Set([...this.folders].map(swap));
     this.entries = new Map([...this.entries].map(([path, list]) => [swap(path), list]));
@@ -544,6 +555,7 @@ export default class Files extends View {
   }
 
   gone(path) {
+    if (this.cursor && ops.within(this.cursor, path)) this.cursor = ops.parent(path);
     this.take(path);
     for (const folder of [...this.folders]) if (ops.within(folder, path)) { this.folders.delete(folder); this.entries.delete(folder); }
   }
@@ -613,16 +625,59 @@ export default class Files extends View {
   // The row that stands for the file the tab's editor shows (its `file-editor.shown`): the
   // file's own, or the closed folder it is in, the topmost one. A path under the folder shown,
   // or null: the tab has no editor, the editor no file, or the file is not under this folder.
-  shown() {
+  activeFile() {
     const tab = focused()?.tab, s = tab ? shared(`${EDITOR}.shown`)?.[tab] : null;
-    if (!this.root || typeof s?.path !== "string" || (s.on ?? null) !== (this.on ?? null) || !s.path.startsWith(`${this.root}/`)) return null;
+    if (!this.root || typeof s?.path !== "string" || (s.on ?? null) !== (this.on ?? null)) return null;
+    const prefix = this.root.replace(/\/+$/, "") + "/";
+    if (!s.path.startsWith(prefix)) return null;
     // An editor that went without a word (a crash) left its file behind.
     if (!panes().some(p => p.tab === tab && p.mod === EDITOR)) return null;
-    const path = s.path.slice(this.root.length + 1);
+    return s.path.slice(prefix.length);
+  }
+
+  shown(path) {
+    if (!path) return null;
     for (let at = path.indexOf("/"); at >= 0; at = path.indexOf("/", at + 1)) {
       if (!this.folders.has(path.slice(0, at))) return path.slice(0, at);
     }
     return path;
+  }
+
+  reveal(cx) {
+    const path = this.activeFile();
+    if (!path) return notify({ title: "Cannot reveal this file", body: "The active editor file must be inside the folder shown in Files." });
+    for (let i = path.indexOf("/"); i >= 0; i = path.indexOf("/", i + 1)) this.folders.add(path.slice(0, i));
+    this.handle.focus();
+    this.cursor = this.scrollTo = path;
+    this.refresh(cx, true);
+    cx.notify();
+  }
+
+  treeKey(e, cx) {
+    if (!this.handle.is_focused() || Object.values(e.modifiers ?? {}).some(Boolean)) return;
+    const at = this.tree.indexOf(this.cursor), path = this.tree[at];
+    let next = path;
+    if (e.key === "escape") {
+      const pane = focused()?.pane;
+      if (pane) {
+        run("pane.focus", { pane });
+        if (panes().some(p => p.pane === pane && p.mod === EDITOR)) run("file-editor.focus");
+      }
+    } else if (!this.tree.length) return;
+    else if (e.key === "down" || e.key === "up") {
+      next = this.tree[Math.max(0, Math.min(this.tree.length - 1, at + (e.key === "down" ? 1 : -1)))];
+    } else if (e.key === "left") {
+      if (this.folders.has(path)) this.toggle(path, cx);
+      else if (path) next = ops.parent(path) || path;
+    } else if (e.key === "right" || e.key === "enter") {
+      if (this.entry(path ?? "")?.dir) {
+        if (e.key === "enter" || !this.folders.has(path)) this.toggle(path, cx);
+        else if (ops.parent(this.tree[at + 1] ?? "") === path) next = this.tree[at + 1];
+      } else if (path && e.key === "enter") this.open(path);
+    } else return;
+    if (next) { this.cursor = next; this.scroll.scroll_to_item(this.tree.indexOf(next)); }
+    cx.stop_propagation();
+    cx.notify();
   }
 
   // `s`: what every row needs. { dark, parent: the folder's name, ignored: it is inside an
@@ -643,16 +698,17 @@ export default class Files extends View {
       // A drop goes into the folder the pointer is on, or the one the file under it is in.
       const into = entry.dir ? path : prefix;
       const target = aim !== null && aim !== "" && ops.within(path, aim);
+      this.tree.push(path);
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer()
         .when(target, el => el.bg(path === aim ? t.selected : t.hover))
-        .when(!target && path === s.shown, el => el.bg(t.selected))
-        .when(!target && path !== s.shown, el => el.hover(st => st.bg(t.hover)))
+        .when(!target && path === s.highlight, el => el.bg(t.selected))
+        .when(!target && path !== s.highlight, el => el.hover(st => st.bg(t.hover)))
         .when(Boolean(d?.moving) && !d.out && d.path === path, el => el.opacity(0.5))
         // Herdr's file drag: the name follows the pointer, and a terminal takes it as a path.
         // The move within the list is this panel's own, on the same press.
         .drag_paths([`${this.root}/${path}`], { on: this.on ?? null })
         // Drawn again at once: from that draw on, the panel watches the window (follow(), ended()).
-        .on_mouse_down("left", (e, cx) => { this.drag = { path, name: entry.name, dir: entry.dir, x: e.position.x, y: e.position.y }; this.over = null; cx.notify(); })
+        .on_mouse_down("left", (e, cx) => { this.cursor = path; this.scrollTo = null; this.handle.focus(); this.drag = { path, name: entry.name, dir: entry.dir, x: e.position.x, y: e.position.y }; this.over = null; cx.notify(); })
         .on_mouse_move((e, cx) => { if (this.drag) { this.stir(e, cx); this.aim(into, cx); } })
         // The drop is on this row, wherever the last move was seen. A drop from Finder never
         // gets here: on_drop runs first, and stops the release.
@@ -729,8 +785,29 @@ export default class Files extends View {
     // A menu or a dialog left something to do. Taken in a task: only one copy gets it.
     if (ops.waiting()) cx.spawn(async cx => { const r = ops.take(); if (r) this.act(r, cx); });
     const t = theme();
-    const list = this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored, git: this.git, shown: this.shown() });
-    return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    const active = this.activeFile(), shown = this.shown(active);
+    const reveal = shared("file-explorer.reveal");
+    if (reveal && reveal.tab === focused()?.tab) cx.spawn(async cx => {
+      await null;
+      if (shared("file-explorer.reveal")?.at !== reveal.at) return;
+      setShared("file-explorer.reveal", null);
+      if (Date.now() - reveal.at < 10000 && focused()?.tab === reveal.tab &&
+          shared("file-editor.shown")?.[reveal.tab]?.path === reveal.path &&
+          (this.on ?? null) === reveal.on) this.reveal(cx);
+    });
+    this.tree = [];
+    const highlight = this.handle.is_focused() ? this.cursor ?? shown ?? this.entries.get("")?.[0]?.name : shown;
+    const list = this.rows("", 0, [], t, { dark: settings().dark !== false, parent: this.root?.split("/").pop(), ignored: this.inIgnored, git: this.git, highlight });
+    if (this.scrollTo) {
+      const index = this.tree.indexOf(this.scrollTo);
+      if (index >= 0) { this.scroll.scroll_to_item(index); this.scrollTo = null; }
+      else if (!this.loading) {
+        this.scrollTo = null;
+        cx.spawn(async () => { await null; notify({ title: "File is outside the visible tree", body: this.error || "The file is missing or the folder listing reached its limit." }); });
+      }
+    }
+    if (!this.scrollTo && !this.tree.includes(this.cursor)) this.cursor = this.tree.includes(shown) ? shown : this.tree[0] ?? null;
+    return v_flex().id("files").track_focus(this.handle).on_key_down((e, cx) => this.treeKey(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       // Only while an entry is pressed: every move in the window is a call into the script.
       .when(Boolean(this.drag), el => el
         .on_window_mouse_move((e, cx) => this.follow(e, cx))
@@ -746,13 +823,16 @@ export default class Files extends View {
         .on_mouse_down("right", () => this.menu())
         .child(div().font_semibold().child("Files"))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? ""))
+        .when(Boolean(active), el => el.child(h_flex().id("files-reveal").size(24).flex_none().items_center().justify_center().rounded(6).cursor_pointer()
+          .hover(st => st.bg(t.hover)).tooltip("Reveal active file in Files").on_click((_e, cx) => this.reveal(cx))
+          .child(svg("mods/file-explorer/reveal.svg").size(15).text_color(t.muted))))
         // To the Search panel, which takes this one's place.
         .child(h_flex().id("files-search").size(24).flex_none().items_center().justify_center().rounded(6).cursor_pointer()
           .hover(st => st.bg(t.hover))
           .tooltip(keyOf(`${SEARCH}.open`) ? `Search in the project (${keyOf(`${SEARCH}.open`)})` : "Search in the project")
           .on_click(() => run(`${SEARCH}.open`))
           .child(svg("mods/workspace-chrome/search.svg").size(15).flex_none().text_color(t.muted))))
-      .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(5).border_1().border_color(this.over?.dir === "" ? t.accent : CLEAR).rounded_b(10)
+      .child(v_flex().id("files-tree").track_scroll(this.scroll).flex_1().min_h(0).overflow_y_scrollbar().p(5).border_1().border_color(this.over?.dir === "" ? t.accent : CLEAR).rounded_b(10)
         // A release here that no row took (the padding) ends the drag at once; ended() would a
         // step later, once it watches the window (the draw after the press).
         .on_mouse_up("left", (_e, cx) => this.still(cx))

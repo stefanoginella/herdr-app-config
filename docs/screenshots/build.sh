@@ -16,7 +16,17 @@ mkdir -p "$DEMO/bin" "$DEMO/raw" "$DEMO/gh" "$DEMO/agents" "$DEMO/state" "$A/lay
 
 # ---- bin: the real programs the sandbox may use, by link, and stubs for the rest ----
 link() { ln -sf "$(real "$1")" "$DEMO/bin/$1"; }
-link hc; link herdr-app; link node; link rg
+link hc; link node; link rg
+renderer=${HERDR_SHOTS_APP:-}
+local_build="$REPO/build/Herdr Power Tools.app/Contents/MacOS/Herdr"
+if [ -z "$renderer" ] && [ -x "$local_build" ]; then renderer=$local_build; fi
+if [ -n "$renderer" ]; then
+  [[ "$renderer" = /* && -x "$renderer" ]] || { echo "build: HERDR_SHOTS_APP must be an absolute executable path"; exit 1; }
+  ln -s "$renderer" "$DEMO/bin/herdr-app"
+  touch "$DEMO/patched-guides"
+else
+  link herdr-app
+fi
 real herdr-core >/dev/null && link herdr-core
 for p in claude codex code open osascript textedit trash; do
   printf '#!/bin/sh\nprintf "%%s\\n" "$0 $*" >>%s/stub.log\nexit 1\n' "$DEMO" > "$DEMO/bin/$p"

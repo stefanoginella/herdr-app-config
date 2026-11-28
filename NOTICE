@@ -23,6 +23,9 @@ licensed under the Apache License, Version 2.0:
   bar, pane headers and status bar show `tabs-names`, `pane-names` and
   `hide-names`, and its notifications are drawn by `toast-names`.
 
+The optional native indent-guide patch changes the Apache-2.0 gpui-base editor
+from longbridge/gpui-kit as vendored in Herdr 0.1.18.
+
 The full layout also includes Back and forward from PostHog/herdr and Quick
 Actions from dougcunha/herdr-mods. Each is distributed under its MIT license
 in the corresponding mod folder.

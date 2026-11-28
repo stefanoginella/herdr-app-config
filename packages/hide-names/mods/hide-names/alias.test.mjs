@@ -1,9 +1,6 @@
-// node --test, in this folder: alias.js, and that every mod's copy of it is the same file.
+// Run with node --test. The repository checks all shared helpers in docs/check-shared.py.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { basename, dirname, join } from "node:path";
 import * as alias from "./alias.js";
 
 // Made-up inputs, none of them a word of the lists.
@@ -93,17 +90,4 @@ test("folders avoid the names already taken", () => {
     taken.add(f);
   }
   assert.match(alias.folder("anything", new Set()), /^[A-Z][a-z]+/);
-});
-
-test("every mod's copy of alias.js is the same", () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const mods = join(here, "..");
-  const packages = join(mods, "..", "..");
-  const roots = basename(packages) === "packages"
-    ? readdirSync(packages).map((name) => join(packages, name, "mods")).filter(existsSync)
-    : [mods];
-  const mine = readFileSync(join(here, "alias.js"));
-  const copies = roots.flatMap((root) => readdirSync(root).map((m) => join(root, m, "alias.js"))).filter(existsSync);
-  assert.ok(copies.length >= 6, `copies: ${copies.join(", ")}`);
-  for (const path of copies) assert.ok(readFileSync(path).equals(mine), `${path} differs`);
 });

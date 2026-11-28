@@ -11,7 +11,7 @@ Each machine has folders of its own, drawn under its header, and a folder holds 
 - **Add a folder:** the folder button next to `+` in the Spaces header, or right-click the header or the empty area under the list: the folder goes on the machine of the space shown. Right-click a machine's header for a folder on that machine.
 - **Move a space:** drag it onto a folder to put it in, onto a row to place it before or after that row, or under the list to take it out of every folder. Or right-click it: Move to, Out of folder, New folder.
 - **Move a folder:** drag its header.
-- **New space in a folder:** the `+` on a folder's header, shown while the pointer is on it, makes a space in that machine's home folder and files it there. Or right-click the folder, New space here.
+- **New space in a folder:** the `+` on a folder's header, shown while the pointer is on it, makes a space in that machine's home folder and files it there. The folder menu’s **New space here** uses the same action. Both file the specific space they create.
 - **Rename or remove a folder:** right-click it. Removing a folder leaves its spaces at the root. Nothing is closed.
 - **Fold:** click the header. A folded folder shows how many spaces it holds, and a dot when one of them needs you.
 

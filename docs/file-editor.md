@@ -1,13 +1,13 @@
 # File Editor
 
-A file editor and viewer beside the terminals. Click a file in the Files panel and it opens in a pane of the tab, split in next to the focused pane; the next file opens in the same pane, as another tab in its strip. The Files panel stays where it is, and can show Changes meanwhile.
+A file editor and viewer beside the terminals. Click a file in the Files panel and it opens in a pane of the tab, split in next to the focused pane; the next file opens in the same pane, as another tab in its strip. The Files panel stays where it is, and can show Git or Search meanwhile.
 
 ![A Markdown file in source and preview, with file size and text counts in the footer](images/file-editor.webp)
 
 *A pinned Markdown file in the editor and its preview. The footer shows the size on disk and counts for the source.*
 
 - **Wrapped lines:** long lines wrap, and go on under the line's own indentation. The Wrap button, or the command palette's "Editor: Toggle Line Wrap", turns that off for a file, and long lines then scroll sideways. The choice is kept with the file.
-- **Indentation:** Tab indents as the file does: with tabs in a Makefile or a file indented with tabs, else by the file's own step of 2, 4 or 8 spaces.
+- **Indentation.** Tab inserts a literal tab in Makefiles, `*.mk`, `*.make` and files predominantly indented with tabs. Otherwise the first 2,000 lines determine a step of 2, 4 or 8 spaces. An empty ordinary file starts with 2 spaces.
 - **Save:** Cmd+S. Nothing is saved by itself. A dot on a file's tab means unsaved text, and closing that tab asks first.
 - **Changes made elsewhere:** a file an agent or git changes is shown as it now is, when nothing is unsaved here. When something is, a save is refused and the editor asks which text to keep.
 - **Nothing typed is lost:** the open files and their unsaved text are kept as you type. Close the pane or restart Herdr, open a file in that tab again, and they are back.
@@ -26,10 +26,14 @@ A file editor and viewer beside the terminals. Click a file in the Files panel a
 - **Changes since the last commit:** a file git has gets a thin strip on the right of its text, with a mark where lines were added (green), changed (blue) or deleted (red), unsaved typing included. The strip is the whole file from top to bottom, not a margin: in a file shorter than the pane a mark is level with its lines, until a long line wraps above them, and in a longer file it shows where in the file they are. Click a mark, or press Alt+F3 and Alt+Shift+F3, or the `±` button that counts the changes, to go to a change with its lines selected. A file git does not have yet has no marks.
 
 - **From a terminal:** Cmd-click a file path in a terminal, an agent's `src/app.ts:42:7` for one, and it opens in that tab's editor at that line and column (`editor-links`). Paths on another machine open there. Images and PDFs open in the editor too. Archives, unsupported binaries, folders and missing files go to Herdr's usual opener. Herdr only sees a path as a link when it has a folder in it (`src/app.ts`, `./app.ts`, `~/x/app.ts`): a bare `app.ts:42` is not underlined and can't be clicked.
-- **Tabs.** Ctrl+W closes the current file, even if it’s pinned. It leaves the editor pane open and does not change Ctrl+W in terminals. Right-click a file tab for **Pin** or **Unpin**, **Close**, **Close Others**, **Close to the Right**, and **Close All**. Pinned tabs move to the left, stay pinned when the editor reopens, and survive all three bulk close actions. The mouse's back and forward buttons move through the tab strip.
+- **Tabs.** Same-named files show the shortest distinguishing parent path. Identical paths on different machines also show the machine. **Reveal Active File in Files** opens the file’s location in the tree. Ctrl+W closes the current file, even if it’s pinned. It leaves the editor pane open and does not change Ctrl+W in terminals. Right-click a file tab for **Pin** or **Unpin**, **Close**, **Close Others**, **Close to the Right**, and **Close All**. Pinned tabs move to the left, stay pinned when the editor reopens, and survive all three bulk close actions. The mouse's back and forward buttons move through the tab strip.
 - **Unsaved tabs.** A bulk close closes clean tabs first, then offers Save, Discard, or Cancel for each unsaved file. Cancel leaves the remaining files open.
 - **The pane's name:** the pane's header says which file the editor shows, and "File Editor" when it shows none (the diff pane's says "Git Diff Viewer"). A name you give the pane yourself stays.
 - **Text size:** the text is as large as the terminals' (`font_size`), as Herdr's own file preview and diff are.
+
+![Two rules.js tabs and three indent guides continuing across a wrapped line in the patched native editor](images/editor-guides.webp)
+
+*The tab labels come from File Editor. The aligned guides shown here use the [native renderer patch for Herdr 0.1.18](native/README.md). Stock 0.1.18 can misalign guides on literal tabs and leave gaps on wrapped lines.*
 
 Undo, redo, indenting, bracket pairs and folding are Herdr's own editor. Files too large to edit open read-only.
 

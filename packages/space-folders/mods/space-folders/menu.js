@@ -9,7 +9,7 @@
 
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { run, props, closeOverlay, openOverlay, theme, keys, spaces } from "herdr";
+import { run, props, closeOverlay, openOverlay, theme, keys, spaces, setShared } from "herdr";
 import * as model from "./model.js";
 import * as opening from "./open.js";
 import * as external from "./external-apps.js";
@@ -87,7 +87,7 @@ function rows(p, apps) {
     const f = model.folder(m, tg.id);
     if (!f) return [];
     return [
-      { label: "New space here", icon: "plus", act: () => { change((m) => model.expect(m, f.id, Date.now())); run("space.new", { machine: f.on ?? "" }); } },
+      { label: "New space here", icon: "plus", act: () => setShared(model.CREATE, { folder: f.id, at: Date.now() }) },
       { label: "Rename", icon: "square-pen", act: () => naming({ title: "Rename folder", folder: f.id, value: f.name }) },
       { label: "Remove folder", icon: "x", rule: true, hint: f.spaces.length ? "spaces stay" : "", act: () => change((m) => model.removeFolder(m, f.id)) },
     ];

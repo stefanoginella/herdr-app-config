@@ -103,7 +103,7 @@ print(json.dumps([{"shared": ["space.folders", {"root": [
     {"id": "f1", "name": "Open source", "folded": False, "on": None, "spaces": [s1, s4]},
     {"id": "f2", "name": "Clients", "folded": False, "on": None, "spaces": [s2, s3]},
     {"id": "f3", "name": "Lab", "folded": True, "on": None, "spaces": [s5]},
-    s6], "projects": {}, "next": None}]},
+    s6], "projects": {}}]},
   {"shared": ["agents.unread", {}]}, {"shared": ["names.hidden", False]}]))
 P
 }

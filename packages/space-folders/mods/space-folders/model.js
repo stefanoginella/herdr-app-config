@@ -1,8 +1,7 @@
 // Folders for the spaces sidebar: one level deep, kept in shared "space.folders":
 //
 //   { root:     [ spaceId | { id, name, folded, on, spaces: [spaceId] } ],   the sidebar, top to bottom
-//     projects: { projectKey: folderId },   where a project was filed, for the next space opened on it
-//     next:     { folder, at } | null }     "New space here": the folder waiting for the next new space
+//     projects: { projectKey: folderId } }  where a project was filed, for the next space opened on it
 //
 // A folder belongs to one machine (`on`: its name, null for this computer) and holds only that
 // machine's spaces, so each machine has folders of its own. The root list holds every machine's
@@ -14,8 +13,7 @@
 import { shared, setShared } from "herdr";
 
 export const KEY = "space.folders";
-// How long "New space here" waits for its space to appear.
-const NEXT_MS = 30000;
+export const CREATE = "space-folders.create";
 
 const isFolder = (e) => e !== null && typeof e === "object";
 const ref = (e) => (isFolder(e) ? e.id : e);
@@ -69,8 +67,7 @@ export function load() {
     const there = f.on === on ? f : byId.get(`${v}~${on ?? "local"}`);
     if (there) projects[k] = there.id;
   }
-  const next = isFolder(raw?.next) && ids.has(raw.next.folder) ? { folder: raw.next.folder, at: Number(raw.next.at) || 0 } : null;
-  return { root, projects, next };
+  return { root, projects };
 }
 
 // The same text for the same model, however the store orders an object's keys.
@@ -78,7 +75,6 @@ export function canon(m) {
   return JSON.stringify([
     m.root.map((e) => (isFolder(e) ? [e.id, e.name, e.folded, e.on, e.spaces] : e)),
     Object.entries(m.projects).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
-    m.next ? [m.next.folder, m.next.at] : null,
   ]);
 }
 
@@ -153,19 +149,11 @@ export function file(m, space, dest, { kids = [], keys = {} } = {}) {
   return true;
 }
 
-// A space the model hasn't seen: into the folder waiting for it ("New space here"), else the folder
-// its project was filed in, else the end of the root. Only a folder of the space's own machine.
-export function admit(m, space, key, now) {
+// A newly discovered space follows its project's folder on the same machine.
+export function admit(m, space, key) {
   if (has(m, space)) return false;
-  const on = machineOf(space);
-  const mine = (f) => (f && f.on === on ? f : null);
-  const due = m.next && now - m.next.at < NEXT_MS ? folder(m, m.next.folder) : null;
-  const waiting = mine(due);
-  // A waiting folder of another machine keeps waiting for a space there.
-  if (!due || waiting) m.next = null;
-  const f = waiting ?? (key ? mine(folder(m, m.projects[key])) : null);
-  (f ? f.spaces : m.root).push(space);
-  if (waiting && key) m.projects[key] ??= waiting.id;
+  const f = key ? folder(m, m.projects[key]) : null;
+  (f && f.on === machineOf(space) ? f.spaces : m.root).push(space);
   return true;
 }
 
@@ -204,16 +192,10 @@ export function removeFolder(m, id) {
   if (i === -1) return false;
   m.root.splice(i, 1, ...m.root[i].spaces);
   for (const [k, v] of Object.entries(m.projects)) if (v === id) delete m.projects[k];
-  if (m.next?.folder === id) m.next = null;
   return true;
 }
 
 export function setFolded(m, id, folded) {
   const f = folder(m, id);
   if (f) f.folded = Boolean(folded);
-}
-
-// "New space here": the next new space goes into this folder.
-export function expect(m, id, now) {
-  if (folder(m, id)) m.next = { folder: id, at: now };
 }

@@ -1,7 +1,7 @@
 #!/bin/bash
 # shoot.sh [step ...]: the raw shots the pictures are made from, each the whole window as the app
 # drew it, into the sandbox's raw/. After scene.sh. With no step named, all of them, in this order:
-#   diff editor files search goto git sidebar window usage review ci tools
+#   diff editor guides files search goto git sidebar window usage review ci tools
 # A step sets the zoom and the panels it needs. The crop boxes in pictures.json are in these shots'
 # pixels: a step that changes a zoom, a panel's width or a pane's place moves them.
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -33,20 +33,32 @@ s_editor() {
   h file-editor.preview; h file-editor.toggle-pin; nap 0.5; draw 2
 }
 
-# The Files panel with a file's menu. Making an entry unfolds its parent.
+# Same-named tabs and a long, tab-indented line beside its guides.
+s_guides() {
+  if [ ! -f "$DEMO/patched-guides" ]; then
+    echo "Skipping the native guide picture. Build the sandbox with HERDR_SHOTS_APP pointing at patched Herdr."
+    return
+  fi
+  zoom 1.6; h layout.hide '{"id":"sidebar"}'; h layout.hide '{"id":"panel"}'
+  h file-editor.close-all
+  local example="$D/fieldnotes/examples"
+  mkdir -p "$example/client" "$example/server"
+  printf '%s\n' 'export const rules = [];' > "$example/client/rules.js"
+  printf '%b\n' 'export function check(project) {' '\tfor (const rule of project.rules) {' \
+    '\t\tif (rule.required) {' \
+    '\t\t\tconst message = "The project must include a description before this rule can be enabled for everyone in the workspace."; ' \
+    '\t\t\tproject.report(rule, message);' '\t\t}' '\t}' '}' > "$example/server/rules.js"
+  open_file "$example/client/rules.js"; open_file "$example/server/rules.js"
+  shot editor-guides
+  h file-editor.close-all
+}
+
+# Reveal the editor file and show its menu.
 s_files() {
   zoom 1.45; h layout.hide '{"id":"sidebar"}'; h layout.show '{"id":"panel"}'
   h layout.select '{"stack":"panel-body","child":"files"}'; h layout.resize '{"id":"panel","px":340}'; nap 1; draw 3
-  local folder f=packages/git-panel/mods/git-panel/initials.test.mjs
-  cp "$R/$f" "$DEMO/initials.test.mjs"
-  for folder in packages packages/git-panel packages/git-panel/mods; do
-    req "[{\"shared\":[\"file-explorer.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"$folder/zz-tmp\",\"dir\":true,\"at\":\"now\"}]}]" 6
-    rmdir "${R:?}/$folder/zz-tmp"
-  done
-  rm -f "${R:?}/${f:?}"; nap 2; draw 3
-  req "[{\"shared\":[\"file-explorer.request\",{\"op\":\"make\",\"root\":\"$R\",\"on\":null,\"to\":\"$f\",\"dir\":false,\"at\":\"now\"}]}]" 6
-  cp "$DEMO/initials.test.mjs" "$R/$f"; nap 2; draw 3
   open_file "$R/packages/git-panel/mods/git-panel/git.js" 131
+  h file-editor.reveal; nap 1; draw 6
   # `at` is in window pixels: left of the file's row, as the menu opens when there is no room below.
   req "[{\"overlay\":{\"mod\":\"file-explorer\",\"kind\":\"popup\",\"width\":236,\"height\":620,\"at\":{\"x\":1330,\"y\":215},\"props\":{\"menu\":{\"root\":\"$R\",\"on\":null,\"path\":\"packages/git-panel/mods/git-panel/git.js\",\"dir\":false,\"project\":\"$R\",\"repo\":\"$R\"}}}}]" 5
   shot file-actions
@@ -150,7 +162,7 @@ s_tools() {
   h space.select "{\"id\":\"$S1\"}"; h tab.select "{\"id\":\"$T1\"}"
 }
 
-steps=("$@"); [ ${#steps[@]} -gt 0 ] || steps=(diff editor files search goto git sidebar window usage review ci tools)
+steps=("$@"); [ ${#steps[@]} -gt 0 ] || steps=(diff editor guides files search goto git sidebar window usage review ci tools)
 for s in "${steps[@]}"; do
   declare -F "s_$s" >/dev/null || { echo "shoot: no step $s"; exit 1; }
   echo "== $s"; "s_$s"

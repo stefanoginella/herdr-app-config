@@ -6,6 +6,7 @@
 cd "$(git rev-parse --show-toplevel)" || exit 1
 fail() { echo "pre-push: $1" >&2; exit 1; }
 
+python3 docs/check-shared.py || fail "shared mod helpers differ"
 python3 docs/sync-mods.py --check || fail "mods/ is not what packages/ holds: sync, try it in Herdr, then push"
 git diff --quiet HEAD -- packages || echo "pre-push: packages/ has changes not committed; they are what is checked" >&2
 

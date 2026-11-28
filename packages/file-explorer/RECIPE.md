@@ -12,7 +12,7 @@ Fade the folder name and icon when the enclosing repository ignores a nested Git
 
 ## How it behaves
 
-Click a folder to fold it, or a file to open it in **File Editor**. A tree drop moves the entry, a terminal drop pastes the quoted path and a Finder drop copies in the files. Offer New File, New Folder, Rename and Duplicate on local and remote projects. Show available external apps and the desktop file manager for local items on macOS, Linux and Windows. Offer the Finder clipboard and Trash on macOS. Cmd+Z reverses the last move, rename or Trash for five minutes in the same folder.
+Click a folder to fold it, or a file to open it in **File Editor**. Arrow keys navigate the focused tree, Enter opens the selection and Escape returns to the pane. An explicit reveal expands the editor file’s ancestors, scrolls it into view and focuses its row. A tree drop moves the entry, a terminal drop pastes the quoted path and a Finder drop copies in the files. Offer New File, New Folder, Rename and Duplicate on local and remote projects. Show available external apps and the desktop file manager for local items on macOS, Linux and Windows. Offer the Finder clipboard and Trash on macOS. Cmd+Z reverses the last move, rename or Trash for five minutes in the same folder.
 
 ## Built from
 

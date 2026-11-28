@@ -158,13 +158,20 @@ export default class GitPanel extends View {
     this.split = split > 0 && split < 1 ? split : null;
     this.surveys = new Map();
     this.bad = new Set();
+    this.drafts = new Map();
+    this.writers = new Map();
+    try {
+      for (const [key, text] of Object.entries(JSON.parse(localStorage.getItem("commitDrafts") ?? "{}"))) {
+        if (typeof text === "string" && text) this.drafts.set(key, { text, revision: 0 });
+      }
+    } catch {}
     this.message = "";
     this.input = TextareaState.new({ placeholder: "Commit message" });
     this.input.set_auto_grow(1, 9);
     this.input.on("change", (_e, cx) => {
-      const had = Boolean(this.message.trim());
-      this.message = this.input.value();
-      if (had !== Boolean(this.message.trim())) cx.notify();
+      if (!this.draftKey) return;
+      this.setDraft(this.draftKey, this.input.value());
+      cx.notify();
     });
     // Enter is a new line: a message has a body. Cmd+Enter commits.
     this.input.on("submit", (e, cx) => { if (e?.secondary) this.commit(cx); });
@@ -187,6 +194,10 @@ export default class GitPanel extends View {
     });
   }
 
+  close() {
+    if (this.pending?.commitDrafts !== undefined) localStorage.setItem("commitDrafts", this.pending.commitDrafts);
+  }
+
   where() { return this.pin ?? location(); }
 
   // Whether this copy is on screen. One pinned to a folder is a test window, which is not in
@@ -201,6 +212,36 @@ export default class GitPanel extends View {
   // Something to remember, written at the next draw (see `pin` in init for why not here).
   remember(name, value) { this.pending[name] = value; }
 
+  get writing() { return this.writers.get(this.draftKey); }
+
+  showDraft(key) {
+    this.draftKey = key;
+    const text = this.drafts.get(key)?.text ?? "";
+    if (text !== this.input.value()) this.input.set_value(text);
+    this.message = text;
+  }
+
+  setDraft(key, text) {
+    const draft = this.drafts.get(key) ?? { text: "", revision: 0 };
+    if (text !== draft.text) {
+      draft.text = text;
+      draft.revision++;
+      this.drafts.set(key, draft);
+      const saved = {};
+      for (const [id, entry] of this.drafts) if (entry.text) saved[id] = entry.text;
+      this.remember("commitDrafts", JSON.stringify(saved));
+    }
+    if (key === this.draftKey) this.showDraft(key);
+  }
+
+  useGenerated() {
+    const draft = this.drafts.get(this.draftKey);
+    if (!draft?.suggestion) return;
+    const text = draft.suggestion;
+    delete draft.suggestion;
+    this.setDraft(this.draftKey, text);
+  }
+
   // Nothing is known about the repository shown: another one is, or none.
   reset() {
     this.context = null; this.root = null; this.on = null; this.common = null; this.state = null;
@@ -209,6 +250,7 @@ export default class GitPanel extends View {
     this.commits = []; this.rows = []; this.width = 1; this.index = new Map(); this.pills = new Map();
     this.limit = PAGE; this.more = false; this.paged = null; this.stamp = null;
     this.sel = null; this.details = new Map(); this.empty = null; this.offer = null;
+    this.job = null;
     this.error = null; this.note = null; this.busy = null; this.stale = true; this.last = 0;
     this.turn = (this.turn ?? 0) + 1;
     this.hub = null; this.hubAt = 0; this.hubRoot = null;
@@ -225,7 +267,9 @@ export default class GitPanel extends View {
   tick(cx) {
     const now = Date.now();
     if (this.busy && now - this.busyAt > BUSY_MOST) { this.busy = null; cx.notify(); }
-    if (this.writing && now - this.writing > BUSY_MOST * 1.5) { this.writing = null; cx.notify(); }
+    for (const [key, job] of this.writers) {
+      if (now - job.at > BUSY_MOST * 1.5) { this.writers.delete(key); cx.notify(); }
+    }
     // While Herdr is not the active app nothing is read or asked of GitHub: a watch only marks
     // the panel stale, and the first tick with Herdr active again reads at once. A request or a
     // command still runs, and reads after it (`act()`, `refresh`): it doesn't wait for a tick.
@@ -273,7 +317,7 @@ export default class GitPanel extends View {
     if (context !== this.context) {
       this.reset();
       this.context = context;
-      this.message = ""; this.input.set_value("");
+      this.showDraft(null);
     }
     if (!cwd) { this.error = "No folder"; return; }
     this.loading = true; this.stale = false; this.last = Date.now();
@@ -319,6 +363,7 @@ export default class GitPanel extends View {
       if (this.key() !== context) return;
     }
     this.root = at.root; this.on = on; this.common = at.common; this.state = at.state; this.error = null;
+    this.showDraft(JSON.stringify([on ?? null, at.root]));
     this.status = st;
     this.stats = { unstaged: git.parseNumstat(unstaged.stdout), staged: git.parseNumstat(staged.stdout) };
     this.remoteNames = remotes.stdout.split("\n").filter(Boolean);
@@ -525,15 +570,27 @@ export default class GitPanel extends View {
     if (r.op === "open-checkout") { await this.openCheckout(r, cx); return; }
     if (r.op === "writer") { this.writer = write.writer(r.id).id; this.remember("writer", this.writer); return; }
     if (this.busy) { this.note = { error: "Something is still running: try again in a moment", at: Date.now() }; return; }
+    this.job = r;
     this.busy = r.op; this.busyAt = Date.now(); this.note = null;
     cx.notify();
+    const key = JSON.stringify([r.on ?? null, r.root]);
+    const draft = this.drafts.get(key);
+    const revision = draft?.revision;
     const done = await ops.perform(r);
-    this.busy = null;
+    if (!done.error && r.op === "commit") {
+      this.writers.delete(key);
+      if (draft) {
+        delete draft.suggestion;
+        if (draft.revision === revision && draft.text.trim() === r.message) this.setDraft(key, "");
+      }
+    }
+    if (this.job !== r || key !== this.draftKey) return;
+    this.job = null; this.busy = null;
     if (done.error) this.note = { error: done.error, at: Date.now() };
     else {
       if (done.note) this.say(done.note);
       // A commit offers its push in the Commit button's place, until something else is chosen.
-      if (r.op === "commit") { this.message = ""; this.input.set_value(""); this.offer = { branch: r.expect?.branch ?? null }; this.sel = { kind: "work" }; }
+      if (r.op === "commit") { this.offer = { branch: r.expect?.branch ?? null }; this.sel = { kind: "work" }; }
       if (r.op === "push") this.offer = null;
       // A new branch or tag is somewhere in the graph: show where.
       if ((r.op === "branch" || r.op === "tag") && this.index.has(r.at)) this.pick({ kind: "commit", sha: r.at }, true);
@@ -634,8 +691,11 @@ export default class GitPanel extends View {
   generate(cx) {
     const st = this.status, root = this.root, on = this.on;
     if (this.writing || !root || !(st.staged.length + st.unstaged.length)) return;
-    const who = write.writer(this.writer), context = this.context;
-    this.writing = Date.now(); this.note = null;
+    const who = write.writer(this.writer), key = this.draftKey;
+    const draft = this.drafts.get(key) ?? { text: "", revision: 0 };
+    this.drafts.set(key, draft);
+    const revision = draft.revision, job = { at: Date.now(), who };
+    this.writers.set(key, job); this.note = null;
     cx.spawn(async (cx) => {
       let done;
       try {
@@ -646,11 +706,15 @@ export default class GitPanel extends View {
         });
         done = facts.error ? facts : await write.write(who, write.prompt({ ...facts, branch: st.branch }));
       } catch (e) { done = { error: String(e?.message ?? e) }; }
-      this.writing = null;
-      // Another repository is shown by now: the message was not for it.
-      if (this.context === context) {
-        if (done.error) this.note = { error: done.error, at: Date.now() };
-        else { this.message = done.message; this.input.set_value(done.message); }
+      if (this.writers.get(key) !== job) return;
+      this.writers.delete(key);
+      if (done.error) {
+        if (key === this.draftKey) this.note = { error: done.error, at: Date.now() };
+      } else if (draft.revision === revision) {
+        delete draft.suggestion;
+        this.setDraft(key, done.message);
+      } else {
+        draft.suggestion = done.message;
       }
       cx.notify();
     });
@@ -1062,7 +1126,7 @@ export default class GitPanel extends View {
     const to = this.pushTarget(), h = this.current();
     const offering = Boolean(this.offer && !this.message.trim() && to && h && h.sha === st.oid && (st.ahead > 0 || to.track) && !this.state);
     const pushable = offering && !this.busy;
-    const who = write.writer(this.writer);
+    const who = this.writing?.who ?? write.writer(this.writer);
     const rows = [];
     const list = (group, files) => files.slice(0, FILES).map((f, i) => this.file(t, `git-w-${group}-${i}`, { ...f, ...(this.stats[group][f.path] ?? {}) }, {
       click: () => this.show(f.path, group),
@@ -1088,6 +1152,9 @@ export default class GitPanel extends View {
       .child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("git-work").absolute().inset_0().overflow_y_scroll().p(6).children(rows))
         .child(Scrollbar.vertical("git-work").absolute().inset_0()))
+      .when(Boolean(this.drafts.get(this.draftKey)?.suggestion), el => el.child(
+        h_flex().px(10).pt(4).child(this.button(t, "git-use-generated", ICON("write"), "Replace the draft with the generated message",
+          () => this.useGenerated(), { label: "Use generated message" }))))
       .child(h_flex().flex_none().p(10).gap(8).items_end().border_t(1).border_color(t.border)
         // The message, and at its right the button that has it written.
         .child(h_flex().id("git-message").flex_1().min_w(0).min_h(32).pl(10).pr(3).py(3).gap(4).items_start().rounded(8).border_1().border_color(this.typing ? t.accent : t.border).cursor_text()

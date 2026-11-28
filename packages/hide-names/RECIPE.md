@@ -6,7 +6,7 @@ Disguise the project names around a terminal during a screen share. One shortcut
 
 ## What you see
 
-Keep Herdr's existing tab strip, pane headers, status bar and notification cards in their usual positions. Substitute plausible names for named tabs, project folders, machines and topic branches. Preserve the branch prefix, numbered tabs and common names such as main. The matching sidebar and usage tools follow the same switch when installed.
+The tab bar offers Files, Search and Git when the layout contains those panels. Keep Herdr's existing tab strip, pane headers, status bar and notification cards in their usual positions. Substitute plausible names for named tabs, project folders, machines and topic branches. Preserve the branch prefix, numbered tabs and common names such as main. The matching sidebar and usage tools follow the same switch when installed.
 
 ## How it behaves
 

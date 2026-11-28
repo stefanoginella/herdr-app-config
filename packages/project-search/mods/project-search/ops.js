@@ -3,12 +3,12 @@
 //
 // A menu or a dialog is a short-lived copy of this mod: it is gone before a program it started
 // could answer. So it leaves a request in shared state, and the panel, which stays, takes it.
-// A request names a result by its file (`path`, under the folder searched) and its match (`id`):
+// Each request carries its issuing panel, result revision, root and machine. It names a result by its file (`path`, under the folder searched) and its match (`id`):
 //   { op: "open",        path, id? }      in the tab's editor
 //   { op: "app",         app, root, on, path, id? }
 //   { op: "dismiss",     path, id? }      out of the list, until the next search
 //   { op: "replace",     path, id? }      one match, or every match listed in the file
-//   { op: "replace-all", want }           every match listed; `want`: the search they are of
+//   { op: "replace-all" }                 every match listed
 
 import { exec, shared, setShared, readTextFile, writeTextFile } from "herdr";
 import * as search from "./search.js";
@@ -24,17 +24,24 @@ export const base = (path) => path.slice(path.lastIndexOf("/") + 1);
 export const parent = (path) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
 
 export function request(r) {
-  setShared(KEY, { ...r, at: Date.now() });
+  const now = Date.now(), pending = {};
+  for (const [panel, entry] of Object.entries(shared(KEY) ?? {})) {
+    if (entry?.panel === panel && now - entry.at < FRESH) pending[panel] = entry;
+  }
+  pending[r.panel] = { ...r, at: now };
+  setShared(KEY, pending);
 }
 
-export const waiting = () => Boolean(shared(KEY));
+export const waiting = (panel) => Boolean(shared(KEY)?.[panel]);
 
-// The waiting request, taken: nobody else gets it.
-export function take() {
-  const r = shared(KEY);
-  if (!r) return null;
-  setShared(KEY, null);
-  return Date.now() - (r.at ?? 0) < FRESH ? r : null;
+// An overlay's request belongs to one panel. Another panel may have its own pending action.
+export function take(panel) {
+  const pending = shared(KEY), request = pending?.[panel];
+  if (!request) return null;
+  const rest = { ...pending };
+  delete rest[panel];
+  setShared(KEY, Object.keys(rest).length ? rest : null);
+  return Date.now() - request.at < FRESH ? request : null;
 }
 
 // ripgrep, cut short. Only what search.parse() reads is kept (KEEP): the match records, at

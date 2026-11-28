@@ -243,6 +243,12 @@
         }
       ]
     },
+    "editor-guides": {
+      "canvas": [1220, 585],
+      "cards": [
+        { "src": "raw/editor-guides.png", "crop": [1116, 79, 1090, 471], "at": "center" }
+      ]
+    },
     "file-editor": {
       "canvas": [1680, 1480],
       "cards": [

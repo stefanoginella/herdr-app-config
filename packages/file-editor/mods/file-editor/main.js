@@ -29,7 +29,7 @@
 // line-up, line-down, duplicate, next-same, next-change, prev-change, search-project.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input, TextareaState, Textarea, TextView, v_virtual_list, VirtualListScrollHandle, Scrollbar } from "gpui-base";
-import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, run, openOverlay, closeOverlay, window as app } from "herdr";
+import { props, shared, setShared, readTextFile, writeTextFile, exec, theme, settings, nextCommand, notify, keys, checking, panes, focused, layout, run, openOverlay, closeOverlay, window as app } from "herdr";
 import * as edit from "./edit.js";
 import * as diff from "./diff.js";
 import * as remote from "./remote.js";
@@ -257,6 +257,7 @@ export default class FileEditor extends View {
     d.markdown = d.kind === "markdown";
     d.preview = Boolean(d.kind && !previews.binary(d.kind) && d.preview);
     this.docs.push(d);
+    this.labels = null;
     if (show || !this.active) { this.active = id; this.found(); }
     if (previews.binary(d.kind)) {
       if (show || this.active === id) this.refreshPreview(d, cx);
@@ -742,6 +743,7 @@ export default class FileEditor extends View {
       this.active = next?.id ?? null;
     }
     this.docs = this.docs.filter(d => !drop.has(d));
+    this.labels = null;
     closing.files = closing.files.filter(d => !drop.has(d));
     for (const d of drop) {
       d.state?.release();
@@ -901,10 +903,30 @@ export default class FileEditor extends View {
     this.focus();
   }
 
+  revealInFiles(d) {
+    if (!d || focused()?.tab !== this.tab) return;
+    const find = (node) => {
+      if (node?.content?.mod === "file-explorer") return [node];
+      for (const child of node?.children ?? []) {
+        const path = find(child);
+        if (path) return [node, ...path];
+      }
+    };
+    const path = find(layout());
+    if (!path) return notify({ title: "This layout has no File Explorer panel" });
+    setShared("file-explorer.reveal", { tab: this.tab, path: d.path, on: d.on, at: Date.now() });
+    for (let i = 0; i < path.length; i++) {
+      const node = path[i];
+      if (node.type === "stack") run("layout.select", { stack: node.id, child: path[i + 1].id });
+      if (node.hidden) run("layout.show", { id: node.id });
+    }
+  }
+
   // A key command (keys.json), or a button here.
   command(name, cx) {
     const d = this.doc();
     if (name === "focus") return this.focus();
+    if (name === "reveal") return this.revealInFiles(d);
     if (name === "save") return this.save(d, cx);
     if ((name === "find" || name === "replace") && d?.state) {
       if (d.preview && !d.markdown) this.unpreview(d, null, cx);
@@ -1006,6 +1028,7 @@ export default class FileEditor extends View {
       for (const d of this.docs) {
         if ((d.on ?? null) !== (m.on ?? null) || !(d.path === m.from || d.path.startsWith(m.from + "/"))) continue;
         const was = d.id;
+        this.labels = null;
         d.path = m.to + d.path.slice(m.from.length); d.name = base(d.path); d.id = idOf(d.path, d.on);
         const kind = previews.format(d.path);
         if (previews.binary(kind) === previews.binary(d.kind)) {
@@ -1124,6 +1147,7 @@ export default class FileEditor extends View {
   }
 
   strip(t, d) {
+    const labels = this.labels ??= edit.tabLabels(this.docs);
     return h_flex().id("fe-strip").h(36).flex_none().pl(6).pr(8).gap(2).items_center().border_b(1).border_color(t.border).bg(t.background)
       // On the click, not the press: the press gives the keyboard to the pane itself.
       .on_click(() => this.focus())
@@ -1139,7 +1163,7 @@ export default class FileEditor extends View {
             .on_click((_e, cx) => { this.show(o, cx); cx.notify(); })
             .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.openTabMenu(o); })
             .when(o.pinned, el => el.child(svg("mods/workspace-chrome/pin.svg").size(12).flex_none().text_color(t.accent)))
-            .child(div().min_w(0).truncate().child(o.name))
+            .child(div().min_w(0).truncate().child(labels.get(o.id) ?? o.name))
             .child(h_flex().id(`fe-shut-${o.n}`).size(18).flex_none().items_center().justify_center().rounded(5)
               .text_size(dirty ? 9 : 13).text_color(dirty ? t.foreground : t.dim)
               .hover(s => s.bg(t.raised).text_color(t.foreground))

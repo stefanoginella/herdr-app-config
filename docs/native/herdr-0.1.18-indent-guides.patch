@@ -1,0 +1,275 @@
+diff --git a/vendor/gpui-kit/crates/base/src/input/base/element.rs b/vendor/gpui-kit/crates/base/src/input/base/element.rs
+index 2e23301..f995fa0 100644
+--- a/vendor/gpui-kit/crates/base/src/input/base/element.rs
++++ b/vendor/gpui-kit/crates/base/src/input/base/element.rs
+@@ -2960,7 +2960,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
+
+         let hover_definition_hitbox = M::hover_definition_hitbox(state, window, cx);
+         let indent_guides_path =
+-            self.layout_indent_guides(state, &bounds, &last_layout, &text_style, window);
++            self.layout_indent_guides(state, &bounds, &last_layout);
+         state
+             .editor_scrollbar_snapshot
+             .set(Some(EditorScrollbarSnapshot::new(
+diff --git a/vendor/gpui-kit/crates/base/src/input/editor/display_map/inline_line.rs b/vendor/gpui-kit/crates/base/src/input/editor/display_map/inline_line.rs
+index b45fd3b..9aa65cc 100644
+--- a/vendor/gpui-kit/crates/base/src/input/editor/display_map/inline_line.rs
++++ b/vendor/gpui-kit/crates/base/src/input/editor/display_map/inline_line.rs
+@@ -59,6 +59,38 @@ impl InputLine {
+             }
+         }
+     }
++    /// Like x_for_index for a sequence of increasing byte offsets. Guide
++    /// painting visits every indent level of a line, so keep the glyph cursor.
++    pub(crate) fn forward_x_positions(&self) -> impl FnMut(usize) -> Pixels + '_ {
++        let (mut fragment, mut run, mut glyph) = (0, 0, 0);
++        move |ix| {
++            let (line, index, origin) = match &self.content {
++                Content::Text(line) => (line, ix, px(0.)),
++                Content::Inline(parts) => {
++                    while parts.get(fragment).is_some_and(|p| ix >= p.range.end) {
++                        fragment += 1;
++                        run = 0;
++                        glyph = 0;
++                    }
++                    let Some(part) = parts.get(fragment) else { return self.width };
++                    let Some(line) = &part.text else {
++                        return if ix <= part.range.start { part.x } else { part.x + part.width };
++                    };
++                    (line, ix.saturating_sub(part.range.start), part.x)
++                }
++            };
++            while let Some(font_run) = line.runs.get(run) {
++                while let Some(g) = font_run.glyphs.get(glyph) {
++                    if g.index >= index { return origin + g.position.x; }
++                    glyph += 1;
++                }
++                run += 1;
++                glyph = 0;
++            }
++            origin + line.width
++        }
++    }
++
+     pub(crate) fn closest_index_for_x(&self, x: Pixels) -> usize {
+         match &self.content {
+             Content::Text(line) => line.closest_index_for_x(x),
+diff --git a/vendor/gpui-kit/crates/base/src/input/editor/display_map/text_wrapper.rs b/vendor/gpui-kit/crates/base/src/input/editor/display_map/text_wrapper.rs
+index 4c59bf2..cee0747 100644
+--- a/vendor/gpui-kit/crates/base/src/input/editor/display_map/text_wrapper.rs
++++ b/vendor/gpui-kit/crates/base/src/input/editor/display_map/text_wrapper.rs
+@@ -37,7 +37,7 @@ fn measured_wrap_boundaries(
+ ) -> Vec<gpui::Boundary> {
+     let indent = if wrapping_indent == WrappingIndent::Same {
+         text.chars()
+-            .take_while(|&c| c == ' ')
++            .take_while(|&c| matches!(c, ' ' | '\t'))
+             .count()
+             .min(gpui::LineWrapper::MAX_INDENT as usize)
+     } else {
+@@ -1241,6 +1241,7 @@ mod tests {
+         };
+         assert_eq!(wrap("hello world", 8., WrappingIndent::None), vec![6]);
+         assert_eq!(wrap("a👩‍💻b", 2., WrappingIndent::None), vec!["a👩‍💻".len()]);
++        assert_eq!(wrap("\t abcdefgh", 5., WrappingIndent::Same), vec![5, 8]);
+         assert_eq!(wrap("  abcdefgh", 5., WrappingIndent::Same), vec![5, 8]);
+         assert_eq!(wrap("  abcdefgh", 5., WrappingIndent::None), vec![2, 7]);
+         assert!(wrap("", 0., WrappingIndent::None).is_empty());
+diff --git a/vendor/gpui-kit/crates/base/src/input/editor/indent.rs b/vendor/gpui-kit/crates/base/src/input/editor/indent.rs
+index d50bff1..97248aa 100644
+--- a/vendor/gpui-kit/crates/base/src/input/editor/indent.rs
++++ b/vendor/gpui-kit/crates/base/src/input/editor/indent.rs
+@@ -1,12 +1,9 @@
+ use crate::input::InputModeKind;
+ use crate::input::{
+     Indent, IndentInline, InputBaseState, Outdent, OutdentInline, RopeExt, cursor::CursorSelection,
+-    element::TextElement, layout::LastLayout, mode::LayoutMode,
+-};
+-use gpui::{
+-    Bounds, Context, Hsla, Path, PathBuilder, Pixels, SharedString, TextRun, TextStyle, Window,
+-    point, px,
++    display_map::LineLayout, element::TextElement, layout::LastLayout, mode::LayoutMode,
+ };
++use gpui::{Bounds, Context, Path, PathBuilder, Pixels, SharedString, Window, point, px};
+ use ropey::RopeSlice;
+
+ #[derive(Debug, Copy, Clone)]
+@@ -80,43 +77,61 @@ impl LayoutMode {
+     }
+ }
+
+-impl<M: InputModeKind> TextElement<M> {
+-    /// Measure the indent width in pixels for given column count.
+-    fn measure_indent_width(&self, style: &TextStyle, column: usize, window: &Window) -> Pixels {
+-        let font_size = style.font_size.to_pixels(window.rem_size());
+-        let layout = window.text_system().shape_line(
+-            SharedString::from(" ".repeat(column)),
+-            font_size,
+-            &[TextRun {
+-                len: column,
+-                font: style.font(),
+-                color: Hsla::default(),
+-                background_color: None,
+-                strikethrough: None,
+-                underline: None,
+-            }],
+-            None,
+-        );
+-
+-        layout.width
++impl LineLayout {
++    // Guide segments use the same shaped rows and hanging indent as text and carets.
++    fn each_indent_guide(
++        &self,
++        step: usize,
++        line_height: Pixels,
++        mut segment: impl FnMut(Pixels, Pixels, Pixels),
++    ) {
++        let height = self.wrapped_lines.len() * line_height;
++        let mut column = 0;
++        'rows: for (i, row) in self.wrapped_lines.iter().enumerate() {
++            let mut x_for_index = row.forward_x_positions();
++            let carry = if i == 0 { px(0.) } else { self.wrap_indent };
++            for (ix, byte) in row.text.bytes().enumerate() {
++                let width = match byte {
++                    b' ' => 1,
++                    b'\t' => step,
++                    _ => break 'rows,
++                };
++                // HERDR: measure the actual shaped glyph, including a guide
++                // partway through a tab following a partial space indent.
++                let within = (step - column % step) % step;
++                column += width;
++                if within >= width {
++                    continue;
++                }
++                let left = x_for_index(ix);
++                let mut x = carry + left;
++                if within > 0 {
++                    x += (x_for_index(ix + 1) - left) * (within as f32 / width as f32);
++                }
++                let top = i * line_height;
++                let bottom = if i == 0 && x < self.wrap_indent {
++                    height
++                } else {
++                    top + line_height
++                };
++                segment(x, top, bottom);
++            }
++        }
+     }
++}
+
++impl<M: InputModeKind> TextElement<M> {
+     pub(super) fn layout_indent_guides(
+         &self,
+         state: &InputBaseState<M>,
+         bounds: &Bounds<Pixels>,
+         last_layout: &LastLayout,
+-        text_style: &TextStyle,
+-        window: &mut Window,
+     ) -> Option<Path<Pixels>> {
+         if !state.is_multi_line() || !state.mode.has_indent_guides() {
+             return None;
+         }
+
+-        let indent_width =
+-            self.measure_indent_width(text_style, state.mode.tab_size().tab_size, window);
+-
+-        let tab_size = state.mode.tab_size();
++        let step = state.mode.tab_size().tab_size;
+         let line_height = last_layout.line_height;
+         let mut builder = PathBuilder::stroke(px(1.));
+         let mut offset_y = last_layout.visible_top;
+@@ -127,34 +142,24 @@ impl<M: InputModeKind> TextElement<M> {
+             .iter()
+             .zip(last_layout.lines.iter())
+         {
+-            let line = state.text.slice_line(buffer_line);
+-            let mut current_indents = vec![];
+-            if line.len() > 0 {
+-                let indent_count = tab_size.indent_count(&line);
+-                for offset in (0..indent_count).step_by(tab_size.tab_size) {
+-                    let x = if indent_count > 0 {
+-                        indent_width * offset as f32 / tab_size.tab_size as f32
+-                    } else {
+-                        px(0.)
+-                    };
+-
+-                    let pos = point(x + last_layout.line_number_width, offset_y);
+-
+-                    builder.move_to(pos);
+-                    builder.line_to(point(pos.x, pos.y + line_height));
+-                    current_indents.push(pos.x);
++            let rows = line_layout.wrapped_lines.len();
++            let height = rows * line_height;
++            let origin = last_layout.line_number_width
++                + last_layout.alignment_offset(line_layout.longest_width);
++            if state.text.slice_line(buffer_line).len() == 0 {
++                for &x in &last_indents {
++                    builder.move_to(point(origin + x, offset_y));
++                    builder.line_to(point(origin + x, offset_y + height));
+                 }
+-            } else if last_indents.len() > 0 {
+-                for x in &last_indents {
+-                    let pos = point(*x, offset_y);
+-                    builder.move_to(pos);
+-                    builder.line_to(point(pos.x, pos.y + line_height));
+-                }
+-                current_indents = last_indents.clone();
++            } else {
++                last_indents.clear();
++                line_layout.each_indent_guide(step, line_height, |x, top, bottom| {
++                    builder.move_to(point(origin + x, offset_y + top));
++                    builder.line_to(point(origin + x, offset_y + bottom));
++                    last_indents.push(x);
++                });
+             }
+-
+-            offset_y += line_layout.wrapped_lines.len() * line_height;
+-            last_indents = current_indents;
++            offset_y += height;
+         }
+
+         builder.translate(bounds.origin);
+@@ -472,6 +477,40 @@ mod tests {
+         assert_eq!(tab.to_string(), "\t");
+     }
+
++    #[test]
++    fn guides_use_shaped_tabs_and_stop_at_the_carried_indent() {
++        use crate::input::display_map::{InlineFragment, InputLine, LineLayout};
++        use gpui::px;
++
++        // The tab is 12px, a space is 5px. The first guide is before
++        // the two spaces. The second is halfway through the first tab.
++        let row = |text: &'static str, widths: &[f32]| {
++            let mut x = px(0.);
++            let fragments = widths.iter().enumerate().map(|(i, &w)| {
++                let fragment = InlineFragment {
++                    range: i..i + 1,
++                    x,
++                    width: px(w),
++                    text: None,
++                };
++                x += px(w);
++                fragment
++            }).collect();
++            InputLine::inline(text.into(), fragments)
++        };
++        let rows = [row("  \t\tx", &[5., 5., 12., 12., 5.]), row("x", &[5.])];
++        let layout = LineLayout::new()
++            .inline_lines(rows.into_iter().collect())
++            .wrap_indent(px(17.));
++        let mut guides = Vec::new();
++        layout.each_indent_guide(4, px(20.), |x, y, end| guides.push((x, y, end)));
++        assert_eq!(guides, vec![
++            (px(0.), px(0.), px(40.)),
++            (px(16.), px(0.), px(40.)),
++            (px(28.), px(0.), px(20.)),
++        ]);
++    }
++
+     #[test]
+     fn test_tab_size_indent_count() {
+         let tab = TabSize {
