@@ -54,7 +54,7 @@ function find(node, id) {
   for (const child of node?.children ?? []) { const f = find(child, id); if (f) return f; }
   return null;
 }
-// The sidebar's rail goes by its width, as in space-folders.
+// The sidebar's rail goes by its width, as in spaces-sidebar.
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
 function snapshotCodex(s) {

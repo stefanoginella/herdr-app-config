@@ -13,7 +13,7 @@
 import { shared, setShared } from "herdr";
 
 export const KEY = "space.folders";
-export const CREATE = "space-folders.create";
+export const CREATE = "spaces-sidebar.create";
 
 const isFolder = (e) => e !== null && typeof e === "object";
 const ref = (e) => (isFolder(e) ? e.id : e);

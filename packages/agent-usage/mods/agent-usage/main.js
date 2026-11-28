@@ -60,7 +60,7 @@ const RISE_MS = 350;
 // One color a project (palette()). Neighbours are told apart by color-blind eyes on the dialog's
 // surface. Green is left out: it is the "spare" level's color.
 const PALETTE = ["#5b8def", "#e3814f", "#8b7cf6", "#22a99a", "#b08d1e", "#d9649a"];
-// The sidebar's space-avatar colors (MARK in space-folders).
+// The sidebar's space-avatar colors (MARK in spaces-sidebar).
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 const GREEN = "#3fae6a";
 

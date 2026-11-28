@@ -8,12 +8,11 @@
 // touches the app, so the rest runs under `node`.
 //
 // The menu is a short-lived copy of this mod, gone before `ddev start` could answer. So it leaves a
-// request in shared state (as open.js does), and the sidebar takes it and runs it (`perform()`).
-// A request: { op: "start" | "stop" | "site", on, stacks: [stack] }.
+// request in shared state (as open.js does), and the sidebar takes it and runs it.
 
 import { exec, shared, setShared } from "herdr";
 
-const KEY = "space-folders.stack";
+const KEY = "spaces-sidebar.stack";
 const FRESH = 10000;
 // How deep under the project folder a stack is looked for: its compose file or `.ddev` folder at
 // most this many folders down (`a/b/.ddev/config.yaml` is 3).
@@ -56,13 +55,25 @@ export function readFound(stdout, folder) {
   return { ddev: [...new Set(ddev)], compose: [...new Set(compose)] };
 }
 
+export function webUrl(url) {
+  return typeof url === "string" && /^https?:\/\/[^/\s?#]+(?:[/?#]\S*)?$/i.test(url) ? url : null;
+}
+
+// Follow the project's preferred scheme, including installations that use HTTP.
+function serviceUrl(primary, http, https) {
+  return /^http:\/\//i.test(primary ?? "") ? webUrl(http) || webUrl(https) : webUrl(https) || webUrl(http);
+}
+
 // `ddev list --json-output`: JSON lines, the one with `raw` holds the projects.
 export function readDdev(stdout) {
   for (const line of stdout.split("\n")) {
     try {
       const d = JSON.parse(line);
       if (Array.isArray(d?.raw)) return d.raw.filter((p) => typeof p?.approot === "string")
-        .map((p) => ({ name: p.name, dir: p.approot.replace(/\/+$/, ""), status: p.status ?? "", url: p.primary_url || null }));
+        .map((p) => ({
+          name: p.name, dir: p.approot.replace(/\/+$/, ""), status: p.status ?? "", url: webUrl(p.primary_url),
+          mailpit: p.router_disabled ? null : serviceUrl(p.primary_url, p.mailpit_url, p.mailpit_https_url),
+        }));
     } catch {}
   }
   return null;
@@ -108,7 +119,7 @@ export function stacksFor(folder, home, lists, found) {
   for (const p of lists?.ddev ?? []) {
     const inside = under(p.dir, f) && levels(p.dir, f) <= DEPTH;
     const around = under(f, p.dir) && !tooWide(p.dir, home);
-    if (inside || around) out.push({ id: `ddev:${p.dir}`, kind: "ddev", name: p.name, dir: p.dir, state: ddevState(p.status), url: p.url });
+    if (inside || around) out.push({ id: `ddev:${p.dir}`, kind: "ddev", name: p.name, dir: p.dir, state: ddevState(p.status), url: p.url, mailpit: p.mailpit });
   }
   for (const dir of found?.ddev ?? []) {
     if (!out.some((s) => s.kind === "ddev" && s.dir === dir)) out.push({ id: `ddev:${dir}`, kind: "ddev", name: base(dir), dir, state: "stopped", url: null });
@@ -136,6 +147,21 @@ export function overall(stacks, acting) {
 export const title = (s) => `${s.dev ? "Dev container" : s.kind === "ddev" ? "DDEV" : "Docker"} ${s.name}`;
 
 // ---- what touches the app ----
+
+// Only the local project's menu needs the full description. Keep just the running service's URL.
+export async function adminerUrl(stack) {
+  try {
+    const r = await exec("ddev", ["describe", "--json-output", "--skip-hooks"], { cwd: stack.dir, timeout: 5000 });
+    if (r.code !== 0) return null;
+    for (const line of r.stdout.split("\n")) {
+      let project;
+      try { project = JSON.parse(line).raw; } catch { continue; }
+      const adminer = project?.services?.adminer;
+      if (adminer?.status === "running") return serviceUrl(project.primary_url || stack.url, adminer.http_url, adminer.https_url);
+    }
+  } catch {}
+  return null;
+}
 
 // One machine's lists. A program that isn't there answers null for its part.
 export async function lists(on) {

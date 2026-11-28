@@ -4,7 +4,7 @@ Copyright 2026 Stefano Ginella
 This repository includes files derived from Herdr (https://herdr.dev), which is
 licensed under the Apache License, Version 2.0:
 
-- packages/space-folders/mods/space-folders/main.js is a modified copy of Herdr's `spaces` mod
+- packages/spaces-sidebar/mods/spaces-sidebar/main.js is a modified copy of Herdr's `spaces` mod
   (version 0.1.18). It adds folders to the sidebar.
 - packages/mark-agents-unread/mods/mark-agents-unread/main.js is a modified copy of Herdr's `agents` mod
   (version 0.1.18). It lets an idle agent be marked unread.
@@ -15,7 +15,7 @@ licensed under the Apache License, Version 2.0:
   `tabs`, `pane`, `workspace-status` and `toast` mods (version 0.1.18). They draw made-up names while names are hidden; the
   pane-names and tabs-names icons are unmodified copies of those mods' icons.
 - layouts/herdr-powertools.json is a modified copy of Herdr's `main` layout
-  (version 0.1.18). Its Spaces block shows `space-folders` instead of `spaces`,
+  (version 0.1.18). Its Spaces block shows `spaces-sidebar` instead of `spaces`,
   its Agents block shows `mark-agents-unread` instead of `agents`, and its Files
   block shows `file-explorer` instead of `files`. Its Changes block shows
   `git-panel` instead of `changes`. It also has two blocks of its own for

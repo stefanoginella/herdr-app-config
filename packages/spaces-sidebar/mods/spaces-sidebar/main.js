@@ -8,7 +8,7 @@
 // (model.js). Drag a space onto a folder or out of it, drag a folder to reorder it, or use the
 // right-click menus (menu.js) and the naming dialog (naming.js): this mod opens itself for both.
 // The real space order follows the sidebar, so space.next and space.select:N do too.
-// Keys can run `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`.
+// Keys can run `spaces-sidebar.new-folder`, `spaces-sidebar.fold-all` and `spaces-sidebar.unfold-all`.
 // A space's menu also opens its local project (the repo's top folder, else where it is) in a desktop app.
 // A space whose project has DDEV projects or Docker Compose stacks shows their state at the row's
 // end, a button that starts or stops them (stacks.js); its menu does it one stack at a time. The
@@ -22,11 +22,11 @@ import * as model from "./model.js";
 import * as opening from "./open.js";
 import * as external from "./external-apps.js";
 import * as stacks from "./stacks.js";
-import Menu, { naming } from "./menu.js";
+import Menu, { naming, openMenu } from "./menu.js";
 import Naming from "./naming.js";
 import * as names from "./names.js";
 
-const MOD = "space-folders";
+const MOD = "spaces-sidebar";
 const machineOf = model.machineOf;
 // The machine new folders go on when nothing else says: the shown space's.
 const here = () => spaces().find((s) => s.active)?.machine ?? null;
@@ -448,10 +448,10 @@ export default class Spaces extends View {
 
   // The menus are this mod again, as a popup (menu.js). A popup is as tall as its items; height is only the most.
   menu(kind, target = {}) {
-    openOverlay({ mod: MOD, kind: "popup", width: 236, height: 560, props: { menu: kind, target, keys: this.keys } });
+    openMenu(kind, target, this.keys);
   }
 
-  // Key commands, e.g. "cmd-shift-n": "space-folders.new-folder" in keys.json.
+  // Key commands, e.g. "cmd-shift-n": "spaces-sidebar.new-folder" in keys.json.
   command(name) {
     if (name === "new-folder") naming({ title: "New folder", on: here() });
     else if (name === "fold-all" || name === "unfold-all") this.change((m) => model.folders(m).forEach((f) => model.setFolded(m, f.id, name === "fold-all")));
@@ -1108,7 +1108,7 @@ export default class Spaces extends View {
       const r = stacks.take();
       if (!r) return;
       if (r.op === "site") {
-        if (!r.on && /^https?:\/\/[^/\s]+/i.test(r.url ?? "")) cx.open_url(r.url);
+        if (!r.on && stacks.webUrl(r.url)) cx.open_url(r.url);
         return;
       }
       this.runStacks(r.op, r.stacks, r.on ?? null, cx);

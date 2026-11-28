@@ -53,7 +53,7 @@ The clones, copied from a shipped file (`rg -l cloned_from packages/*/mods/*/mod
 
 | Clone | `<original>` | Installed copy |
 |---|---|---|
-| `space-folders` | `defaults/mods/spaces/main.js` | `mods/spaces/main.js` |
+| `spaces-sidebar` | `defaults/mods/spaces/main.js` | `mods/spaces/main.js` |
 | `mark-agents-unread` | `defaults/mods/agents/main.js` | `mods/agents/main.js` |
 | `file-explorer` | `defaults/mods/files/main.js` | `mods/files/main.js` |
 | `tabs-names` | `defaults/mods/tabs/main.js` | `mods/tabs/main.js` |
@@ -87,7 +87,7 @@ Done when: every item of every version in the range appears in the report exactl
 
 The changelog misses things. 0.1.17 changed how a `keys.json` section name is read without saying so, and broke every `> Input` section. Read the diff (`jq -r '.files[] | select(.filename=="<file>") | .patch' <scratch>/compare.json`) of every file in the compare that is:
 
-- under `defaults/`, `docs/` or `vendor/gpui-kit/`. This includes `defaults/AGENTS.md`, `defaults/herdr.d.ts` and `vendor/gpui-kit/crates/shell/src/typings.rs` (the API and its types: `gpui-kit.d.ts` is written from it), the time limits in `engine/quickjs/sandbox.rs` and `scheduler.rs`, the mods other mods call (`worktree`, opened by `space-folders/menu.js`) or stand beside (`tabs`), and `defaults/keys*.json`. The owner's `keys.json` is edited, so new default keys never reach it: report every one.
+- under `defaults/`, `docs/` or `vendor/gpui-kit/`. This includes `defaults/AGENTS.md`, `defaults/herdr.d.ts` and `vendor/gpui-kit/crates/shell/src/typings.rs` (the API and its types: `gpui-kit.d.ts` is written from it), the time limits in `engine/quickjs/sandbox.rs` and `scheduler.rs`, the mods other mods call (`worktree`, opened by `spaces-sidebar/menu.js`) or stand beside (`tabs`), and `defaults/keys*.json`. The owner's `keys.json` is edited, so new default keys never reach it: report every one.
 - `src/keys.rs`, `src/mods.rs`, `src/mod_files.rs`, `src/links.rs`, `src/window.rs`, or under `vendor/gpui-pre/src/`.
 
 A file whose `patch` is missing (a big diff): fetch it at both tags into the scratchpad and diff them there.

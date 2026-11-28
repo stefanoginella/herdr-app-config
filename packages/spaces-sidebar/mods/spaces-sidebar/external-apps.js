@@ -1,4 +1,4 @@
-// Shared desktop actions. Keep the copies in Files, Search and Space Folders identical.
+// Shared desktop actions. Keep the copies in Files, Search and Spaces Sidebar identical.
 import { appHome, exec, home, notify, readTextFile, window } from "herdr";
 
 const FILE = "external-apps.json";

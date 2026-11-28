@@ -1,6 +1,6 @@
 {
   "place": "none",
-  "title": "Spaces",
+  "title": "Spaces Sidebar",
   "cloned_from": {
     "name": "spaces",
     "version": "0.1.16"
@@ -8,19 +8,19 @@
   "palette": [
     {
       "title": "New Folder",
-      "command": "space-folders.new-folder",
+      "command": "spaces-sidebar.new-folder",
       "group": "Spaces",
       "words": "folder group"
     },
     {
       "title": "Fold All Folders",
-      "command": "space-folders.fold-all",
+      "command": "spaces-sidebar.fold-all",
       "group": "Spaces",
       "words": "collapse folders"
     },
     {
       "title": "Unfold All Folders",
-      "command": "space-folders.unfold-all",
+      "command": "spaces-sidebar.unfold-all",
       "group": "Spaces",
       "words": "expand folders"
     }

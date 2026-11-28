@@ -4,7 +4,7 @@ Keep an agent's terminal, the file it is changing, and the Git diff side by side
 
 ![Herdr Power Tools showing a weekly usage forecast, project folders and a Git graph](docs/images/power-tools.webp)
 
-**Agent support.** Agent Usage reads Claude Code and Codex, and the optional Git commit-message writer can use either one. The file editor, search, Git tools and space folders work with ordinary terminals. You can mark agents unread when Herdr recognizes their status.
+**Agent support.** Agent Usage reads Claude Code and Codex, and the optional Git commit-message writer can use either one. The file editor, search, Git tools and the Spaces sidebar work with ordinary terminals. You can mark agents unread when Herdr recognizes their status.
 
 [See the whole window](docs/images/overview.webp) · [Install and update](#install) · [Upgrading an earlier install](#upgrading-an-earlier-install)
 
@@ -17,7 +17,7 @@ Each feature has a page with everything it does: every key, limit and edge case.
 | Feature | In short | Mod IDs |
 |---|---|---|
 | [Agent Usage](docs/usage.md) | Whether the agents' limits last the week, and where the usage went | `agent-usage` |
-| [Space Folders](docs/space-folders.md) | Folders for the Spaces sidebar, with each space's containers and agents | `space-folders` |
+| [Spaces Sidebar](docs/spaces-sidebar.md) | Group spaces, see agent activity and open local DDEV services | `spaces-sidebar` |
 | [Mark Agents Unread](docs/unread-agents.md) | Flag idle agents to come back to later | `mark-agents-unread` |
 | [Git Panel](docs/git-panel.md) | Commit history, refs, branch review and everyday Git actions | `git-panel` |
 | [Git Diff](docs/git-diff.md) | A diff pane, side by side, with the changed words marked | `git-diff` |
@@ -45,17 +45,17 @@ The `herdr-powertools` layout puts Files, Search and Git together on the tab bar
 
 <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd> opens it, and a widget above Spaces keeps the limits in view. [Everything about usage](docs/usage.md)
 
-### Space Folders
+### Spaces Sidebar
 
-**Folders for the Spaces sidebar.** Drag a space onto a folder, fold a folder to its count, and the next space opened on a filed project lands in the same folder.
+See each space’s branch, agents and containers. Drag a space into a folder and the next space opened on that project joins it.
 
-![The Spaces sidebar with its folders open, and the same folders folded to their counts](docs/images/space-folders.webp)
+![The Spaces sidebar with its folders open, and the same folders folded to their counts](docs/images/spaces-sidebar.webp)
 
 - **Agents on the avatar:** a number counts a space's agents, in the color of the most urgent one.
-- **Containers on the row:** a button starts and stops the project's DDEV or Docker Compose containers.
+- **Containers on the row:** a button starts and stops the project's DDEV or Docker Compose containers. Right-click a running local DDEV project to open its site, Mailpit or Adminer when available.
 - **The order is real:** `space.next` and `space.prev` follow what is drawn.
 
-[Everything about space folders](docs/space-folders.md)
+[Everything about the Spaces sidebar](docs/spaces-sidebar.md)
 
 ### Mark Agents Unread
 
@@ -208,7 +208,7 @@ From this repository's checkout, install every mod package, then install and sel
 )
 ```
 
-For one feature, install its folder under [packages/](packages).
+For one feature, install its folder under [packages/](packages). If you installed Space Folders previously, follow the [Spaces Sidebar upgrade instructions](docs/spaces-sidebar.md#upgrading-from-space-folders).
 
 ```sh
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
@@ -227,9 +227,9 @@ Open **Packages** and choose **Update all** to update installed mods and layouts
 - `project-search` and `go-to-file` need [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`), also on another machine whose project is searched. `agent-usage` needs `node`. The Git panel's GitHub marks need [`gh`](https://cli.github.com), and its message writer `claude` or `codex`.
 - `editor-links` is turned on by the layout's `"link_handlers": ["editor-links"]` (Herdr adds it to a layout of your own the first time it sees the mod).
 - `go-to-file` and the `agent-usage` dialog are in no layout: their keys open them.
-- The four hide names mods, `space-folders`, `mark-agents-unread` and `agent-usage` share the mode: with only some of them, only those hide their names. `hide-names` holds the command that switches it.
+- The four hide names mods, `spaces-sidebar`, `mark-agents-unread` and `agent-usage` share the mode: with only some of them, only those hide their names. `hide-names` holds the command that switches it.
 
-To place an individual mod in your layout, set the `spaces` block to `{ "mod": "space-folders" }`, the `agents` block to `{ "mod": "mark-agents-unread" }`, the `files` block to `{ "mod": "file-explorer" }`, or the `changes` block to `{ "mod": "git-panel" }`. The usage widget takes a 62 px block with `{ "mod": "agent-usage", "props": { "role": "side" } }`. As shown in `herdr-powertools.json`, `project-search` needs the panel and an always-visible block with props `{ "keys": true, "show": { ... } }`. That block can be 0 px tall and handles Cmd+Shift+F. Clone a shipped layout before editing it.
+To place an individual mod in your layout, set the `spaces` block to `{ "mod": "spaces-sidebar" }`, the `agents` block to `{ "mod": "mark-agents-unread" }`, the `files` block to `{ "mod": "file-explorer" }`, or the `changes` block to `{ "mod": "git-panel" }`. The usage widget takes a 62 px block with `{ "mod": "agent-usage", "props": { "role": "side" } }`. As shown in `herdr-powertools.json`, `project-search` needs the panel and an always-visible block with props `{ "keys": true, "show": { ... } }`. That block can be 0 px tall and handles Cmd+Shift+F. Clone a shipped layout before editing it.
 
 ```sh
 herdr-app do layout.clone '{"name":"main","as":"my-layout"}'

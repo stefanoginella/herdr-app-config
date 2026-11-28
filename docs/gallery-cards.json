@@ -6,7 +6,7 @@
     "caption": "Manage agents, edit files, and review Git changes in one workspace.",
     "shots": [
       {"picture": "usage", "crop": [73, 71, 1533, 706], "at": [588, 150], "width": 676},
-      {"picture": "space-folders", "crop": [81, 186, 722, 588], "at": [570, 414], "width": 356},
+      {"picture": "spaces-sidebar", "crop": [81, 186, 722, 588], "at": [570, 414], "width": 356},
       {"picture": "git-panel", "crop": [121, 71, 686, 615], "at": [920, 466], "width": 344}
     ]
   },
@@ -17,8 +17,8 @@
       {"crop": [884, 847, 721, 151], "at": [726, 514], "width": 492}
     ]
   },
-  "space-folders": {
-    "caption": "Group projects and see which spaces need attention.",
+  "spaces-sidebar": {
+    "caption": "Group spaces, see agent activity and open project services.",
     "shots": [
       {"crop": [81, 186, 722, 677], "at": [600, 122], "width": 555},
       {"crop": [876, 341, 722, 367], "at": [811, 478], "width": 449}

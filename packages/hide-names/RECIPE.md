@@ -14,7 +14,7 @@ Cmd+Shift+H or the palette's Hide Names / Show Names toggles the window. Draw ea
 
 ## Built from
 
-Install `tabs-names`, `pane-names`, `hide-names` and `toast-names` from the package's `mods/` folder and merge its key. In a personal layout set the tab bar's mod to `tabs-names`, the active tab's pane header to `pane-names`, the status block to `hide-names`, and the root's `"toast"` to `toast-names`. Turn `names.hidden` on or off through the shown status mod. Each mod computes aliases from the input and its kind. **Space Folders**, **Mark Agents Unread** and **Agent Usage** also read the flag.
+Install `tabs-names`, `pane-names`, `hide-names` and `toast-names` from the package's `mods/` folder and merge its key. In a personal layout set the tab bar's mod to `tabs-names`, the active tab's pane header to `pane-names`, the status block to `hide-names`, and the root's `"toast"` to `toast-names`. Turn `names.hidden` on or off through the shown status mod. Each mod computes aliases from the input and its kind. **Spaces Sidebar**, **Mark Agents Unread** and **Agent Usage** also read the flag.
 
 With **Back and Forward** in the status bar, the pane header accepts `"props": { "terminalHistory": true }`. Plain Back and Forward mouse presses over a terminal then run the matching history command. File Editor and diff panes handle their own presses.
 

@@ -42,7 +42,7 @@
               "id": "spaces",
               "type": "block",
               "content": {
-                "mod": "space-folders"
+                "mod": "spaces-sidebar"
               },
               "size": {
                 "weight": 1

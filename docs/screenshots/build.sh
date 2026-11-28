@@ -41,8 +41,12 @@ X
 cat > "$DEMO/bin/ddev" <<X
 #!/bin/sh
 echo "ddev \$*" >> $DEMO/stub.log
-[ "\$1" = list ] || exit 1
-printf '%s\n' '{"level":"info","msg":"","raw":[{"name":"nimbus-web","approot":"$D/nimbus-web","status":"running","primary_url":"https://nimbus-web.ddev.site"}]}'
+case "\$1" in
+  list) printf '%s\n' '{"raw":[{"name":"nimbus-web","approot":"$D/nimbus-web","status":"running","primary_url":"https://nimbus-web.ddev.site","mailpit_https_url":"https://nimbus-web.ddev.site:8026"}]}' ;;
+  describe) [ "\$PWD" = "$D/nimbus-web" ] || exit 1
+    printf '%s\n' '{"raw":{"status":"running","services":{"adminer":{"status":"running","https_url":"https://nimbus-web.ddev.site:9101"}}}}' ;;
+  *) exit 1 ;;
+esac
 X
 cat > "$DEMO/bin/gh" <<X
 #!/bin/sh

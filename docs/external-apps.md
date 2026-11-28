@@ -1,6 +1,6 @@
 # External apps
 
-File Explorer, Project Search, and Space Folders use the same app preferences. Their external actions open items on the computer running the Herdr window.
+File Explorer, Project Search, and Spaces Sidebar use the same app preferences. Their external actions open items on the computer running the Herdr window.
 
 With no configuration file, the menus offer VS Code and Obsidian where available, plus TextEdit on macOS. On Linux and Windows, the VS Code preset uses `code` on Herdr’s PATH. On macOS, it can also find the app bundle. Obsidian opens folders and files in registered vaults. On macOS, it also offers to open `.md`, `.markdown`, `.canvas`, and `.base` files outside a vault. On Linux and Windows, the Obsidian preset uses the desktop’s registered `obsidian:` handler.
 

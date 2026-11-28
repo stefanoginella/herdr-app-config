@@ -1,8 +1,8 @@
-# Space Folders
+# Spaces Sidebar
 
-Groups spaces into named folders in the sidebar. Folders are one level deep, and a space doesn't need one: it can stay at the root.
+See each space’s branch, agents and containers, open local project tools, and group spaces into folders. Folders are one level deep. Spaces can also stay at the root.
 
-![The Spaces sidebar with three folders, a space's branch, its containers and its agents, and the same folders folded](images/space-folders.webp)
+![The Spaces sidebar with three folders, a space's branch, its containers and its agents, and the same folders folded](images/spaces-sidebar.webp)
 
 *The sidebar: folders of spaces, with each space's branch, containers and agents, and the same folders folded to their counts. The names in the pictures are made up.*
 
@@ -18,7 +18,9 @@ Each machine has folders of its own, drawn under its header, and a folder holds 
 A space's row also says what runs in it:
 
 - **Agents:** a number on the space's avatar counts its agents, in the color of the most urgent one (a ring when all are idle). An idle agent [marked unread](unread-agents.md) counts as done.
-- **Containers.** The DDEV projects and Docker Compose stacks of the space’s project show as buttons at the row’s end, with a site icon for DDEV and a whale for Docker. A green dot means everything is running and amber means part is running. Click a button to start or stop its stacks, or use the space menu for one stack at a time. **Open site** opens a running local DDEV site in the desktop’s default browser. A Compose-based dev container has its own button. Existing containers start with `start`, a stack that has never been started uses `up -d`, and stopping uses `stop`. Discovery uses `sh`, `find` and Unix-style paths, which limits native Windows support.
+- **Containers.** The DDEV projects and Docker Compose stacks of the space’s project show as buttons at the row’s end, with a site icon for DDEV and a whale for Docker. A green dot means everything is running and amber means part is running. Click a button to start or stop its stacks, or use the space menu for one stack at a time. A Compose-based dev container has its own button. Existing containers start with `start`, a stack that has never been started uses `up -d`, and stopping uses `stop`. Discovery uses `sh`, `find` and Unix-style paths, which limits native Windows support.
+
+Right-click a running local DDEV project for **Open site** and **Open Mailpit**. **Open Adminer** appears when DDEV reports a running Adminer service with a web address. Each link opens in your default browser at the URL DDEV reports for that project, including custom ports. Mailpit uses the project’s DDEV router.
 
 Placement survives restarts. It is also remembered by project (the repo, else the folder), so the next space opened on a filed project lands in the same folder.
 
@@ -26,7 +28,13 @@ The real order of spaces follows the sidebar, so `space.next`, `space.prev` and 
 
 A local space’s menu can open its project folder in an [external app](external-apps.md). It uses the repository’s top folder when the space is in a repository, and the space’s folder otherwise.
 
-Three commands can be bound in `keys.json`: `space-folders.new-folder`, `space-folders.fold-all` and `space-folders.unfold-all`. They are also in the command palette (Cmd+Shift+P).
+Three commands can be bound in `keys.json`: `spaces-sidebar.new-folder`, `spaces-sidebar.fold-all` and `spaces-sidebar.unfold-all`. They are also in the command palette (Cmd+Shift+P).
+
+## Upgrading from Space Folders
+
+Install the `spaces-sidebar` package. The current Power Tools layout already uses its new name. In a custom layout, change the Spaces block’s mod from `space-folders` to `spaces-sidebar`. Update the same prefix in any personal keyboard shortcuts. Your folders, project assignments and space order carry over automatically.
+
+If you want to keep folded machine headers, move `data/space-folders` to `data/spaces-sidebar` in your Herdr home before first opening the new sidebar. Once your layouts and keys use the new name, you can remove the old mod.
 
 ---
 

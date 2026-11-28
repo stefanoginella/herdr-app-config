@@ -100,8 +100,8 @@ s_sidebar() {
   h layout.show '{"id":"sidebar"}'; h layout.hide '{"id":"panel"}'; zoom 2.5
   req "$(folders_json)" 3
   h layout.hide '{"id":"agents"}'; nap 1.5; draw 4; shot side-spaces
-  h space-folders.fold-all; nap 1; draw 4; shot side-folded
-  h space-folders.unfold-all; req "$(folders_json)" 3
+  h spaces-sidebar.fold-all; nap 1; draw 4; shot side-folded
+  h spaces-sidebar.unfold-all; req "$(folders_json)" 3
   h layout.show '{"id":"agents"}'; h layout.hide '{"id":"spaces"}'; nap 1.5; draw 4; shot side-agents-before
   # The mark is made while looking at the agent, and counts once you have left.
   h agent.focus "{\"terminal\":\"$(terminal_of nimbus-web 'theme header')\"}"; nap 1.5; draw 2

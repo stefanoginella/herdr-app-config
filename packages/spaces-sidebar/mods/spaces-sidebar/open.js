@@ -4,7 +4,7 @@
 
 import { shared, setShared } from "herdr";
 
-const KEY = "space-folders.open";
+const KEY = "spaces-sidebar.open";
 // A request older than this was left by a window that closed before taking it.
 const FRESH = 10000;
 
