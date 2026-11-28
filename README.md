@@ -143,9 +143,9 @@ The `herdr-powertools` layout puts Files, Search and Git together on the tab bar
 
 ### Workspace controls
 
-Use the status bar arrows or press a mouse side button over a terminal to return to the tab and pane you left. **Quick Actions** opens with <kbd>Alt</kbd>+<kbd>Q</kbd> or the adjacent status button. Save a project command once and run it in a new terminal tab on that project’s machine.
+Use the status bar arrows or press a mouse side button over a terminal to return to the tab and pane you left. Right-click either arrow to jump to a recent workspace. **Quick Actions** opens with <kbd>Alt</kbd>+<kbd>Q</kbd> or the adjacent status button. Save a project command once and run it in a new terminal tab on that project’s machine.
 
-![Saved DDEV commands and the navigation controls in the status bar](docs/images/workspace-tools.webp)
+![Saved DDEV commands, the recent workspaces menu and the status bar arrows](docs/images/workspace-tools.webp)
 
 [Back and Forward](docs/back-forward.md) · [Quick Actions](docs/quick-actions.md)
 

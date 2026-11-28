@@ -3,10 +3,12 @@
 // updates which pane that step comes back to.
 
 import { View, div, svg } from "gpui-kit";
-import { h_flex } from "gpui-base";
-import { checking, focused, nextCommand, panes, spaces, theme, run } from "herdr";
+import { h_flex, v_flex } from "gpui-base";
+import { checking, closeOverlay, focused, nextCommand, openOverlay, panes, props, run, shared, spaces, theme } from "herdr";
+import * as alias from "./alias.js";
 
 const MAX_STEPS = 100;
+const ROW_HEIGHT = 28;
 // A step runs space.select, tab.select and pane.focus in turn, and a render can land between them.
 const ARRIVAL_WINDOW_MS = 1000;
 
@@ -19,6 +21,12 @@ function tabExists(step, available) {
 
 export default class BackForward extends View {
   init(_p, cx) {
+    const p = props();
+    if (p?.overlay && Array.isArray(p.recent)) {
+      this.menu = p;
+      return;
+    }
+    this.recent = [];
     this.steps = [];
     this.index = -1;
     this.goingTo = null;
@@ -35,6 +43,9 @@ export default class BackForward extends View {
   follow() {
     const f = focused();
     if (!f?.space || !f.tab) return;
+    if (this.recent[0] !== f.space) {
+      this.recent = [f.space, ...this.recent.filter((id) => id !== f.space)].slice(0, MAX_STEPS);
+    }
     if (this.goingTo !== null) {
       const target = this.steps[this.goingTo.index];
       if (target && sameTab(target, f)) {
@@ -88,20 +99,51 @@ export default class BackForward extends View {
     this.go(e.button === "back" ? -1 : 1);
   }
 
+  recentMenu(t, available) {
+    const byId = new Map(available.map((space) => [space.id, space]));
+    const recent = this.menu.recent.map((id) => byId.get(id)).filter(Boolean);
+    const hidden = shared("names.hidden");
+    const row = (space) => {
+      const name = hidden ? alias.project(space.name) : space.name;
+      const machine = hidden ? alias.machine(space.machine) : space.machine;
+      return h_flex().id(`recent-${space.id}`).h(ROW_HEIGHT).flex_none().items_center().gap(7).px(7).rounded(5)
+        .cursor_pointer().hover((s) => s.bg(t.hover))
+        .tooltip(machine ? `${name} · ${machine}` : name)
+        .on_click(() => {
+          closeOverlay(this.menu.overlay);
+          if (spaces().some((s) => s.id === space.id && !s.active)) run("space.select", { id: space.id });
+        })
+        .child(div().size(14).flex_none().when(space.active, (el) =>
+          el.child(svg("mods/workspace-chrome/check.svg").size(14).text_color(t.accent))))
+        .child(div().flex_1().min_w(0).truncate().child(name))
+        .when(Boolean(machine), (el) => el.child(div().max_w(100).truncate().text_size(11).text_color(t.muted).child(machine)));
+    };
+    return v_flex().w_full().min_h(0).p(5).bg(t.popover).text_size(13).text_color(t.foreground)
+      .child(div().px(7).py(4).flex_none().text_size(11).font_semibold().text_color(t.muted).child("Recent workspaces"))
+      .child(recent.length
+        ? v_flex().id("recent-list").min_h(0).h(ROW_HEIGHT * Math.min(10, recent.length)).overflow_y_scrollbar().children(recent.map(row))
+        : div().px(7).py(6).text_color(t.muted).child("No recent workspaces"));
+  }
+
   button(t, id, icon, direction, label, available) {
     const enabled = this.nextIndex(direction, available) !== null;
     return div().id(id).size(28).flex_none().flex().items_center().justify_center().rounded(7)
       .text_color(enabled ? t.foreground : t.dim).opacity(enabled ? 1 : 0.45)
       .when(enabled, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
-      .tooltip(label)
+      .tooltip(`${label} · Right-click for recent workspaces`)
+      .on_mouse_down("right", (e, cx) => {
+        cx.stop_propagation();
+        openOverlay({ mod: "back-and-forward", kind: "popup", at: e.position, width: 260, props: { recent: this.recent } });
+      })
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click(() => this.go(direction))
       .child(svg(`mods/workspace-chrome/${icon}.svg`).size(18));
   }
 
   render() {
-    this.follow();
     const t = theme(), available = spaces();
+    if (this.menu) return this.recentMenu(t, available);
+    this.follow();
     // Outside the status block, capture the press before the editor or diff gets it.
     // Inside, the same gesture goes through the block's own button handlers.
     const press = (e, cx) => this.mouseHistory(e, cx);

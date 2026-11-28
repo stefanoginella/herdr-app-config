@@ -1,6 +1,6 @@
 # Hide Names
 
-For a screenshot or a screen share: Cmd+Shift+H (or "Hide Names / Show Names" in the command palette) gives every space, folder, tab, branch and machine around the content a plausible made-up name, in the sidebar, the agents list, the tab bar, the pane headers, the status bar, the Usage dialog and the notifications. The same real name always gets the same made-up one. What the panes and the right panel show stays real: that is the content you chose to show. Press it again to show the names; the app also shows them again when it starts.
+For a screenshot or a screen share: Cmd+Shift+H (or "Hide Names / Show Names" in the command palette) gives every space, folder, tab, branch and machine around the content a plausible made-up name, in the sidebar, the agents list, the tab bar, the pane headers, the status bar and its recent workspaces menu, the Usage dialog and the notifications. The same real name always gets the same made-up one. What the panes and the right panel show stays real: that is the content you chose to show. Press it again to show the names; the app also shows them again when it starts.
 
 ![The sidebar, tab bar and pane header with real names, and the same window with made-up names](images/hide-names.webp)
 

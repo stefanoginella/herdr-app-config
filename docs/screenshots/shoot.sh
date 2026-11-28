@@ -152,11 +152,15 @@ s_ci() {
 
 s_tools() {
   zoom 3
+  h space.select "{\"id\":\"$S2\"}"; draw 2
   h space.select "{\"id\":\"$S1\"}"; draw 2
   h space.select "{\"id\":\"$S3\"}"; draw 3
   h back-and-forward.back; draw 3; shot navigation
   h back-and-forward.forward; draw 3
   zoom 1.8
+  req "[{\"overlay\":{\"mod\":\"back-and-forward\",\"kind\":\"popup\",\"at\":{\"x\":1000,\"y\":700},\"width\":260,\"props\":{\"recent\":[\"$S3\",\"$S1\",\"$S2\"]}}}]" 3
+  shot recent-workspaces
+  h overlay.close
   h mod.open '{"name":"quick-actions"}'; draw 6; shot quick-actions
   h overlay.close
   h space.select "{\"id\":\"$S1\"}"; h tab.select "{\"id\":\"$T1\"}"

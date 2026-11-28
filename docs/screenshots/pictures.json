@@ -28,8 +28,9 @@
   "pictures": {
     "workspace-tools": {
       "cards": [
-        { "src": "raw/quick-actions.png", "crop": [372, 128, 1476, 625], "at": [98, 135] },
-        { "src": "raw/navigation.png", "crop": [1890, 1326, 330, 84], "at": [1243, 823] }
+        { "src": "raw/quick-actions.png", "crop": [372, 128, 1476, 625], "at": [98, 70] },
+        { "src": "raw/recent-workspaces.png", "crop": [1000, 700, 468, 217], "at": [420, 754] },
+        { "src": "raw/navigation.png", "crop": [1890, 1326, 330, 84], "at": [930, 820] }
       ]
     },
     "branch-review": {

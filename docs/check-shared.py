@@ -4,7 +4,7 @@ import sys
 
 PACKAGES = Path(__file__).resolve().parents[1] / "packages"
 COPIES = {
-    "alias.js": {"hide-names", "tabs-names", "pane-names", "toast-names", "space-folders", "mark-agents-unread", "agent-usage"},
+    "alias.js": {"hide-names", "tabs-names", "pane-names", "toast-names", "space-folders", "mark-agents-unread", "agent-usage", "back-and-forward"},
     "fieldkeys.js": {"file-editor", "project-search", "go-to-file"},
     "remote.js": {"file-editor", "project-search"},
     "external-apps.js": {"file-explorer", "project-search", "space-folders"},
